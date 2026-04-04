@@ -36,7 +36,26 @@ Openroast 1.2 is currently in 'rc' or 'release candidate' phase. The alpha relea
 - `Openroast 1.2 for Mac`_
 - `Openroast 1.2 for Windows 10 32-bit`_ (for those running on very old hardware)
 
-For Linux OSes, downloading the project files and performing a :code:`py35 -mpip install .` in the project root directory is the only way to install the software at this time.
+For Linux OSes (including Raspberry Pi), install with Python 3.13.
+
+Standard desktop Linux::
+
+    python3.13 -m venv .venv
+    . .venv/bin/activate
+    python -m pip install -U pip
+    python -m pip install -e .[gui]
+
+Raspberry Pi 2 (Raspbian 13/trixie) recommendation:
+
+1. Install heavy GUI/scientific packages from apt (faster and more reliable on armv7):
+
+   ``sudo apt install python3-pyqt5 python3-matplotlib``
+
+2. Install Openroast in a venv:
+
+   ``python -m pip install -e .``
+
+If the venv cannot see apt-managed packages, create it with ``--system-site-packages``.
 
 Installation Instructions
 -------------------------
