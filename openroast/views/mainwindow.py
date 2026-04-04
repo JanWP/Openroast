@@ -4,7 +4,6 @@
 import os
 import json
 import shutil
-import openroast
 
 from PyQt5 import QtGui
 from PyQt5 import QtCore
@@ -185,9 +184,8 @@ class MainWindow(QtWidgets.QMainWindow):
             jsonObject = json.dumps(
                 self.recipes.currentlySelectedRecipe, indent=4)
 
-            file = open(recipeFile[0], 'w')
-            file.write(jsonObject)
-            file.close()
+            with open(recipeFile[0], 'w', encoding='utf-8') as file:
+                file.write(jsonObject)
         except FileNotFoundError:
             # Occurs if file browser is canceled
             pass
@@ -196,7 +194,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def open_about_window(self):
         self.aboutWindow = aboutwindow.About()
-        self.aboutWindow.exec_()
+        dialog_exec = getattr(self.aboutWindow, "exec", self.aboutWindow.exec_)
+        dialog_exec()
 
     def closeEvent(self, event):
         self.roaster.disconnect()

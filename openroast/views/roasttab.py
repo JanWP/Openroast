@@ -118,7 +118,9 @@ class RoastTab(QtWidgets.QWidget):
             self.connectionStatusLabel.setHidden(True)
             self.setEnabled(True)
         else:
-            if self.roaster.connect_state == self.roaster.CS_CONNECTING:
+            connect_state = getattr(self.roaster, "connect_state", None)
+            cs_connecting = getattr(self.roaster, "CS_CONNECTING", None)
+            if connect_state is not None and cs_connecting is not None and connect_state == cs_connecting:
                 # this means that the roaster has just been plugged in
                 # sometimes, it takes a while to complete the connection...
                 connecting_str = self.CONNECT_TXT_CONNECTING

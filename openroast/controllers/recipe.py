@@ -2,10 +2,8 @@
 # Roastero, released under GPLv3
 
 import json
-import openroast
 from multiprocessing import sharedctypes, Array
 import ctypes
-import freshroastsr700
 
 
 class Recipe(object):
@@ -48,9 +46,8 @@ class Recipe(object):
 
     def load_recipe_file(self, recipeFile):
         # Load recipe file
-        recipeFileHandler = open(recipeFile)
-        recipe_dict = json.load(recipeFileHandler)
-        recipeFileHandler.close()
+        with open(recipeFile, encoding='utf-8') as recipeFileHandler:
+            recipe_dict = json.load(recipeFileHandler)
         self.load_recipe_json(recipe_dict)
 
     def clear_recipe(self):
