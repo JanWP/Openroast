@@ -199,7 +199,7 @@ class RecipesTab(QtWidgets.QWidget):
 
     def load_recipe_file(self, filePath):
         """Used to load file from a path into selected recipe object."""
-        with open(filePath) as json_data:
+        with open(filePath, encoding='utf-8') as json_data:
             recipeObject = json.load(json_data)
         self.currentlySelectedRecipe = recipeObject
         self.currentlySelectedRecipePath = filePath
@@ -272,7 +272,8 @@ class RecipesTab(QtWidgets.QWidget):
     def open_recipe_editor(self):
         """Method used to open Recipe Editor Window with an existing recipe."""
         self.editorWindow = recipeeditorwindow.RecipeEditor(recipeLocation = self.currentlySelectedRecipePath)
-        self.editorWindow.exec_()
+        dialog_exec = getattr(self.editorWindow, "exec", self.editorWindow.exec_)
+        dialog_exec()
 
         # Used to update the recipe in the recipes tab after editing
         self.load_recipe_file(self.selectedFilePath)
@@ -281,7 +282,8 @@ class RecipesTab(QtWidgets.QWidget):
     def create_new_recipe(self):
         """Method used to open Recipe Editor Window for a new recipe."""
         self.editorWindow = recipeeditorwindow.RecipeEditor()
-        self.editorWindow.exec_()
+        dialog_exec = getattr(self.editorWindow, "exec", self.editorWindow.exec_)
+        dialog_exec()
 
         # Used to update the recipe in the recipes tab after creation
         try:

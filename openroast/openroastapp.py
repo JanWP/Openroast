@@ -2,14 +2,17 @@
 # Roastero, released under GPLv3
 import os
 import sys
-import inspect
 import shutil
 import logging
 import pathlib
 import multiprocessing
-from PyQt5 import QtWidgets
-from PyQt5 import QtGui
-from PyQt5 import QtCore
+try:
+    from PyQt5 import QtCore, QtGui, QtWidgets
+except ImportError as exc:
+    raise RuntimeError(
+        "PyQt5 is required to run Openroast. On Raspberry Pi install "
+        "python3-pyqt5 and python3-matplotlib from apt, or use pip with openroast[gui]."
+    ) from exc
 
 MOCK_HARDWARE = False
 if not MOCK_HARDWARE:
@@ -104,7 +107,7 @@ class OpenroastApp(object):
 
     def roasttab_flag_update_controllers(self):
         # print("app.roasttab_flag_update_controllers called")
-        self.window.roast.schedule_update_controllers();
+        self.window.roast.schedule_update_controllers()
 
     def run(self):
         """Turn everything on."""
@@ -113,7 +116,8 @@ class OpenroastApp(object):
             self.recipes,
             self.roaster)
         self.window.show()
-        sys.exit(self.app.exec_())
+        qt_exec = getattr(self.app, "exec", self.app.exec_)
+        sys.exit(qt_exec())
 
 
 # def get_script_dir(follow_symlinks=True):
@@ -132,8 +136,10 @@ class OpenroastApp(object):
 
 def main():
     #os.chdir(get_script_dir())
-    os.chdir(os.path.dirname(sys.argv[0]))
-    print("changing to folder %s" % os.path.dirname(sys.argv[0]))
+    startup_dir = os.path.dirname(sys.argv[0])
+    if startup_dir:
+        os.chdir(startup_dir)
+        print("changing to folder %s" % startup_dir)
     multiprocessing.freeze_support()
     app = OpenroastApp()
     app.run()

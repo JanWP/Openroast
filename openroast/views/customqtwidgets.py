@@ -13,7 +13,7 @@ matplotlib.use('Qt5Agg')
 # import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 import matplotlib.animation as animation
-from matplotlib.dates import MinuteLocator, DateFormatter
+from matplotlib.dates import DateFormatter
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 
@@ -189,7 +189,7 @@ class LogModel(QtWidgets.QFileSystemModel):
 
     def data(self, index, role):
         if index.column() == self.columnCount() - 1:
-            if role == Qt.DisplayRole:
+            if role == QtCore.Qt.DisplayRole:
                 filePath = self.filePath(index)
                 if os.path.isfile(filePath):
                     with open(filePath) as json_data:

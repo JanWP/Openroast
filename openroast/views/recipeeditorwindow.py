@@ -2,6 +2,7 @@
 # Roastero, released under GPLv3
 
 import os
+import errno
 import json
 import time
 import functools
@@ -299,10 +300,9 @@ class RecipeEditor(QtWidgets.QDialog):
         which should be JSON and makes a python dictionary from the contents.
         The python dictionary is created as self.recipe."""
         # Load recipe file
-        recipeFileHandler = open(recipeFile)
-        self.recipe = json.load(recipeFileHandler)
+        with open(recipeFile, encoding='utf-8') as recipeFileHandler:
+            self.recipe = json.load(recipeFileHandler)
         self.recipe["file"] = recipeFile
-        recipeFileHandler.close()
 
     def preload_recipe_information(self):
         """Loads information from self.recipe and prefills all the fields in the
@@ -391,9 +391,11 @@ class RecipeEditor(QtWidgets.QDialog):
         if len(newSteps) < 1:
             alert = QtWidgets.QMessageBox()
             alert.setWindowTitle('openroast')
-            alert.setStyleSheet(self.style)
+            if hasattr(self, "style"):
+                alert.setStyleSheet(self.style)
             alert.setText("You must have atleast one step!")
-            alert.exec_()
+            dialog_exec = getattr(alert, "exec", alert.exec_)
+            dialog_exec()
 
         else:
             # Delete all the current rows
@@ -441,6 +443,5 @@ class RecipeEditor(QtWidgets.QDialog):
             except OSError as exc: # Guard against race condition
                 if exc.errno != errno.EEXIST:
                     raise
-        file = open(filePath, 'w')
-        file.write(jsonObject)
-        file.close()
+        with open(filePath, 'w', encoding='utf-8') as file:
+            file.write(jsonObject)
