@@ -27,6 +27,7 @@ class RoastGraphWidget():
         self.animated = animated
         # Check if graph should continue to graph.
         self.animatingMethod = animatingMethod
+        self._last_drawn_len = -1
 
         self.widget = self.create_graph()
 
@@ -41,6 +42,7 @@ class RoastGraphWidget():
         matplotlib.rcParams['font.size'] = 10.
         self.graphFigure = Figure(facecolor='#444952')
         self.graphCanvas = FigureCanvas(self.graphFigure)
+        self._init_graph_axes()
 
         # Add graph widgets to layout for graph.
         graphVerticalBox = QtWidgets.QVBoxLayout()
@@ -54,30 +56,19 @@ class RoastGraphWidget():
             self.animateGraph = animation.FuncAnimation(self.graphFigure,
                 self.graph_draw, interval=1000, cache_frame_data=False)
         else:
-            self.graph_draw()
+            self.graph_draw(force=True)
 
         return graphWidget
 
-    def graph_draw(self, *args, **kwargs):
-        # Start graphing the roast if the roast has started.
-        if self.animatingMethod is not None:
-            if self.animatingMethod():
-                self.updateMethod()
-
+    def _init_graph_axes(self):
         self.graphFigure.clear()
-
         self.graphAxes = self.graphFigure.add_subplot(111)
-        self.graphAxes.plot_date(self.graphXValueList, self.graphYValueList,
-            '#8ab71b')
-
         # Add formatting to the graphs.
         self.graphAxes.set_ylabel('TEMPERATURE (°F)')
         self.graphAxes.set_xlabel('TIME')
         # Use more of the canvas area while preserving room for x-axis labels.
         self.graphFigure.subplots_adjust(left=0.10, right=0.985, top=0.965, bottom=0.16)
-
         self.graphAxes.get_xaxis().set_major_formatter(DateFormatter('%M:%S'))
-        # self.graphAxes.set_axis_bgcolor('#23252a')
         self.graphAxes.set_facecolor('#23252a')
 
         # adding more visible text color
@@ -85,8 +76,24 @@ class RoastGraphWidget():
         self.graphAxes.get_yaxis().label.set_color('white')
         self.graphAxes.tick_params(axis='x', colors='white')
         self.graphAxes.tick_params(axis='y', colors='white')
+        self.graphLine, = self.graphAxes.plot_date([], [], '#8ab71b')
 
-        self.graphCanvas.draw()
+    def graph_draw(self, *args, force=False, **kwargs):
+        # Start graphing the roast if the roast has started.
+        if self.animatingMethod is not None:
+            if self.animatingMethod():
+                self.updateMethod()
+
+        current_len = len(self.graphYValueList)
+        if not force and current_len == self._last_drawn_len:
+            return
+
+        self.graphLine.set_data(self.graphXValueList, self.graphYValueList)
+        if current_len > 0:
+            self.graphAxes.relim()
+            self.graphAxes.autoscale_view()
+        self._last_drawn_len = current_len
+        self.graphCanvas.draw_idle()
 
     def append_x(self, xCoord):
         self.counter += 1
@@ -98,7 +105,11 @@ class RoastGraphWidget():
         self.graphXValueList = []
         self.graphYValueList = []
         self.counter = 0
-        self.graphFigure.clear()
+        self.graphLine.set_data([], [])
+        self.graphAxes.relim()
+        self.graphAxes.autoscale_view()
+        self._last_drawn_len = 0
+        self.graphCanvas.draw_idle()
 
     def save_roast_graph(self):
         try:

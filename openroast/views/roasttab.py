@@ -112,7 +112,7 @@ class RoastTab(QtWidgets.QWidget):
 
     def update_data(self):
         # Update temperature widgets.
-        self.currentTempLabel.setText(str(self.roaster.current_temp))
+        self._set_text_if_changed(self.currentTempLabel, str(self.roaster.current_temp))
 
         # Update timers.
         self.update_section_time()
@@ -127,12 +127,16 @@ class RoastTab(QtWidgets.QWidget):
             value = value / self.recipes.get_current_section_time()
             value = round(value * 100)
 
-            self.sectionBars[self.recipes.get_current_step_number()].setValue(value)
+            bar = self.sectionBars[self.recipes.get_current_step_number()]
+            if bar.value() != value:
+                bar.setValue(value)
 
         # Check connection status of the openroast.roaster.
         if self.roaster.connected:
-            self.connectionStatusLabel.setHidden(True)
-            self.setEnabled(True)
+            if not self.connectionStatusLabel.isHidden():
+                self.connectionStatusLabel.setHidden(True)
+            if not self.isEnabled():
+                self.setEnabled(True)
         else:
             connect_state = getattr(self.roaster, "connect_state", None)
             cs_connecting = getattr(self.roaster, "CS_CONNECTING", None)
@@ -145,11 +149,13 @@ class RoastTab(QtWidgets.QWidget):
                 else:
                     connecting_str += "     ..."
                 self._connecting_blinker = not self._connecting_blinker
-                self.connectionStatusLabel.setText(connecting_str)
+                self._set_text_if_changed(self.connectionStatusLabel, connecting_str)
             else:
-                self.connectionStatusLabel.setText(self.CONNECT_TXT_PLEASE_CONNECT)
-            self.connectionStatusLabel.setHidden(False)
-            self.setEnabled(False)
+                self._set_text_if_changed(self.connectionStatusLabel, self.CONNECT_TXT_PLEASE_CONNECT)
+            if self.connectionStatusLabel.isHidden():
+                self.connectionStatusLabel.setHidden(False)
+            if self.isEnabled():
+                self.setEnabled(False)
 
         # if openroast.roaster has moved the recipe to the next section,
         # update the controller-related info onscreen.
@@ -401,66 +407,99 @@ class RoastTab(QtWidgets.QWidget):
         infoBox.addWidget(valueLabel)
         return infoBox
 
+    def _set_text_if_changed(self, widget, text):
+        if widget.text() != text:
+            widget.setText(text)
+
+    def _set_value_if_changed(self, widget, value):
+        if widget.value() != value:
+            blocker = QtCore.QSignalBlocker(widget)
+            widget.setValue(value)
+            del blocker
+
+    def _set_time_if_changed(self, widget, value):
+        if widget.time() != value:
+            blocker = QtCore.QSignalBlocker(widget)
+            widget.setTime(value)
+            del blocker
+
     def update_target_temp(self):
-        self.targetTempLabel.setText(str(self.roaster.target_temp))
-        self.tempSlider.setValue(self.roaster.target_temp)
-        self.tempSpinBox.setValue(self.roaster.target_temp)
+        value = self.roaster.target_temp
+        self._set_text_if_changed(self.targetTempLabel, str(value))
+        self._set_value_if_changed(self.tempSlider, value)
+        self._set_value_if_changed(self.tempSpinBox, value)
 
     def update_target_temp_spin_box(self):
-        self.targetTempLabel.setText(str(self.tempSpinBox.value()))
-        self.tempSlider.setValue(self.tempSpinBox.value())
-        self.roaster.target_temp = self.tempSpinBox.value()
+        value = self.tempSpinBox.value()
+        self._set_text_if_changed(self.targetTempLabel, str(value))
+        self._set_value_if_changed(self.tempSlider, value)
+        if self.roaster.target_temp != value:
+            self.roaster.target_temp = value
 
     def update_target_temp_slider(self):
-        self.targetTempLabel.setText(str(self.tempSlider.value()))
-        self.tempSpinBox.setValue(self.tempSlider.value())
-        self.roaster.target_temp = self.tempSlider.value()
+        value = self.tempSlider.value()
+        self._set_text_if_changed(self.targetTempLabel, str(value))
+        self._set_value_if_changed(self.tempSpinBox, value)
+        if self.roaster.target_temp != value:
+            self.roaster.target_temp = value
 
     def update_fan_info(self):
-        self.fanSlider.setValue(self.roaster.fan_speed)
-        self.fanSpeedSpinBox.setValue(self.roaster.fan_speed)
+        value = self.roaster.fan_speed
+        self._set_value_if_changed(self.fanSlider, value)
+        self._set_value_if_changed(self.fanSpeedSpinBox, value)
 
     def update_fan_speed_slider(self):
-        self.fanSpeedSpinBox.setValue(self.fanSlider.value())
-        self.roaster.fan_speed = self.fanSlider.value()
+        value = self.fanSlider.value()
+        self._set_value_if_changed(self.fanSpeedSpinBox, value)
+        if self.roaster.fan_speed != value:
+            self.roaster.fan_speed = value
 
     def update_fan_spin_box(self):
-        self.fanSlider.setValue(self.fanSpeedSpinBox.value())
-        self.roaster.fan_speed = self.fanSpeedSpinBox.value()
+        value = self.fanSpeedSpinBox.value()
+        self._set_value_if_changed(self.fanSlider, value)
+        if self.roaster.fan_speed != value:
+            self.roaster.fan_speed = value
 
     def set_section_time(self):
-        self.sectionTimeLabel.setText(time.strftime("%M:%S",
-            time.gmtime(self.sectTimeSlider.value())))
-        self.roaster.time_remaining = self.sectTimeSlider.value()
+        value = self.sectTimeSlider.value()
+        self._set_text_if_changed(self.sectionTimeLabel, time.strftime("%M:%S", time.gmtime(value)))
+        if self.roaster.time_remaining != value:
+            self.roaster.time_remaining = value
 
     def update_section_time(self):
-        self.sectTimeSlider.setValue(self.roaster.time_remaining)
+        value = self.roaster.time_remaining
+        self._set_value_if_changed(self.sectTimeSlider, value)
 
-        self.sectTimeSpinBox.setTime(QtCore.QTime.fromString(str(time.strftime("%H:%M:%S",
-            time.gmtime(self.roaster.time_remaining)))))
+        spin_time = QtCore.QTime.fromString(str(time.strftime("%H:%M:%S",
+            time.gmtime(value))))
+        self._set_time_if_changed(self.sectTimeSpinBox, spin_time)
 
-        self.sectionTimeLabel.setText(str(time.strftime("%M:%S",
-            time.gmtime(self.roaster.time_remaining))))
+        self._set_text_if_changed(self.sectionTimeLabel, str(time.strftime("%M:%S",
+            time.gmtime(value))))
 
     def update_sect_time_spin_box(self):
-        self.sectionTimeLabel.setText(str(time.strftime("%M:%S",
-            time.gmtime(QtCore.QTime(0, 0, 0).secsTo(self.sectTimeSpinBox.time())))))
+        value = QtCore.QTime(0, 0, 0).secsTo(self.sectTimeSpinBox.time())
+        self._set_text_if_changed(self.sectionTimeLabel, str(time.strftime("%M:%S", time.gmtime(value))))
 
-        self.sectTimeSlider.setValue(QtCore.QTime(0, 0, 0).secsTo(self.sectTimeSpinBox.time()))
+        self._set_value_if_changed(self.sectTimeSlider, value)
 
-        self.roaster.time_remaining = QtCore.QTime(0, 0, 0).secsTo(self.sectTimeSpinBox.time())
+        if self.roaster.time_remaining != value:
+            self.roaster.time_remaining = value
 
     def update_sect_time_slider(self):
-        self.sectionTimeLabel.setText(str(time.strftime("%M:%S",
-            time.gmtime(self.sectTimeSlider.value()))))
+        value = self.sectTimeSlider.value()
+        self._set_text_if_changed(self.sectionTimeLabel, str(time.strftime("%M:%S",
+            time.gmtime(value))))
 
-        self.sectTimeSpinBox.setTime(QtCore.QTime.fromString(str(time.strftime("%H:%M:%S",
-            time.gmtime(self.sectTimeSlider.value())))))
+        spin_time = QtCore.QTime.fromString(str(time.strftime("%H:%M:%S",
+            time.gmtime(value))))
+        self._set_time_if_changed(self.sectTimeSpinBox, spin_time)
 
-        self.roaster.time_remaining = self.sectTimeSlider.value()
+        if self.roaster.time_remaining != value:
+            self.roaster.time_remaining = value
 
     def update_total_time(self):
-        self.totalTimeLabel.setText(str(time.strftime("%M:%S",
+        self._set_text_if_changed(self.totalTimeLabel, str(time.strftime("%M:%S",
             time.gmtime(self.roaster.total_time))))
 
     def clear_roast(self):
