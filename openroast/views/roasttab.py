@@ -63,6 +63,13 @@ class RoastTab(QtWidgets.QWidget):
             animated = True,
             updateMethod = self.graph_get_data,
             animatingMethod = self.check_roaster_status)
+        if self.compact_ui:
+            self.graphWidget.widget.setSizePolicy(
+                QtWidgets.QSizePolicy.Expanding,
+                QtWidgets.QSizePolicy.Expanding)
+            self.graphWidget.graphCanvas.setSizePolicy(
+                QtWidgets.QSizePolicy.Expanding,
+                QtWidgets.QSizePolicy.Expanding)
         self.layout.addWidget(self.graphWidget.widget, 0, 0)
         self.layout.setColumnStretch(0, 1)
 
@@ -72,10 +79,11 @@ class RoastTab(QtWidgets.QWidget):
 
         # Create progress bar.
         self.progressBar = self.create_progress_bar()
-        self.layout.addLayout(self.progressBar, 1, 0, 1, 2, QtCore.Qt.AlignCenter)
+        self.layout.addLayout(self.progressBar, 1, 0, 1, 2)
         if self.compact_ui:
-            self.layout.setRowStretch(0, 10)
-            self.layout.setRowStretch(1, 1)
+            # Keep the progress row compact and hand extra height to the graph row.
+            self.layout.setRowStretch(0, 1)
+            self.layout.setRowStretch(1, 0)
 
         # Create not connected label.
         self.connectionStatusLabel = QtWidgets.QLabel(self.CONNECT_TXT_PLEASE_CONNECT)
@@ -159,10 +167,14 @@ class RoastTab(QtWidgets.QWidget):
         # Create guage window.
         guageWindow = self.create_gauge_window()
         rightPane.addLayout(guageWindow)
+        if self.compact_ui:
+            rightPane.addStretch(1)
 
         # Create sliders.
         sliderPanel = self.create_slider_panel()
         rightPane.addLayout(sliderPanel)
+        if self.compact_ui:
+            rightPane.addStretch(1)
 
         # Create button panel.
         buttonPanel = self.create_button_panel()
@@ -173,6 +185,8 @@ class RoastTab(QtWidgets.QWidget):
             spacer = QtWidgets.QWidget()
             spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
             rightPane.addWidget(spacer)
+        else:
+            rightPane.addStretch(1)
 
         return rightPane
 
