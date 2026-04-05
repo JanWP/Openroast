@@ -5,6 +5,7 @@ import sys
 import shutil
 import logging
 import pathlib
+import argparse
 import multiprocessing
 try:
     from PyQt5 import QtCore, QtGui, QtWidgets
@@ -14,20 +15,68 @@ except ImportError as exc:
         "python3-pyqt5 and python3-matplotlib from apt, or use pip with openroast[gui]."
     ) from exc
 
-MOCK_HARDWARE = False
-if not MOCK_HARDWARE:
-    import freshroastsr700
-else:
-    from openroast import freshroastsr700_mock as freshroastsr700
 from openroast.controllers import recipe
 from openroast.views import mainwindow
 from openroast import utils as utils
 
 
+def _parse_args():
+    """Parse command-line arguments. Known args are consumed; Qt args are left."""
+    parser = argparse.ArgumentParser(
+        description="Openroast coffee roaster controller",
+        add_help=False,  # let Qt handle unknown flags without crashing
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["usb", "local"],
+        default="usb",
+        help=(
+            "Hardware backend to use.  "
+            "'usb'   – FreshRoast SR700 via USB (default).  "
+            "'local' – Home-built roaster via the 'localroaster' library."
+        ),
+    )
+    parser.add_argument(
+        "--mock",
+        action="store_true",
+        default=False,
+        help="Use mock/simulated USB hardware (for development without a roaster).",
+    )
+    known, _remaining = parser.parse_known_args()
+    return known
+
+
+def _create_roaster(args):
+    """Instantiate and return the appropriate roaster backend object."""
+    if args.backend == "local":
+        from openroast.backends.local_roaster import LocalRoaster
+        logging.info("openroastapp: using LOCAL hardware backend")
+        return LocalRoaster(thermostat=True)
+    else:
+        # USB backend
+        if args.mock:
+            from openroast import freshroastsr700_mock as freshroastsr700
+            logging.info("openroastapp: using MOCK USB backend")
+        else:
+            try:
+                import freshroastsr700
+                logging.info("openroastapp: using real USB backend (freshroastsr700)")
+            except ImportError as exc:
+                raise RuntimeError(
+                    "The 'freshroastsr700' package is required for the USB backend. "
+                    "Install it or choose --backend local."
+                ) from exc
+        return freshroastsr700.freshroastsr700(thermostat=True)
+
+
 class OpenroastApp(object):
     """Main application class."""
-    def __init__(self):
+    def __init__(self, args=None):
         """Set up application, styles, fonts, and global object."""
+        if args is None:
+            args = _parse_args()
+        self._args = args
+
         # app
         self.app = QtWidgets.QApplication(sys.argv)
         # fonts
@@ -83,8 +132,8 @@ class OpenroastApp(object):
         # (to prevent overwriting pre-existing user data!)
         self.check_user_folder()
 
-        # initialize recipe amd roaster object
-        self.roaster = freshroastsr700.freshroastsr700(thermostat=True)
+        # initialize roaster backend and recipe object
+        self.roaster = _create_roaster(self._args)
         self.recipes = recipe.Recipe(self.roaster, self)
         if(not self.roaster.set_state_transition_func(
             self.recipes.move_to_next_section)):
@@ -141,7 +190,8 @@ def main():
         os.chdir(startup_dir)
         print("changing to folder %s" % startup_dir)
     multiprocessing.freeze_support()
-    app = OpenroastApp()
+    args = _parse_args()
+    app = OpenroastApp(args)
     app.run()
 
 
