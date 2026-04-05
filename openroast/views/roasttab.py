@@ -13,7 +13,7 @@ from PyQt5 import QtWidgets
 from openroast.views import customqtwidgets
 
 class RoastTab(QtWidgets.QWidget):
-    def __init__(self, roaster, recipes):
+    def __init__(self, roaster, recipes, compact_ui=False):
         super(RoastTab, self).__init__()
 
         # Class variables.
@@ -32,6 +32,7 @@ class RoastTab(QtWidgets.QWidget):
         self.roaster = roaster
         # store recipes object
         self.recipes = recipes
+        self.compact_ui = compact_ui
 
         # Create the tab ui.
         self.create_ui()
@@ -52,6 +53,10 @@ class RoastTab(QtWidgets.QWidget):
     def create_ui(self):
         # Create the main layout for the roast tab.
         self.layout = QtWidgets.QGridLayout()
+        if self.compact_ui:
+            self.layout.setContentsMargins(4, 2, 4, 2)
+            self.layout.setHorizontalSpacing(8)
+            self.layout.setVerticalSpacing(4)
 
         # Create graph widget.
         self.graphWidget = customqtwidgets.RoastGraphWidget(
@@ -68,6 +73,9 @@ class RoastTab(QtWidgets.QWidget):
         # Create progress bar.
         self.progressBar = self.create_progress_bar()
         self.layout.addLayout(self.progressBar, 1, 0, 1, 2, QtCore.Qt.AlignCenter)
+        if self.compact_ui:
+            self.layout.setRowStretch(0, 10)
+            self.layout.setRowStretch(1, 1)
 
         # Create not connected label.
         self.connectionStatusLabel = QtWidgets.QLabel(self.CONNECT_TXT_PLEASE_CONNECT)
@@ -144,6 +152,9 @@ class RoastTab(QtWidgets.QWidget):
 
     def create_right_pane(self):
         rightPane = QtWidgets.QVBoxLayout()
+        if self.compact_ui:
+            rightPane.setContentsMargins(0, 0, 0, 0)
+            rightPane.setSpacing(4)
 
         # Create guage window.
         guageWindow = self.create_gauge_window()
@@ -158,15 +169,18 @@ class RoastTab(QtWidgets.QWidget):
         rightPane.addLayout(buttonPanel)
 
         # Add a bottom spacer to keep sizing.
-        spacer = QtWidgets.QWidget()
-        spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        rightPane.addWidget(spacer)
+        if not self.compact_ui:
+            spacer = QtWidgets.QWidget()
+            spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+            rightPane.addWidget(spacer)
 
         return rightPane
 
     def create_progress_bar(self):
         progressBar = QtWidgets.QGridLayout()
         progressBar.setSpacing(0)
+        if self.compact_ui:
+            progressBar.setContentsMargins(0, 0, 0, 0)
 
         # An array to hold all progress bars.
         self.sectionBars = []
@@ -237,6 +251,9 @@ class RoastTab(QtWidgets.QWidget):
 
     def create_gauge_window(self):
         guageWindow = QtWidgets.QGridLayout()
+        if self.compact_ui:
+            guageWindow.setHorizontalSpacing(6)
+            guageWindow.setVerticalSpacing(4)
 
         # Create current temp gauge.
         self.currentTempLabel = QtWidgets.QLabel("150")
@@ -263,6 +280,10 @@ class RoastTab(QtWidgets.QWidget):
 
     def create_button_panel(self):
         buttonPanel = QtWidgets.QGridLayout()
+        if self.compact_ui:
+            buttonPanel.setContentsMargins(0, 0, 0, 0)
+            buttonPanel.setHorizontalSpacing(4)
+            buttonPanel.setVerticalSpacing(2)
 
         # Create start roast button.
         self.startButton = QtWidgets.QPushButton("ROAST")
@@ -284,6 +305,10 @@ class RoastTab(QtWidgets.QWidget):
     def create_slider_panel(self):
         sliderPanel = QtWidgets.QGridLayout()
         sliderPanel.setColumnStretch(0, 3)
+        if self.compact_ui:
+            sliderPanel.setContentsMargins(0, 0, 0, 0)
+            sliderPanel.setHorizontalSpacing(4)
+            sliderPanel.setVerticalSpacing(2)
 
         # Create temperature slider label.
         tempSliderLabel = QtWidgets.QLabel("TARGET TEMP")

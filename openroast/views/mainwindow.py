@@ -15,13 +15,15 @@ from openroast.views import aboutwindow
 from openroast.version import __version__
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, recipes, roaster):
+    def __init__(self, recipes, roaster, compact_ui=False, fullscreen=False):
         super(MainWindow, self).__init__()
 
         # Define main window for the application.
         self.setWindowTitle('Openroast v%s' % __version__)
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(800, 480)
         self.setContextMenuPolicy(QtCore.Qt.NoContextMenu)
+        self.compact_ui = compact_ui
+        self.fullscreen = fullscreen
 
         # keep a copy of roaster & recipes, needed here
         self.roaster = roaster
@@ -36,6 +38,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # Create menu.
         self.create_actions()
         self.create_menus()
+
+        self.apply_window_mode()
 
 
     def create_actions(self):
@@ -76,8 +80,28 @@ class MainWindow(QtWidgets.QMainWindow):
             statusTip="About openroast",
             triggered=self.open_about_window)
 
+    def apply_window_mode(self):
+        # Keep desktop behavior by default, but fit exactly on small 800x480 screens.
+        if self.fullscreen:
+            self.showFullScreen()
+            return
+
+        screen = self.screen() or QtWidgets.QApplication.primaryScreen()
+        if screen is None:
+            self.resize(800, 480 if self.compact_ui else 600)
+            return
+
+        available = screen.availableGeometry()
+        width = min(available.width(), 800)
+        height = min(available.height(), 480 if self.compact_ui else 600)
+        self.resize(width, height)
+
     def create_menus(self):
         menubar = self.menuBar()
+        if self.compact_ui:
+            # Reserve vertical space on 480px displays; toolbar buttons stay available.
+            menubar.setVisible(False)
+            return
 
         # Create file menu.
         self.fileMenu = menubar.addMenu("&File")
@@ -100,6 +124,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mainToolBar = self.addToolBar('mainToolBar')
         self.mainToolBar.setMovable(False)
         self.mainToolBar.setFloatable(False)
+        if self.compact_ui:
+            self.mainToolBar.setIconSize(QtCore.QSize(16, 16))
 
         # Add logo.
         self.logo = QtWidgets.QLabel("openroast")
@@ -133,7 +159,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Create widgets to add to tabs.
         self.roast = roasttab.RoastTab(
-            roaster, recipes)
+            roaster, recipes, compact_ui=self.compact_ui)
         self.recipes = recipestab.RecipesTab(
             roastTabObject=self.roast,
             MainWindowObject=self,

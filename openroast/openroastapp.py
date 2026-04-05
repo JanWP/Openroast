@@ -42,6 +42,18 @@ def _parse_args():
         default=False,
         help="Use mock/simulated USB hardware (for development without a roaster).",
     )
+    parser.add_argument(
+        "--compact-ui",
+        action="store_true",
+        default=False,
+        help="Use a denser layout tuned for 800x480 touchscreen displays.",
+    )
+    parser.add_argument(
+        "--fullscreen",
+        action="store_true",
+        default=False,
+        help="Start in fullscreen mode.",
+    )
     known, _remaining = parser.parse_known_args()
     return known
 
@@ -69,6 +81,73 @@ def _create_roaster(args):
         return freshroastsr700.freshroastsr700(thermostat=True)
 
 
+def _compact_style_overrides():
+    # Keep this as late-appended CSS so it overrides mainStyle.css only in compact mode.
+    return """
+QToolBar {
+    margin: 2% 2% 0px 2%;
+}
+
+QLabel#logo{
+    padding: 6px 10px 2px 10px;
+    font-size: 16px;
+}
+
+QPushButton#toolbar {
+    width: 88px;
+    height: 24px;
+    margin: 4px 4px 2px 4px;
+    font-size: 11px;
+}
+
+QPushButton {
+    height: 30px;
+    margin: 3px;
+    font-size: 11px;
+}
+
+QLabel#label {
+    font-size: 12px;
+    padding: 6px;
+}
+
+QLabel#tempGuage {
+    font-size: 30px;
+    padding: 4px;
+}
+
+QLabel#timeWindow {
+    font-size: 30px;
+    padding: 4px;
+}
+
+QProgressBar {
+    height: 22px;
+}
+
+QPushButton#nextButton {
+    width: 90px;
+    height: 24px;
+}
+
+QSpinBox#miniSpinBox {
+    height: 22px;
+}
+
+QTimeEdit#miniSpinBox {
+    height: 22px;
+}
+"""
+
+
+def _screen_is_small(app):
+    screen = app.primaryScreen()
+    if screen is None:
+        return False
+    geometry = screen.availableGeometry()
+    return geometry.height() <= 520
+
+
 class OpenroastApp(object):
     """Main application class."""
     def __init__(self, args=None):
@@ -79,6 +158,9 @@ class OpenroastApp(object):
 
         # app
         self.app = QtWidgets.QApplication(sys.argv)
+        if not self._args.compact_ui and _screen_is_small(self.app):
+            self._args.compact_ui = True
+            logging.info("openroastapp: auto-enabled compact UI for small display")
         # fonts
         # QtGui.QFontDatabase.addApplicationFont(
         #     "static/fonts/asap/asap-regular.ttf")
@@ -126,6 +208,8 @@ class OpenroastApp(object):
             pathlib.Path(
                 utils.get_resource_filename('static/images/upArrow.png')
                 ).as_posix())
+        if self._args.compact_ui:
+            style += "\n" + _compact_style_overrides()
         QtWidgets.QApplication.setStyleSheet(self.app, style)
 
         # copy recipes to user folder, if it doesn't exist
@@ -163,8 +247,11 @@ class OpenroastApp(object):
         self.roaster.auto_connect()
         self.window = mainwindow.MainWindow(
             self.recipes,
-            self.roaster)
+            self.roaster,
+            compact_ui=self._args.compact_ui,
+            fullscreen=self._args.fullscreen)
         self.window.show()
+        self.window.apply_window_mode()
         qt_exec = getattr(self.app, "exec", self.app.exec_)
         sys.exit(qt_exec())
 
