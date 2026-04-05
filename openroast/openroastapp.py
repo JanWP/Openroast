@@ -102,7 +102,7 @@ QPushButton#toolbar {
 
 QPushButton#toolbarUtility {
     width: 76px;
-    height: 22px;
+    height: 26px;
     margin: 4px 2px 2px 2px;
     font-size: 10px;
 }

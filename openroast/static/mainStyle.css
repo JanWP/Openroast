@@ -33,7 +33,7 @@ QPushButton#toolbar:disabled {
 QPushButton#toolbarUtility {
     border-radius: 5px;
     width: 86px;
-    height: 28px;
+    height: 32px;
     color: #fff;
     font-family: "Asap";
     margin: 6px 4px 2px 4px;

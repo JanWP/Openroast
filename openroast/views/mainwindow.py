@@ -121,10 +121,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def create_menus(self):
         menubar = self.menuBar()
-        if self.compact_ui:
-            # Reserve vertical space on 480px displays; toolbar buttons stay available.
-            menubar.setVisible(False)
-            return
 
         # Create file menu.
         self.fileMenu = menubar.addMenu("&File")
@@ -142,6 +138,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # Create help menu.
         self.helpMenu = menubar.addMenu("&Help")
         self.helpMenu.addAction(self.openAboutWindow)
+
+        if self.compact_ui:
+            # Reserve vertical space on 480px displays; user can re-enable via MENU button.
+            menubar.setVisible(False)
 
     def create_toolbar(self):
         # Create toolbar.
@@ -184,6 +184,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fullscreenToggleButton.setObjectName("toolbarUtility")
         self.fullscreenToggleButton.clicked.connect(self.toggle_fullscreen)
         self.mainToolBar.addWidget(self.fullscreenToggleButton)
+
+        self.quitTouchButton = QtWidgets.QPushButton("QUIT", self)
+        self.quitTouchButton.setObjectName("toolbarUtility")
+        self.quitTouchButton.clicked.connect(self.close)
+        self.mainToolBar.addWidget(self.quitTouchButton)
 
         # Add buttons to array to be disabled on selection.
         self.tabButtons = [self.roastTabButton,
