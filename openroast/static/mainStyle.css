@@ -30,6 +30,21 @@ QPushButton#toolbar:disabled {
       color: #444953;
 }
 
+QPushButton#toolbarUtility {
+    border-radius: 5px;
+    width: 86px;
+    height: 28px;
+    color: #fff;
+    font-family: "Asap";
+    margin: 6px 4px 2px 4px;
+    font-size: 11px;
+    background-color: #23252b;
+}
+
+QPushButton#toolbarUtility:pressed {
+    background-color: #047bad;
+}
+
 QPushButton#loginButton {
     border-radius: 5px;
     width: 100px;

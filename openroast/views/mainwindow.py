@@ -105,6 +105,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Keep desktop behavior by default, but fit exactly on small 800x480 screens.
         if self.fullscreen:
             self.showFullScreen()
+            self.update_toolbar_utility_buttons()
             return
 
         screen = self.screen() or QtWidgets.QApplication.primaryScreen()
@@ -116,6 +117,7 @@ class MainWindow(QtWidgets.QMainWindow):
         width = min(available.width(), 800)
         height = min(available.height(), 480 if self.compact_ui else 600)
         self.resize(width, height)
+        self.update_toolbar_utility_buttons()
 
     def create_menus(self):
         menubar = self.menuBar()
@@ -172,9 +174,22 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.mainToolBar.addWidget(self.spacer)
 
+        # Always-available touchscreen controls for kiosk-like setups.
+        self.menuToggleButton = QtWidgets.QPushButton("MENU", self)
+        self.menuToggleButton.setObjectName("toolbarUtility")
+        self.menuToggleButton.clicked.connect(self.toggle_menu_bar)
+        self.mainToolBar.addWidget(self.menuToggleButton)
+
+        self.fullscreenToggleButton = QtWidgets.QPushButton("FULL", self)
+        self.fullscreenToggleButton.setObjectName("toolbarUtility")
+        self.fullscreenToggleButton.clicked.connect(self.toggle_fullscreen)
+        self.mainToolBar.addWidget(self.fullscreenToggleButton)
+
         # Add buttons to array to be disabled on selection.
         self.tabButtons = [self.roastTabButton,
                            self.recipesTabButton]
+
+        self.update_toolbar_utility_buttons()
 
     def create_tabs(self, roaster, recipes):
         self.tabs = QtWidgets.QStackedWidget()
@@ -247,18 +262,31 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def toggle_fullscreen(self):
         if self.isFullScreen():
+            self.fullscreen = False
             self.showNormal()
             self.apply_window_mode()
         else:
+            self.fullscreen = True
             self.showFullScreen()
+            self.update_toolbar_utility_buttons()
 
     def exit_fullscreen(self):
         if self.isFullScreen():
+            self.fullscreen = False
             self.showNormal()
             self.apply_window_mode()
 
     def toggle_menu_bar(self):
         self.menuBar().setVisible(not self.menuBar().isVisible())
+        self.update_toolbar_utility_buttons()
+
+    def update_toolbar_utility_buttons(self):
+        if hasattr(self, 'menuToggleButton'):
+            self.menuToggleButton.setText(
+                "MENU ON" if self.menuBar().isVisible() else "MENU OFF")
+        if hasattr(self, 'fullscreenToggleButton'):
+            self.fullscreenToggleButton.setText(
+                "WINDOW" if self.isFullScreen() else "FULL")
 
     def closeEvent(self, event):
         self.roaster.disconnect()

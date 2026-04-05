@@ -100,6 +100,13 @@ QPushButton#toolbar {
     font-size: 11px;
 }
 
+QPushButton#toolbarUtility {
+    width: 76px;
+    height: 22px;
+    margin: 4px 2px 2px 2px;
+    font-size: 10px;
+}
+
 QPushButton {
     height: 30px;
     margin: 3px;
