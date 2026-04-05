@@ -50,7 +50,7 @@ class RoastGraphWidget():
         # Animate the the graph with new data
         if self.animated:
             self.animateGraph = animation.FuncAnimation(self.graphFigure,
-                self.graph_draw, interval=1000)
+                self.graph_draw, interval=1000, cache_frame_data=False)
         else:
             self.graph_draw()
 
