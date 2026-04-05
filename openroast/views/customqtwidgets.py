@@ -44,6 +44,8 @@ class RoastGraphWidget():
 
         # Add graph widgets to layout for graph.
         graphVerticalBox = QtWidgets.QVBoxLayout()
+        graphVerticalBox.setContentsMargins(0, 0, 0, 0)
+        graphVerticalBox.setSpacing(0)
         graphVerticalBox.addWidget(self.graphCanvas)
         graphWidget.setLayout(graphVerticalBox)
 
@@ -71,7 +73,8 @@ class RoastGraphWidget():
         # Add formatting to the graphs.
         self.graphAxes.set_ylabel('TEMPERATURE (°F)')
         self.graphAxes.set_xlabel('TIME')
-        self.graphFigure.subplots_adjust(bottom=0.2)
+        # Use more of the canvas area while preserving room for x-axis labels.
+        self.graphFigure.subplots_adjust(left=0.10, right=0.985, top=0.965, bottom=0.16)
 
         self.graphAxes.get_xaxis().set_major_formatter(DateFormatter('%M:%S'))
         # self.graphAxes.set_axis_bgcolor('#23252a')
