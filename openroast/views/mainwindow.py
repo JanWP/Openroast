@@ -38,6 +38,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Create menu.
         self.create_actions()
         self.create_menus()
+        self.create_shortcuts()
 
         self.apply_window_mode()
 
@@ -80,6 +81,26 @@ class MainWindow(QtWidgets.QMainWindow):
             statusTip="About openroast",
             triggered=self.open_about_window)
 
+        self.quitAppAct = QtWidgets.QAction("&Quit", self,
+            shortcut=QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_Q),
+            statusTip="Quit Openroast",
+            triggered=self.close)
+
+    def create_shortcuts(self):
+        # Fullscreen toggles for touchscreen/kiosk environments.
+        self.fullscreenShortcutF11 = QtWidgets.QShortcut(
+            QtGui.QKeySequence(QtCore.Qt.Key_F11), self)
+        self.fullscreenShortcutF11.activated.connect(self.toggle_fullscreen)
+
+        self.fullscreenShortcutEsc = QtWidgets.QShortcut(
+            QtGui.QKeySequence(QtCore.Qt.Key_Escape), self)
+        self.fullscreenShortcutEsc.activated.connect(self.exit_fullscreen)
+
+        # Toggle menu bar visibility (useful when compact mode hides it).
+        self.toggleMenuBarShortcut = QtWidgets.QShortcut(
+            QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_M), self)
+        self.toggleMenuBarShortcut.activated.connect(self.toggle_menu_bar)
+
     def apply_window_mode(self):
         # Keep desktop behavior by default, but fit exactly on small 800x480 screens.
         if self.fullscreen:
@@ -114,6 +135,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fileMenu.addAction(self.saveRoastGraphAct)
         self.fileMenu.addAction(self.saveRoastGraphCSVAct)
         self.fileMenu.addSeparator()
+        self.fileMenu.addAction(self.quitAppAct)
 
         # Create help menu.
         self.helpMenu = menubar.addMenu("&Help")
@@ -222,6 +244,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.aboutWindow = aboutwindow.About()
         dialog_exec = getattr(self.aboutWindow, "exec", self.aboutWindow.exec_)
         dialog_exec()
+
+    def toggle_fullscreen(self):
+        if self.isFullScreen():
+            self.showNormal()
+            self.apply_window_mode()
+        else:
+            self.showFullScreen()
+
+    def exit_fullscreen(self):
+        if self.isFullScreen():
+            self.showNormal()
+            self.apply_window_mode()
+
+    def toggle_menu_bar(self):
+        self.menuBar().setVisible(not self.menuBar().isVisible())
 
     def closeEvent(self, event):
         self.roaster.disconnect()
