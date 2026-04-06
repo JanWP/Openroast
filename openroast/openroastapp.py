@@ -7,6 +7,16 @@ import logging
 import pathlib
 import argparse
 import multiprocessing
+
+# Allow running the app directly as a script from the repo root, e.g.
+# `python3 openroast/openroastapp.py ...`, by making both the `openroast`
+# package and the sibling `localroaster` package importable.
+if __package__ in (None, ""):
+    _repo_root = pathlib.Path(__file__).resolve().parent.parent
+    _repo_root_str = str(_repo_root)
+    if _repo_root_str not in sys.path:
+        sys.path.insert(0, _repo_root_str)
+
 try:
     from PyQt5 import QtCore, QtGui, QtWidgets
 except ImportError as exc:
@@ -61,9 +71,18 @@ def _parse_args():
 def _create_roaster(args):
     """Instantiate and return the appropriate roaster backend object."""
     if args.backend == "local":
-        from openroast.backends.local_roaster import LocalRoaster
-        logging.info("openroastapp: using LOCAL hardware backend")
-        return LocalRoaster(thermostat=True)
+        try:
+            from openroast.backends.local_roaster import LocalRoaster
+            logging.info("openroastapp: using LOCAL hardware backend")
+            return LocalRoaster(thermostat=True)
+        except ImportError as exc:
+            from openroast import freshroastsr700_mock as freshroastsr700
+            logging.warning(
+                "local_roaster: standalone 'localroaster' package not found or not importable; "
+                "using simulation stub instead. Install/package localroaster to control real hardware."
+            )
+            logging.debug("local_roaster import failure", exc_info=exc)
+            return freshroastsr700.freshroastsr700(thermostat=True)
     else:
         # USB backend
         if args.mock:
