@@ -66,8 +66,8 @@ class RoastGraphWidget():
         # Add formatting to the graphs.
         self.graphAxes.set_ylabel('TEMPERATURE (°C)')
         self.graphAxes.set_xlabel('TIME')
-        # Use more of the canvas area while preserving room for x-axis labels.
-        self.graphFigure.subplots_adjust(left=0.10, right=0.985, top=0.965, bottom=0.16)
+        # Leave extra left margin so y-axis label and tick text are fully visible.
+        self.graphFigure.subplots_adjust(left=0.16, right=0.985, top=0.965, bottom=0.16)
         self.graphAxes.get_xaxis().set_major_formatter(DateFormatter('%M:%S'))
         self.graphAxes.set_facecolor('#23252a')
 
