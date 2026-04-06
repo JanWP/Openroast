@@ -57,6 +57,18 @@ Raspberry Pi 2 (Raspbian 13/trixie) recommendation:
 
 If the venv cannot see apt-managed packages, create it with ``--system-site-packages``.
 
+Standalone local backend package
+-------------------------------
+
+This repository now also contains a reusable ``localroaster`` package for
+non-USB roaster hardware. Openroast consumes it through a thin adapter, but the
+controller package is intentionally frontend-agnostic so it can later back a
+CLI, web UI, or other frontend.
+
+Run the standalone mock demo::
+
+    python -m localroaster.demo --seconds 10
+
 Installation Instructions
 -------------------------
 - Windows - see `For Users: Installing Openroast for Windows`_

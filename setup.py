@@ -60,6 +60,7 @@ setup(
     entry_points={
         "console_scripts": [
             "openroast=openroast.openroastapp:main",
+            "localroaster-demo=localroaster.demo:main",
         ],
     },
 )
