@@ -34,7 +34,7 @@ def _parse_args():
     """Parse command-line arguments. Known args are consumed; Qt args are left."""
     parser = argparse.ArgumentParser(
         description="Openroast coffee roaster controller",
-        add_help=False,  # let Qt handle unknown flags without crashing
+        add_help=True,
     )
     parser.add_argument(
         "--backend",
@@ -50,7 +50,10 @@ def _parse_args():
         "--mock",
         action="store_true",
         default=False,
-        help="Use mock/simulated USB hardware (for development without a roaster).",
+        help=(
+            "Use mock/simulated USB hardware (for development without a roaster). "
+            "This applies to --backend usb."
+        ),
     )
     parser.add_argument(
         "--compact-ui",
@@ -297,13 +300,13 @@ class OpenroastApp(object):
 
 
 def main():
+    args = _parse_args()
     #os.chdir(get_script_dir())
     startup_dir = os.path.dirname(sys.argv[0])
     if startup_dir:
         os.chdir(startup_dir)
         print("changing to folder %s" % startup_dir)
     multiprocessing.freeze_support()
-    args = _parse_args()
     app = OpenroastApp(args)
     app.run()
 
