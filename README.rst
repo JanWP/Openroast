@@ -57,6 +57,27 @@ Raspberry Pi 2 (Raspbian 13/trixie) recommendation:
 
 If the venv cannot see apt-managed packages, create it with ``--system-site-packages``.
 
+Running with backend modes
+--------------------------
+
+Openroast now uses explicit backend modes via ``--backend``:
+
+- ``usb``: real FreshRoast SR700 USB hardware
+- ``usb-mock``: simulated USB backend
+- ``local``: local backend package (real local hardware path)
+- ``local-mock``: simulated local backend
+
+Examples::
+
+    openroast --backend usb
+    openroast --backend usb-mock
+    openroast --backend local
+    openroast --backend local-mock
+
+If you run from source instead of the installed ``openroast`` command::
+
+    python openroast/openroastapp.py --backend local-mock
+
 Standalone local backend package
 -------------------------------
 

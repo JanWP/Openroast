@@ -186,3 +186,18 @@ or, from the project root folder,
 
 `py3.5 openroast/openroastapp.py`.
 
+Backend mode options (current CLI):
+
+- `--backend usb`
+- `--backend usb-mock`
+- `--backend local`
+- `--backend local-mock`
+
+Examples:
+
+`openroast --backend usb-mock`
+
+or
+
+`py3.5 openroast/openroastapp.py --backend local-mock`
+
