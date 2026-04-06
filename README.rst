@@ -100,6 +100,14 @@ Developer Corner
 ================
 We have recently made this project easier to manage from a build generation perspective, facilitating future maintenance and updates. See `For Developers`_ pages in the project wiki for details.
 
+AI co-authorship disclosure
+---------------------------
+
+This fork includes substantial AI-assisted and AI-authored changes (with very
+few exceptions), primarily using GitHub Copilot with GPT-5.3-Codex.
+
+For details, see ``NOTICE_AI.rst``.
+
 License
 -------
 

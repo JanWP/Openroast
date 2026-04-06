@@ -84,3 +84,10 @@ def create_driver(config):
   `pwm_cycle_s` (for example to `2.0`).
 - If control response is too slow/noisy, tune `kp`, `ki`, and `kd` in
   `ControllerConfig`.
+
+## AI co-authorship disclosure
+
+This fork includes substantial AI-assisted and AI-authored code changes, primarily using GitHub Copilot with GPT-5.3-Codex.
+
+See `../NOTICE_AI.rst` for the project-level notice.
+

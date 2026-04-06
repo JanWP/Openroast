@@ -2,6 +2,9 @@
 
 This package is intentionally frontend-agnostic. Openroast consumes it through
 an adapter, but the same controller can back a CLI, web UI, or other frontend.
+
+AI co-authorship disclosure for this fork is documented in NOTICE_AI.rst at
+repository root.
 """
 
 from localroaster.api import ControllerConfig, RoasterState, Telemetry
