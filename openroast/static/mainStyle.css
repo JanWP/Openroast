@@ -760,9 +760,9 @@ QLabel#versionLabel {
 QLabel#heaterDebugLabel {
     color: #d9dde5;
     font-family: "Asap";
-    font-size: 12px;
+    font-size: 16px;
     font: bold;
-    margin: 6px 4px 4px 8px;
+    margin: 6px 4px 8px 8px;
 }
 
 QLabel#heaterDebugLed {
@@ -770,5 +770,5 @@ QLabel#heaterDebugLed {
     max-width: 12px;
     min-height: 12px;
     max-height: 12px;
-    margin: 8px 8px 4px 2px;
+    margin: 8px 8px 8px 2px;
 }
