@@ -213,6 +213,11 @@ class RoasterController:
             return self._heater_level
 
     @property
+    def heater_output(self) -> bool:
+        with self._lock:
+            return self._heater_output
+
+    @property
     def time_remaining_s(self) -> int:
         with self._lock:
             return self._time_remaining_s

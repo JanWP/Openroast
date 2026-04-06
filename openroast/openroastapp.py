@@ -116,6 +116,19 @@ QLabel#logo{
     font-size: 16px;
 }
 
+QLabel#heaterDebugLabel {
+    font-size: 10px;
+    margin: 6px 2px 2px 6px;
+}
+
+QLabel#heaterDebugLed {
+    min-width: 10px;
+    max-width: 10px;
+    min-height: 10px;
+    max-height: 10px;
+    margin: 8px 4px 2px 2px;
+}
+
 QPushButton#toolbar {
     width: 88px;
     height: 24px;

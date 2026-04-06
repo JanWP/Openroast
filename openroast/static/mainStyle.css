@@ -756,3 +756,18 @@ QWidget#buttonTable {
 QLabel#versionLabel {
     font-size: 16px;
 }
+
+QLabel#heaterDebugLabel {
+    color: #d9dde5;
+    font-family: "Asap";
+    font-size: 11px;
+    margin: 8px 4px 2px 8px;
+}
+
+QLabel#heaterDebugLed {
+    min-width: 12px;
+    max-width: 12px;
+    min-height: 12px;
+    max-height: 12px;
+    margin: 10px 8px 2px 2px;
+}

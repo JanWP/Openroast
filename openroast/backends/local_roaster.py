@@ -151,6 +151,10 @@ class LocalRoaster:
     def heater_level(self):
         return self._controller.heater_level
 
+    @property
+    def heater_output(self):
+        return self._controller.heater_output
+
     def get_roaster_state(self):
         if self._connect_state == self.CS_CONNECTING and not self.connected:
             return "connecting"

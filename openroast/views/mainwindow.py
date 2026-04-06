@@ -42,6 +42,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.apply_window_mode()
 
+        self._heaterDebugTimer = QtCore.QTimer(self)
+        self._heaterDebugTimer.setInterval(200)
+        self._heaterDebugTimer.timeout.connect(self.update_heater_debug_indicators)
+        self._heaterDebugTimer.start()
+        self.update_heater_debug_indicators()
+
 
     def create_actions(self):
         # File menu actions.
@@ -174,6 +180,15 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.mainToolBar.addWidget(self.spacer)
 
+        self.heaterDebugLabel = QtWidgets.QLabel("Heater: 0%")
+        self.heaterDebugLabel.setObjectName("heaterDebugLabel")
+        self.mainToolBar.addWidget(self.heaterDebugLabel)
+
+        self.heaterDebugLed = QtWidgets.QLabel("")
+        self.heaterDebugLed.setObjectName("heaterDebugLed")
+        self.heaterDebugLed.setFixedSize(12, 12)
+        self.mainToolBar.addWidget(self.heaterDebugLed)
+
         # Always-available touchscreen controls for kiosk-like setups.
         self.menuToggleButton = QtWidgets.QPushButton("MENU", self)
         self.menuToggleButton.setObjectName("toolbarUtility")
@@ -285,6 +300,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self.menuBar().setVisible(not self.menuBar().isVisible())
         self.update_toolbar_utility_buttons()
 
+    def _read_heater_debug_state(self):
+        heater_level = getattr(self.roaster, "heater_level", None)
+        heater_output = getattr(self.roaster, "heater_output", None)
+
+        if heater_level is None:
+            heat_setting = int(getattr(self.roaster, "heat_setting", 0))
+            heater_level = int(round((max(0, min(3, heat_setting)) * 100.0) / 3.0))
+        heater_level = int(max(0, min(100, heater_level)))
+
+        if heater_output is None:
+            heater_output = heater_level > 0
+
+        return heater_level, bool(heater_output)
+
+    def update_heater_debug_indicators(self):
+        if not hasattr(self, "heaterDebugLabel") or not hasattr(self, "heaterDebugLed"):
+            return
+
+        heater_level, heater_on = self._read_heater_debug_state()
+        self.heaterDebugLabel.setText(f"Heater: {heater_level:3d}%")
+
+        if heater_on:
+            self.heaterDebugLed.setStyleSheet(
+                "background-color: #8ab71b; border: 1px solid #649100; border-radius: 6px;"
+            )
+        else:
+            self.heaterDebugLed.setStyleSheet(
+                "background-color: #2e3138; border: 1px solid #6d7686; border-radius: 6px;"
+            )
+
     def update_toolbar_utility_buttons(self):
         if hasattr(self, 'menuToggleButton'):
             self.menuToggleButton.setText(
@@ -292,6 +337,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self, 'fullscreenToggleButton'):
             self.fullscreenToggleButton.setText(
                 "WINDOW" if self.isFullScreen() else "FULL")
+        self.update_heater_debug_indicators()
 
     def closeEvent(self, event):
+        if hasattr(self, "_heaterDebugTimer"):
+            self._heaterDebugTimer.stop()
         self.roaster.disconnect()
