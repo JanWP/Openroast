@@ -11,8 +11,8 @@ from PyQt5 import QtWidgets
 
 
 class About(QtWidgets.QDialog):
-    def __init__(self, recipeLocation=None):
-        super(About, self).__init__()
+    def __init__(self, parent=None, recipeLocation=None):
+        super(About, self).__init__(parent)
 
         # Define main window for the application.
         self.setWindowTitle('About Openroast')

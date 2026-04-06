@@ -114,7 +114,7 @@ class RoastGraphWidget():
     def save_roast_graph(self):
         try:
             file_name = QtWidgets.QFileDialog.getSaveFileName(
-                QtWidgets.QWidget(),
+                None,
                 'Save Roast Graph',
                 os.path.expanduser('~/'),
                 'Graph (*.png);;All Files (*)')
@@ -132,7 +132,7 @@ class RoastGraphWidget():
     def save_roast_graph_csv(self):
         try:
             file_name = QtWidgets.QFileDialog.getSaveFileName(
-                QtWidgets.QWidget(),
+                None,
                 'Save Roast Graph CSV',
                 os.path.expanduser('~/'),
                 'CSV (*.csv);;All Files (*)')

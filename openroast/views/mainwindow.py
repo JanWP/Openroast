@@ -261,7 +261,7 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
 
     def open_about_window(self):
-        self.aboutWindow = aboutwindow.About()
+        self.aboutWindow = aboutwindow.About(parent=self)
         dialog_exec = getattr(self.aboutWindow, "exec", self.aboutWindow.exec_)
         dialog_exec()
 
