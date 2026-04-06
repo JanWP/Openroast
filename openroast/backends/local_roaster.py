@@ -9,7 +9,12 @@ import logging
 import threading
 
 from localroaster import ControllerConfig, RoasterState, create_controller
-from openroast.temperature import celsius_to_fahrenheit, fahrenheit_to_celsius
+from openroast.temperature import (
+    MAX_TEMPERATURE_C,
+    MIN_TEMPERATURE_C,
+    celsius_to_fahrenheit,
+    fahrenheit_to_celsius,
+)
 
 
 class LocalRoaster:
@@ -17,6 +22,8 @@ class LocalRoaster:
 
     CS_CONNECTING = 1
     temperature_unit = "C"
+    temperature_min_c = MIN_TEMPERATURE_C
+    temperature_max_c = MAX_TEMPERATURE_C
 
     def __init__(
         self,
@@ -34,6 +41,8 @@ class LocalRoaster:
             kp=kp,
             ki=ki,
             kd=kd,
+            min_display_temp_f=celsius_to_fahrenheit(self.temperature_min_c),
+            max_temp_f=celsius_to_fahrenheit(self.temperature_max_c),
         )
         self._controller = create_controller(config=self._config, force_mock=force_mock)
         self._connect_state = 0

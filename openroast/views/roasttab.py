@@ -11,8 +11,11 @@ from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 
 from openroast.temperature import (
+    MAX_TEMPERATURE_C,
+    MIN_TEMPERATURE_C,
     TEMP_UNIT_F,
     celsius_to_temperature_unit,
+    clamp_temperature_c,
     normalize_temperature_unit,
     temperature_to_celsius,
 )
@@ -45,6 +48,8 @@ class RoastTab(QtWidgets.QWidget):
             getattr(self.roaster, "temperature_unit", TEMP_UNIT_F),
             default=TEMP_UNIT_F,
         )
+        self._min_temp_c = int(getattr(self.roaster, "temperature_min_c", MIN_TEMPERATURE_C))
+        self._max_temp_c = int(getattr(self.roaster, "temperature_max_c", MAX_TEMPERATURE_C))
 
         # Create the tab ui.
         self.create_ui()
@@ -106,7 +111,11 @@ class RoastTab(QtWidgets.QWidget):
             return False
 
     def _roaster_temp_to_c(self, value):
-        return int(round(temperature_to_celsius(value, self._roaster_temperature_unit)))
+        return clamp_temperature_c(
+            temperature_to_celsius(value, self._roaster_temperature_unit),
+            low=self._min_temp_c,
+            high=self._max_temp_c,
+        )
 
     def _c_to_roaster_temp(self, value):
         return int(round(celsius_to_temperature_unit(value, self._roaster_temperature_unit)))
@@ -283,7 +292,7 @@ class RoastTab(QtWidgets.QWidget):
             guageWindow.setVerticalSpacing(4)
 
         # Create current temp gauge.
-        self.currentTempLabel = QtWidgets.QLabel("20")
+        self.currentTempLabel = QtWidgets.QLabel(str(self._min_temp_c))
         currentTemp = self.create_info_box("CURRENT TEMP (C)", "tempGuage",
             self.currentTempLabel)
         guageWindow.addLayout(currentTemp, 0, 0)
@@ -343,7 +352,7 @@ class RoastTab(QtWidgets.QWidget):
 
         # Create temperature slider.
         self.tempSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.tempSlider.setRange(65, 290)
+        self.tempSlider.setRange(self._min_temp_c, self._max_temp_c)
         self.tempSlider.valueChanged.connect(self.update_target_temp_slider)
         sliderPanel.addWidget(self.tempSlider, 1, 0)
 
@@ -352,7 +361,7 @@ class RoastTab(QtWidgets.QWidget):
         self.tempSpinBox.setObjectName("miniSpinBox")
         self.tempSpinBox.setButtonSymbols(2)      # Remove arrows.
         self.tempSpinBox.setAlignment(QtCore.Qt.AlignCenter)
-        self.tempSpinBox.setRange(65, 290)
+        self.tempSpinBox.setRange(self._min_temp_c, self._max_temp_c)
         self.tempSpinBox.valueChanged.connect(self.update_target_temp_spin_box)
         self.tempSpinBox.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
         sliderPanel.addWidget(self.tempSpinBox, 1, 1)

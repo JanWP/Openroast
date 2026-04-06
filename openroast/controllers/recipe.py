@@ -6,6 +6,7 @@ from multiprocessing import sharedctypes, Array
 import ctypes
 
 from openroast.temperature import (
+    DEFAULT_TARGET_TEMPERATURE_C,
     TEMP_UNIT_F,
     celsius_to_temperature_unit,
     normalize_temperature_unit,
@@ -37,7 +38,7 @@ class Recipe(object):
         self.roaster=roaster
         self.app = app
 
-        self._default_target_temp_c = 65
+        self._default_target_temp_c = DEFAULT_TARGET_TEMPERATURE_C
         self._roaster_temperature_unit = normalize_temperature_unit(
             getattr(self.roaster, "temperature_unit", TEMP_UNIT_F),
             default=TEMP_UNIT_F,

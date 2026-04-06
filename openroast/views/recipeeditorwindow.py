@@ -13,7 +13,12 @@ from PyQt5 import QtWidgets
 
 from openroast import tools
 from openroast import utils as utils
-from openroast.temperature import recipe_to_celsius
+from openroast.temperature import (
+    MAX_TEMPERATURE_C,
+    MIN_TEMPERATURE_C,
+    TEMPERATURE_STEP_C,
+    recipe_to_celsius,
+)
 from openroast.views import customqtwidgets
 
 class RecipeEditor(QtWidgets.QDialog):
@@ -186,7 +191,9 @@ class RecipeEditor(QtWidgets.QDialog):
         rows on the bottom if there are exiting rows."""
         # Create spreadsheet choices
         fanSpeedChoices = [str(x) for x in range(1,10)]
-        targetTempChoices = ["Cooling"] + [str(x) for x in range(60, 291, 5)]
+        targetTempChoices = ["Cooling"] + [
+            str(x) for x in range(MIN_TEMPERATURE_C, MAX_TEMPERATURE_C + 1, TEMPERATURE_STEP_C)
+        ]
 
         # loop through recipe and load each step
         for row in range(len(steps)):
@@ -205,7 +212,7 @@ class RecipeEditor(QtWidgets.QDialog):
                         targetTempChoices.index(
                         str(steps[row]["targetTemp"]))+1)
                 else:
-                    roundedNumber = steps[row]["targetTemp"] - (steps[row]["targetTemp"] % 5)
+                    roundedNumber = steps[row]["targetTemp"] - (steps[row]["targetTemp"] % TEMPERATURE_STEP_C)
                     sectionTempWidget.insertItem(targetTempChoices.index(str(roundedNumber))+2, str(steps[row]["targetTemp"]))
                     sectionTempWidget.setCurrentIndex(targetTempChoices.index(str(roundedNumber))+2)
 

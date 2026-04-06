@@ -15,6 +15,7 @@ from matplotlib.figure import Figure
 import matplotlib.animation as animation
 from matplotlib.dates import DateFormatter
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from openroast.temperature import GRAPH_HEADROOM_C, MIN_TEMPERATURE_C
 
 
 class RoastGraphWidget():
@@ -80,8 +81,8 @@ class RoastGraphWidget():
         self._apply_temperature_axis_limits()
 
     def _apply_temperature_axis_limits(self):
-        bottom = 20.0
-        min_top = 25.0
+        bottom = float(MIN_TEMPERATURE_C)
+        min_top = bottom + float(GRAPH_HEADROOM_C)
         current_top = self.graphAxes.get_ylim()[1]
 
         data_max = None
@@ -91,10 +92,10 @@ class RoastGraphWidget():
         # Keep headroom above the larger of baseline top and current data.
         target_top = max(min_top, current_top)
         if data_max is not None:
-            target_top = max(target_top, data_max + 5.0)
+            target_top = max(target_top, data_max + float(GRAPH_HEADROOM_C))
 
         if target_top <= bottom:
-            target_top = bottom + 5.0
+            target_top = bottom + float(GRAPH_HEADROOM_C)
 
         self.graphAxes.set_ylim(bottom=bottom, top=target_top)
 

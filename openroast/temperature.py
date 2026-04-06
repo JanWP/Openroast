@@ -4,6 +4,13 @@ from typing import Any
 TEMP_UNIT_C = "C"
 TEMP_UNIT_F = "F"
 
+# Global temperature policy for Openroast UI/recipes.
+MIN_TEMPERATURE_C = 20
+MAX_TEMPERATURE_C = 290
+TEMPERATURE_STEP_C = 5
+DEFAULT_TARGET_TEMPERATURE_C = 65
+GRAPH_HEADROOM_C = 5
+
 
 def normalize_temperature_unit(unit: Any, default: str = TEMP_UNIT_C) -> str:
     if isinstance(unit, str):
@@ -33,6 +40,10 @@ def celsius_to_temperature_unit(value_c: float, unit: Any) -> float:
     if normalized_unit == TEMP_UNIT_F:
         return celsius_to_fahrenheit(value_c)
     return float(value_c)
+
+
+def clamp_temperature_c(value_c: float, *, low: int = MIN_TEMPERATURE_C, high: int = MAX_TEMPERATURE_C) -> int:
+    return int(round(max(low, min(high, float(value_c)))))
 
 
 def recipe_to_celsius(recipe: dict[str, Any]) -> dict[str, Any]:
