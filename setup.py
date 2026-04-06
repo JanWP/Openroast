@@ -53,9 +53,14 @@ setup(
             "PyQt5>=5.15",
             "matplotlib>=3.8",
         ],
+        "local-hw": [
+            "adafruit-blinka>=8.0",
+            "adafruit-circuitpython-max31855>=3.2",
+        ],
     },
     package_data={
         "": package_files("openroast/static"),
+        "localroaster": ["hardware_config.json"],
     },
     entry_points={
         "console_scripts": [

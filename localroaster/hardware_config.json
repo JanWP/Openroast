@@ -1,0 +1,11 @@
+{
+  "thermocouple": {
+    "type": "max31855",
+    "cs_pin": "D5"
+  },
+  "heater": {
+    "gpio_pin": "D17",
+    "active_high": true
+  }
+}
+

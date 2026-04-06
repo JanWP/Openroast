@@ -15,15 +15,15 @@ def create_controller(
     If no real hardware driver is installed yet, the mock driver is used so the
     API remains runnable during frontend and integration development.
     """
-    config = config or ControllerConfig()
+    cfg: ControllerConfig = config if config is not None else ControllerConfig()
     if hardware_driver is not None:
         driver = hardware_driver
     elif force_mock:
-        driver = MockHardwareDriver(config)
+        driver = MockHardwareDriver(cfg)
         logging.info("localroaster: force_mock=True, using mock driver")
     else:
-        driver = _load_default_driver(config)
-    return RoasterController(driver, config=config)
+        driver = _load_default_driver(cfg)
+    return RoasterController(driver, config=cfg)
 
 
 def _load_default_driver(config: ControllerConfig) -> HardwareDriver:
@@ -35,6 +35,13 @@ def _load_default_driver(config: ControllerConfig) -> HardwareDriver:
         logging.warning(
             "localroaster: default hardware driver not found; using mock driver. "
             "Add localroaster/drivers/default.py to control real hardware."
+        )
+        return MockHardwareDriver(config)
+    except Exception as exc:
+        logging.warning(
+            "localroaster: default hardware driver failed to initialize (%s); "
+            "using mock driver.",
+            exc,
         )
         return MockHardwareDriver(config)
 
