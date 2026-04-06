@@ -12,8 +12,9 @@ from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 
 from openroast import tools
-from openroast.views import customqtwidgets
 from openroast import utils as utils
+from openroast.temperature import recipe_to_celsius
+from openroast.views import customqtwidgets
 
 class RecipeEditor(QtWidgets.QDialog):
     def __init__(self, recipeLocation=None):
@@ -29,6 +30,7 @@ class RecipeEditor(QtWidgets.QDialog):
         self.recipe = {}
         self.recipe["steps"] = [{'fanSpeed': 5, 'targetTemp': 150,
             'sectionTime': 0}]
+        self.recipe["temperatureUnit"] = "C"
 
         if recipeLocation:
             self.load_recipe_file(recipeLocation)
@@ -163,7 +165,7 @@ class RecipeEditor(QtWidgets.QDialog):
 
         # Steps spreadsheet
         recipeStepsTable.setColumnCount(4)
-        recipeStepsTable.setHorizontalHeaderLabels(["Temperature",
+        recipeStepsTable.setHorizontalHeaderLabels(["Temperature (C)",
             "Fan Speed", "Section Time", "Modify"])
 
         return recipeStepsTable
@@ -184,7 +186,7 @@ class RecipeEditor(QtWidgets.QDialog):
         rows on the bottom if there are exiting rows."""
         # Create spreadsheet choices
         fanSpeedChoices = [str(x) for x in range(1,10)]
-        targetTempChoices = ["Cooling"] + [str(x) for x in range(150, 551, 10)]
+        targetTempChoices = ["Cooling"] + [str(x) for x in range(60, 291, 5)]
 
         # loop through recipe and load each step
         for row in range(len(steps)):
@@ -197,13 +199,13 @@ class RecipeEditor(QtWidgets.QDialog):
 
             if 'targetTemp' in steps[row]:
                 sectionTemp = steps[row]["targetTemp"]
-                # Accommodate for temperature not fitting in 10 increment list
+                # Accommodate for temperature not fitting in 5 degree increment list
                 if str(steps[row]["targetTemp"]) in targetTempChoices:
                     sectionTempWidget.setCurrentIndex(
                         targetTempChoices.index(
                         str(steps[row]["targetTemp"]))+1)
                 else:
-                    roundedNumber = steps[row]["targetTemp"] - (steps[row]["targetTemp"] % 10)
+                    roundedNumber = steps[row]["targetTemp"] - (steps[row]["targetTemp"] % 5)
                     sectionTempWidget.insertItem(targetTempChoices.index(str(roundedNumber))+2, str(steps[row]["targetTemp"]))
                     sectionTempWidget.setCurrentIndex(targetTempChoices.index(str(roundedNumber))+2)
 
@@ -301,7 +303,7 @@ class RecipeEditor(QtWidgets.QDialog):
         The python dictionary is created as self.recipe."""
         # Load recipe file
         with open(recipeFile, encoding='utf-8') as recipeFileHandler:
-            self.recipe = json.load(recipeFileHandler)
+            self.recipe = recipe_to_celsius(json.load(recipeFileHandler))
         self.recipe["file"] = recipeFile
 
     def preload_recipe_information(self):
@@ -417,6 +419,7 @@ class RecipeEditor(QtWidgets.QDialog):
         # Create Dictionary with all the new recipe information
         self.newRecipe = {}
         self.newRecipe["roastName"] = self.recipeName.text()
+        self.newRecipe["temperatureUnit"] = "C"
         self.newRecipe["steps"] = self.get_current_table_values()
         self.newRecipe["roastDescription"] = {}
         self.newRecipe["roastDescription"]["roastType"] = self.recipeRoastType.text()

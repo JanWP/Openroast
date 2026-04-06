@@ -9,6 +9,7 @@ import webbrowser
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 
+from openroast.temperature import recipe_to_celsius
 from openroast.views import customqtwidgets
 from openroast.views import recipeeditorwindow
 
@@ -201,7 +202,7 @@ class RecipesTab(QtWidgets.QWidget):
         """Used to load file from a path into selected recipe object."""
         with open(filePath, encoding='utf-8') as json_data:
             recipeObject = json.load(json_data)
-        self.currentlySelectedRecipe = recipeObject
+        self.currentlySelectedRecipe = recipe_to_celsius(recipeObject)
         self.currentlySelectedRecipePath = filePath
         self.load_recipe_information(self.currentlySelectedRecipe)
 
@@ -228,7 +229,7 @@ class RecipesTab(QtWidgets.QWidget):
         # Steps spreadsheet
         self.stepsTable.setRowCount(len(recipeObject["steps"]))
         self.stepsTable.setColumnCount(3)
-        self.stepsTable.setHorizontalHeaderLabels(["Temperature",
+        self.stepsTable.setHorizontalHeaderLabels(["Temperature (C)",
             "Fan Speed", "Section Time"])
 
         for row in range(len(recipeObject["steps"])):
@@ -242,7 +243,7 @@ class RecipesTab(QtWidgets.QWidget):
             sectionFanSpeedWidget.setText(str(recipeObject["steps"][row]["fanSpeed"]))
 
             if 'targetTemp' in recipeObject["steps"][row]:
-                sectionTempWidget.setText(str(recipeObject["steps"][row]["targetTemp"]))
+                sectionTempWidget.setText(f"{recipeObject['steps'][row]['targetTemp']} C")
             else:
                 sectionTempWidget.setText("Cooling")
 

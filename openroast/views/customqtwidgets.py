@@ -64,7 +64,7 @@ class RoastGraphWidget():
         self.graphFigure.clear()
         self.graphAxes = self.graphFigure.add_subplot(111)
         # Add formatting to the graphs.
-        self.graphAxes.set_ylabel('TEMPERATURE (°F)')
+        self.graphAxes.set_ylabel('TEMPERATURE (°C)')
         self.graphAxes.set_xlabel('TIME')
         # Use more of the canvas area while preserving room for x-axis labels.
         self.graphFigure.subplots_adjust(left=0.10, right=0.985, top=0.965, bottom=0.16)
@@ -77,6 +77,7 @@ class RoastGraphWidget():
         self.graphAxes.tick_params(axis='x', colors='white')
         self.graphAxes.tick_params(axis='y', colors='white')
         self.graphLine, = self.graphAxes.plot_date([], [], '#8ab71b')
+        self.graphAxes.set_ylim(bottom=20.0)
 
     def graph_draw(self, *args, force=False, **kwargs):
         # Start graphing the roast if the roast has started.
@@ -92,6 +93,8 @@ class RoastGraphWidget():
         if current_len > 0:
             self.graphAxes.relim()
             self.graphAxes.autoscale_view()
+        # Keep graph baseline at room temperature (20 C).
+        self.graphAxes.set_ylim(bottom=20.0)
         self._last_drawn_len = current_len
         self.graphCanvas.draw_idle()
 
@@ -108,6 +111,7 @@ class RoastGraphWidget():
         self.graphLine.set_data([], [])
         self.graphAxes.relim()
         self.graphAxes.autoscale_view()
+        self.graphAxes.set_ylim(bottom=20.0)
         self._last_drawn_len = 0
         self.graphCanvas.draw_idle()
 

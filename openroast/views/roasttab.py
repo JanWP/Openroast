@@ -10,6 +10,12 @@ from multiprocessing import sharedctypes
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 
+from openroast.temperature import (
+    TEMP_UNIT_F,
+    celsius_to_temperature_unit,
+    normalize_temperature_unit,
+    temperature_to_celsius,
+)
 from openroast.views import customqtwidgets
 
 class RoastTab(QtWidgets.QWidget):
@@ -33,6 +39,12 @@ class RoastTab(QtWidgets.QWidget):
         # store recipes object
         self.recipes = recipes
         self.compact_ui = compact_ui
+
+        # Convert all temperature values to Celsius for display/control.
+        self._roaster_temperature_unit = normalize_temperature_unit(
+            getattr(self.roaster, "temperature_unit", TEMP_UNIT_F),
+            default=TEMP_UNIT_F,
+        )
 
         # Create the tab ui.
         self.create_ui()
@@ -93,8 +105,14 @@ class RoastTab(QtWidgets.QWidget):
         else:
             return False
 
+    def _roaster_temp_to_c(self, value):
+        return int(round(temperature_to_celsius(value, self._roaster_temperature_unit)))
+
+    def _c_to_roaster_temp(self, value):
+        return int(round(celsius_to_temperature_unit(value, self._roaster_temperature_unit)))
+
     def graph_get_data(self):
-        self.graphWidget.append_x(self.roaster.current_temp)
+        self.graphWidget.append_x(self._roaster_temp_to_c(self.roaster.current_temp))
 
     def save_roast_graph(self):
         self.graphWidget.save_roast_graph()
@@ -104,7 +122,10 @@ class RoastTab(QtWidgets.QWidget):
 
     def update_data(self):
         # Update temperature widgets.
-        self._set_text_if_changed(self.currentTempLabel, str(self.roaster.current_temp))
+        self._set_text_if_changed(
+            self.currentTempLabel,
+            str(self._roaster_temp_to_c(self.roaster.current_temp)),
+        )
 
         # Update timers.
         self.update_section_time()
@@ -199,7 +220,7 @@ class RoastTab(QtWidgets.QWidget):
                 time = self.recipes.get_section_time(i)
                 minutes, seconds = self.calc_display_time(time)
                 labelText = (str(minutes) +  ":" + str(seconds) + "@" +
-                    str(self.recipes.get_section_temp(i)))
+                    str(self.recipes.get_section_temp(i)) + "C")
 
                # Create label for section.
                 label = QtWidgets.QLabel(labelText)
@@ -262,14 +283,14 @@ class RoastTab(QtWidgets.QWidget):
             guageWindow.setVerticalSpacing(4)
 
         # Create current temp gauge.
-        self.currentTempLabel = QtWidgets.QLabel("150")
-        currentTemp = self.create_info_box("CURRENT TEMP", "tempGuage",
+        self.currentTempLabel = QtWidgets.QLabel("20")
+        currentTemp = self.create_info_box("CURRENT TEMP (C)", "tempGuage",
             self.currentTempLabel)
         guageWindow.addLayout(currentTemp, 0, 0)
 
         # Create target temp gauge.
         self.targetTempLabel = QtWidgets.QLabel()
-        targetTemp = self.create_info_box("TARGET TEMP", "tempGuage", self.targetTempLabel)
+        targetTemp = self.create_info_box("TARGET TEMP (C)", "tempGuage", self.targetTempLabel)
         guageWindow.addLayout(targetTemp, 0, 1)
 
         # Create current time.
@@ -322,7 +343,7 @@ class RoastTab(QtWidgets.QWidget):
 
         # Create temperature slider.
         self.tempSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.tempSlider.setRange(150, 550)
+        self.tempSlider.setRange(65, 290)
         self.tempSlider.valueChanged.connect(self.update_target_temp_slider)
         sliderPanel.addWidget(self.tempSlider, 1, 0)
 
@@ -331,7 +352,7 @@ class RoastTab(QtWidgets.QWidget):
         self.tempSpinBox.setObjectName("miniSpinBox")
         self.tempSpinBox.setButtonSymbols(2)      # Remove arrows.
         self.tempSpinBox.setAlignment(QtCore.Qt.AlignCenter)
-        self.tempSpinBox.setRange(150, 550)
+        self.tempSpinBox.setRange(65, 290)
         self.tempSpinBox.valueChanged.connect(self.update_target_temp_spin_box)
         self.tempSpinBox.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
         sliderPanel.addWidget(self.tempSpinBox, 1, 1)
@@ -410,24 +431,26 @@ class RoastTab(QtWidgets.QWidget):
             del blocker
 
     def update_target_temp(self):
-        value = self.roaster.target_temp
+        value = self._roaster_temp_to_c(self.roaster.target_temp)
         self._set_text_if_changed(self.targetTempLabel, str(value))
         self._set_value_if_changed(self.tempSlider, value)
         self._set_value_if_changed(self.tempSpinBox, value)
 
     def update_target_temp_spin_box(self):
-        value = self.tempSpinBox.value()
-        self._set_text_if_changed(self.targetTempLabel, str(value))
-        self._set_value_if_changed(self.tempSlider, value)
-        if self.roaster.target_temp != value:
-            self.roaster.target_temp = value
+        value_c = self.tempSpinBox.value()
+        self._set_text_if_changed(self.targetTempLabel, str(value_c))
+        self._set_value_if_changed(self.tempSlider, value_c)
+        roaster_value = self._c_to_roaster_temp(value_c)
+        if self.roaster.target_temp != roaster_value:
+            self.roaster.target_temp = roaster_value
 
     def update_target_temp_slider(self):
-        value = self.tempSlider.value()
-        self._set_text_if_changed(self.targetTempLabel, str(value))
-        self._set_value_if_changed(self.tempSpinBox, value)
-        if self.roaster.target_temp != value:
-            self.roaster.target_temp = value
+        value_c = self.tempSlider.value()
+        self._set_text_if_changed(self.targetTempLabel, str(value_c))
+        self._set_value_if_changed(self.tempSpinBox, value_c)
+        roaster_value = self._c_to_roaster_temp(value_c)
+        if self.roaster.target_temp != roaster_value:
+            self.roaster.target_temp = roaster_value
 
     def update_fan_info(self):
         value = self.roaster.fan_speed
