@@ -5,6 +5,13 @@ import json
 from multiprocessing import sharedctypes, Array
 import ctypes
 
+from openroast.temperature import (
+    TEMP_UNIT_F,
+    celsius_to_temperature_unit,
+    normalize_temperature_unit,
+    recipe_to_celsius,
+)
+
 
 class Recipe(object):
     def __init__(self, roaster, app, max_recipe_size_bytes=64*1024):
@@ -30,6 +37,12 @@ class Recipe(object):
         self.roaster=roaster
         self.app = app
 
+        self._default_target_temp_c = 65
+        self._roaster_temperature_unit = normalize_temperature_unit(
+            getattr(self.roaster, "temperature_unit", TEMP_UNIT_F),
+            default=TEMP_UNIT_F,
+        )
+
     def _recipe(self):
         # retrieve the recipe as a JSON string in shared memory.
         # needed to allow freshroastsr700 to access Recipe from
@@ -41,7 +54,8 @@ class Recipe(object):
 
     def load_recipe_json(self, recipeJson):
         # recipeJson is actually a dict...
-        self.recipe_str.value = json.dumps(recipeJson).encode('utf_8')
+        normalized_recipe = recipe_to_celsius(recipeJson)
+        self.recipe_str.value = json.dumps(normalized_recipe).encode('utf_8')
         self.recipeLoaded.value = 1
 
     def load_recipe_file(self, recipeFile):
@@ -75,7 +89,7 @@ class Recipe(object):
         if(self._recipe()["steps"][crnt_step].get("targetTemp")):
             return self._recipe()["steps"][crnt_step]["targetTemp"]
         else:
-            return 150
+            return self._default_target_temp_c
 
     def get_current_section_time(self):
         crnt_step = self.currentRecipeStep.value
@@ -107,10 +121,13 @@ class Recipe(object):
         if(self._recipe()["steps"][index].get("targetTemp")):
             return self._recipe()["steps"][index]["targetTemp"]
         else:
-            return 150
+            return self._default_target_temp_c
 
     def reset_roaster_settings(self):
-        self.roaster.target_temp = 150
+        self.roaster.target_temp = int(round(celsius_to_temperature_unit(
+            self._default_target_temp_c,
+            self._roaster_temperature_unit,
+        )))
         self.roaster.fan_speed = 1
         self.roaster.time_remaining = 0
 
@@ -123,7 +140,10 @@ class Recipe(object):
            self.currentRecipeStep.value > 0):
             self.roaster.roast()
 
-        self.roaster.target_temp = targetTemp
+        self.roaster.target_temp = int(round(celsius_to_temperature_unit(
+            targetTemp,
+            self._roaster_temperature_unit,
+        )))
         self.roaster.fan_speed = fanSpeed
         self.roaster.time_remaining = sectionTime
 

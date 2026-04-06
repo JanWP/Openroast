@@ -9,12 +9,14 @@ import logging
 import threading
 
 from localroaster import ControllerConfig, RoasterState, create_controller
+from openroast.temperature import celsius_to_fahrenheit, fahrenheit_to_celsius
 
 
 class LocalRoaster:
     """Openroast compatibility adapter over the standalone localroaster package."""
 
     CS_CONNECTING = 1
+    temperature_unit = "C"
 
     def __init__(
         self,
@@ -116,16 +118,18 @@ class LocalRoaster:
 
     @property
     def target_temp(self):
-        return self._controller.target_temp_f
+        return int(round(fahrenheit_to_celsius(self._controller.target_temp_f)))
 
     @target_temp.setter
     def target_temp(self, value):
-        self._controller.target_temp_f = value
+        self._controller.target_temp_f = int(round(celsius_to_fahrenheit(value)))
 
     @property
     def current_temp(self):
-        temp = self._controller.current_temp_f
-        return int(round(max(self._config.min_display_temp_f, min(self._config.max_temp_f, temp))))
+        temp_c = fahrenheit_to_celsius(self._controller.current_temp_f)
+        min_temp_c = int(round(fahrenheit_to_celsius(self._config.min_display_temp_f)))
+        max_temp_c = int(round(fahrenheit_to_celsius(self._config.max_temp_f)))
+        return int(round(max(min_temp_c, min(max_temp_c, temp_c))))
 
     @property
     def time_remaining(self):
