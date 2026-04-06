@@ -77,7 +77,26 @@ class RoastGraphWidget():
         self.graphAxes.tick_params(axis='x', colors='white')
         self.graphAxes.tick_params(axis='y', colors='white')
         self.graphLine, = self.graphAxes.plot_date([], [], '#8ab71b')
-        self.graphAxes.set_ylim(bottom=20.0)
+        self._apply_temperature_axis_limits()
+
+    def _apply_temperature_axis_limits(self):
+        bottom = 20.0
+        min_top = 25.0
+        current_top = self.graphAxes.get_ylim()[1]
+
+        data_max = None
+        if self.graphYValueList:
+            data_max = max(float(v) for v in self.graphYValueList)
+
+        # Keep headroom above the larger of baseline top and current data.
+        target_top = max(min_top, current_top)
+        if data_max is not None:
+            target_top = max(target_top, data_max + 5.0)
+
+        if target_top <= bottom:
+            target_top = bottom + 5.0
+
+        self.graphAxes.set_ylim(bottom=bottom, top=target_top)
 
     def graph_draw(self, *args, force=False, **kwargs):
         # Start graphing the roast if the roast has started.
@@ -93,8 +112,8 @@ class RoastGraphWidget():
         if current_len > 0:
             self.graphAxes.relim()
             self.graphAxes.autoscale_view()
-        # Keep graph baseline at room temperature (20 C).
-        self.graphAxes.set_ylim(bottom=20.0)
+        # Keep graph baseline at room temperature (20 C) without flipping axis.
+        self._apply_temperature_axis_limits()
         self._last_drawn_len = current_len
         self.graphCanvas.draw_idle()
 
@@ -111,7 +130,7 @@ class RoastGraphWidget():
         self.graphLine.set_data([], [])
         self.graphAxes.relim()
         self.graphAxes.autoscale_view()
-        self.graphAxes.set_ylim(bottom=20.0)
+        self._apply_temperature_axis_limits()
         self._last_drawn_len = 0
         self.graphCanvas.draw_idle()
 
