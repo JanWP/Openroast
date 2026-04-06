@@ -43,6 +43,11 @@ class TemperatureHelpersTests(unittest.TestCase):
         self.assertEqual(clamp_temperature_c(MAX_TEMPERATURE_C + 50), MAX_TEMPERATURE_C)
         self.assertEqual(clamp_temperature_c(DEFAULT_TARGET_TEMPERATURE_C + 0.6), DEFAULT_TARGET_TEMPERATURE_C + 1)
 
+    def test_clamp_temperature_c_accepts_custom_bounds(self):
+        self.assertEqual(clamp_temperature_c(15, low=10, high=20), 15)
+        self.assertEqual(clamp_temperature_c(7, low=10, high=20), 10)
+        self.assertEqual(clamp_temperature_c(42, low=10, high=20), 20)
+
 
 class RecipeToCelsiusTests(unittest.TestCase):
     def test_recipe_to_celsius_converts_legacy_fahrenheit_when_unit_missing(self):
@@ -70,6 +75,17 @@ class RecipeToCelsiusTests(unittest.TestCase):
         self.assertEqual(normalized["steps"][0]["targetTemp"], 180)
         self.assertEqual(normalized["steps"][1]["targetTemp"], 200)
         self.assertEqual(normalized["temperatureUnit"], TEMP_UNIT_C)
+
+    def test_recipe_to_celsius_leaves_steps_without_target_temp_untouched(self):
+        recipe = {
+            "steps": [{"fanSpeed": 5, "sectionTime": 10}],
+        }
+
+        normalized = recipe_to_celsius(recipe)
+
+        self.assertEqual(normalized["temperatureUnit"], TEMP_UNIT_C)
+        self.assertEqual(normalized["steps"][0]["fanSpeed"], 5)
+        self.assertNotIn("targetTemp", normalized["steps"][0])
 
 
 if __name__ == "__main__":
