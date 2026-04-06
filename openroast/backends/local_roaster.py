@@ -25,6 +25,7 @@ class LocalRoaster:
         ki=0.0075,
         kd=0.01,
         heater_segments=8,
+        force_mock=False,
     ):
         self._config = ControllerConfig(
             thermostat=thermostat,
@@ -33,7 +34,7 @@ class LocalRoaster:
             kd=kd,
             heater_segments=heater_segments,
         )
-        self._controller = create_controller(config=self._config)
+        self._controller = create_controller(config=self._config, force_mock=force_mock)
         self._connect_state = 0
         self._listeners_registered = False
         self._callback_threads_started = False

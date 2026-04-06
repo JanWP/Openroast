@@ -38,21 +38,14 @@ def _parse_args():
     )
     parser.add_argument(
         "--backend",
-        choices=["usb", "local"],
+        choices=["usb", "usb-mock", "local", "local-mock"],
         default="usb",
         help=(
             "Hardware backend to use.  "
-            "'usb'   – FreshRoast SR700 via USB (default).  "
-            "'local' – Home-built roaster via the 'localroaster' library."
-        ),
-    )
-    parser.add_argument(
-        "--mock",
-        action="store_true",
-        default=False,
-        help=(
-            "Use mock/simulated USB hardware (for development without a roaster). "
-            "This applies to --backend usb."
+            "'usb'       – FreshRoast SR700 via USB (default).  "
+            "'usb-mock'  – Simulated USB roaster (no hardware).  "
+            "'local'     – Home-built roaster via the local backend package.  "
+            "'local-mock' – Simulated local backend (no hardware)."
         ),
     )
     parser.add_argument(
@@ -73,22 +66,30 @@ def _parse_args():
 
 def _create_roaster(args):
     """Instantiate and return the appropriate roaster backend object."""
-    if args.backend == "local":
+    if args.backend in ("local", "local-mock"):
         try:
             from openroast.backends.local_roaster import LocalRoaster
+            if args.backend == "local-mock":
+                logging.info("openroastapp: using LOCAL MOCK backend")
+                return LocalRoaster(thermostat=True, force_mock=True)
             logging.info("openroastapp: using LOCAL hardware backend")
             return LocalRoaster(thermostat=True)
         except ImportError as exc:
-            from openroast import freshroastsr700_mock as freshroastsr700
-            logging.warning(
-                "local_roaster: standalone 'localroaster' package not found or not importable; "
-                "using simulation stub instead. Install/package localroaster to control real hardware."
-            )
-            logging.debug("local_roaster import failure", exc_info=exc)
-            return freshroastsr700.freshroastsr700(thermostat=True)
+            if args.backend == "local-mock":
+                from openroast import freshroastsr700_mock as freshroastsr700
+                logging.warning(
+                    "openroastapp: local backend import failed in local-mock mode; "
+                    "falling back to USB mock backend for development."
+                )
+                logging.debug("local_roaster import failure", exc_info=exc)
+                return freshroastsr700.freshroastsr700(thermostat=True)
+            raise RuntimeError(
+                "The local backend package is not importable. "
+                "Use --backend local-mock for simulation, or install/fix local backend imports."
+            ) from exc
     else:
         # USB backend
-        if args.mock:
+        if args.backend == "usb-mock":
             from openroast import freshroastsr700_mock as freshroastsr700
             logging.info("openroastapp: using MOCK USB backend")
         else:
