@@ -1,4 +1,7 @@
 import unittest
+import json
+import os
+import tempfile
 
 from openroast.controllers.recipe import Recipe
 from openroast.temperature import DEFAULT_TARGET_TEMPERATURE_C
@@ -113,6 +116,90 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         self.assertEqual(roaster.fan_speed, 4)
         self.assertEqual(roaster.time_remaining, 25)
         self.assertEqual(app.roasttab_update_calls, 1)
+
+    def test_move_to_next_section_end_of_recipe_sets_roaster_idle(self):
+        roaster = FakeRoaster("C")
+        recipe = Recipe(roaster=roaster, app=FakeApp())
+        recipe.load_recipe_json(
+            {
+                "temperatureUnit": "C",
+                "steps": [{"targetTemp": 80, "fanSpeed": 3, "sectionTime": 20}],
+            }
+        )
+
+        recipe.move_to_next_section()
+
+        self.assertEqual(roaster.idle_calls, 1)
+        self.assertEqual(recipe.get_current_step_number(), 0)
+
+    def test_move_to_next_section_without_recipe_sets_roaster_idle(self):
+        roaster = FakeRoaster("C")
+        recipe = Recipe(roaster=roaster, app=FakeApp())
+
+        recipe.move_to_next_section()
+
+        self.assertEqual(roaster.idle_calls, 1)
+
+    def test_set_roaster_settings_roast_start_guard_matrix(self):
+        cases = [
+            {"cooling": True, "section_time": 30, "step": 1, "expect_roast": 0, "expect_cool": 1},
+            {"cooling": False, "section_time": 0, "step": 1, "expect_roast": 0, "expect_cool": 0},
+            {"cooling": False, "section_time": 30, "step": 0, "expect_roast": 0, "expect_cool": 0},
+            {"cooling": False, "section_time": 30, "step": 1, "expect_roast": 1, "expect_cool": 0},
+        ]
+
+        for case in cases:
+            with self.subTest(case=case):
+                roaster = FakeRoaster("C")
+                recipe = Recipe(roaster=roaster, app=FakeApp())
+                recipe.currentRecipeStep.value = case["step"]
+
+                recipe.set_roaster_settings(
+                    targetTemp=100,
+                    fanSpeed=5,
+                    sectionTime=case["section_time"],
+                    cooling=case["cooling"],
+                )
+
+                self.assertEqual(roaster.roast_calls, case["expect_roast"])
+                self.assertEqual(roaster.cool_calls, case["expect_cool"])
+
+    def test_load_recipe_file_clear_and_reload_flow(self):
+        roaster = FakeRoaster("F")
+        recipe = Recipe(roaster=roaster, app=FakeApp())
+
+        fd1, path1 = tempfile.mkstemp(suffix=".json")
+        os.close(fd1)
+        fd2, path2 = tempfile.mkstemp(suffix=".json")
+        os.close(fd2)
+        try:
+            with open(path1, "w", encoding="utf-8") as handle:
+                json.dump({"steps": [{"targetTemp": 212, "fanSpeed": 4, "sectionTime": 30}]}, handle)
+            with open(path2, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "temperatureUnit": "C",
+                        "steps": [{"targetTemp": 95, "fanSpeed": 6, "sectionTime": 40}],
+                    },
+                    handle,
+                )
+
+            recipe.load_recipe_file(path1)
+            self.assertTrue(recipe.check_recipe_loaded())
+            self.assertEqual(recipe.get_current_target_temp(), 100)
+
+            recipe.clear_recipe()
+            self.assertFalse(recipe.check_recipe_loaded())
+            self.assertEqual(recipe.get_num_recipe_sections(), 0)
+            self.assertEqual(recipe.get_current_step_number(), 0)
+
+            recipe.load_recipe_file(path2)
+            self.assertTrue(recipe.check_recipe_loaded())
+            self.assertEqual(recipe.get_current_target_temp(), 95)
+            self.assertEqual(recipe.get_num_recipe_sections(), 1)
+        finally:
+            os.remove(path1)
+            os.remove(path2)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,8 @@ class FakeController:
 
         self.telemetry_listener = None
         self.state_transition_cb = None
+        self.add_telemetry_listener_calls = 0
+        self.set_state_transition_callback_calls = 0
 
         self.connect_calls = 0
         self.shutdown_calls = 0
@@ -30,9 +32,11 @@ class FakeController:
         self.sleep_calls = 0
 
     def add_telemetry_listener(self, func):
+        self.add_telemetry_listener_calls += 1
         self.telemetry_listener = func
 
     def set_state_transition_callback(self, func):
+        self.set_state_transition_callback_calls += 1
         self.state_transition_cb = func
 
     def connect(self):
@@ -108,6 +112,86 @@ class LocalRoasterAdapterTests(unittest.TestCase):
 
         fake_controller.state = RoasterState.COOLING
         self.assertEqual(roaster.get_roaster_state(), "cooling")
+
+        fake_controller.state = RoasterState.SLEEPING
+        self.assertEqual(roaster.get_roaster_state(), "sleeping")
+
+        fake_controller.state = RoasterState.FAULT
+        self.assertEqual(roaster.get_roaster_state(), "unknown")
+
+    def test_get_roaster_state_uses_connecting_override_when_not_connected(self):
+        fake_controller = FakeController()
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster()
+
+        roaster._connect_state = roaster.CS_CONNECTING
+        fake_controller.connected = False
+        fake_controller.state = RoasterState.IDLE
+        self.assertEqual(roaster.get_roaster_state(), "connecting")
+
+        fake_controller.connected = True
+        self.assertEqual(roaster.get_roaster_state(), "idle")
+
+    def test_auto_connect_registers_listeners_once_and_resets_connect_state(self):
+        fake_controller = FakeController()
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster()
+
+        self.assertEqual(roaster.connect_state, 0)
+
+        roaster.auto_connect()
+        self.assertEqual(fake_controller.connect_calls, 1)
+        self.assertEqual(roaster.connect_state, 0)
+        self.assertEqual(fake_controller.add_telemetry_listener_calls, 1)
+        self.assertEqual(fake_controller.set_state_transition_callback_calls, 1)
+
+        roaster.auto_connect()
+        self.assertEqual(fake_controller.connect_calls, 2)
+        self.assertEqual(fake_controller.add_telemetry_listener_calls, 1)
+        self.assertEqual(fake_controller.set_state_transition_callback_calls, 1)
+
+    def test_auto_connect_with_callbacks_starts_threads_once(self):
+        fake_controller = FakeController()
+
+        class FakeThread:
+            started_count = 0
+
+            def __init__(self, *args, **kwargs):
+                self.target = kwargs.get("target")
+                self.args = kwargs.get("args")
+
+            def start(self):
+                FakeThread.started_count += 1
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller), patch(
+            "openroast.backends.local_roaster.threading.Thread", FakeThread
+        ):
+            roaster = LocalRoaster(update_data_func=lambda: None, state_transition_func=lambda: None)
+            roaster.auto_connect()
+            roaster.auto_connect()
+
+        self.assertEqual(FakeThread.started_count, 2)
+
+    def test_auto_connect_wires_controller_callbacks_to_adapter_events(self):
+        fake_controller = FakeController()
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster()
+
+        roaster.auto_connect()
+        self.assertIsNotNone(fake_controller.telemetry_listener)
+        self.assertIsNotNone(fake_controller.state_transition_cb)
+
+        self.assertFalse(roaster._update_event.is_set())
+        self.assertFalse(roaster._state_transition_event.is_set())
+
+        fake_controller.telemetry_listener(None)
+        fake_controller.state_transition_cb()
+
+        self.assertTrue(roaster._update_event.is_set())
+        self.assertTrue(roaster._state_transition_event.is_set())
 
     def test_set_state_transition_func_requires_pre_connect(self):
         fake_controller = FakeController()
