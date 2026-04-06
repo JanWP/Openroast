@@ -1,5 +1,4 @@
 import logging
-import math
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -50,48 +49,25 @@ class PID:
         return max(self.output_min, min(self.output_max, output))
 
 
-class HeatController:
-    """Pulse-modulates a bang-bang heater into multiple effective levels."""
+class DutyCyclePWM:
+    """Generate low-frequency on/off output for an SSR from duty in percent."""
 
-    def __init__(self, number_of_segments: int = 8):
-        self._num_segments = number_of_segments
-        self._output_array = [[False] * number_of_segments for _ in range(1 + number_of_segments)]
-        if number_of_segments == 8:
-            self._output_array[0] = [False] * 8
-            self._output_array[1] = [True, False, False, False, False, False, False, False]
-            self._output_array[2] = [True, False, False, False, True, False, False, False]
-            self._output_array[3] = [True, False, False, True, False, False, True, False]
-            self._output_array[4] = [True, False, True, False, True, False, True, False]
-            self._output_array[5] = [True, True, False, True, True, False, True, False]
-            self._output_array[6] = [True, True, True, False, True, True, True, False]
-            self._output_array[7] = [True, True, True, True, True, True, True, False]
-            self._output_array[8] = [True] * 8
-        else:
-            for i in range(1 + number_of_segments):
-                for j in range(number_of_segments):
-                    self._output_array[i][j] = j < i
-        self._heat_level = 0
-        self._heat_level_now = 0
-        self._current_index = 0
+    def __init__(self, cycle_s: float):
+        self.cycle_s = max(0.1, float(cycle_s))
+        self._cycle_start = time.monotonic()
 
-    @property
-    def heat_level(self) -> int:
-        return self._heat_level
+    def output(self, duty_percent: float, now: float | None = None) -> bool:
+        duty = max(0.0, min(100.0, float(duty_percent)))
+        if now is None:
+            now = time.monotonic()
 
-    @heat_level.setter
-    def heat_level(self, value: float) -> None:
-        self._heat_level = max(0, min(self._num_segments, int(round(value))))
+        elapsed = now - self._cycle_start
+        while elapsed >= self.cycle_s:
+            self._cycle_start += self.cycle_s
+            elapsed = now - self._cycle_start
 
-    def about_to_rollover(self) -> bool:
-        return self._current_index >= self._num_segments
-
-    def generate_bangbang_output(self) -> bool:
-        if self._current_index >= self._num_segments:
-            self._heat_level_now = self._heat_level
-            self._current_index = 0
-        out = self._output_array[self._heat_level_now][self._current_index]
-        self._current_index += 1
-        return out
+        on_time = self.cycle_s * (duty / 100.0)
+        return elapsed < on_time
 
 
 class RoasterController:
@@ -128,10 +104,10 @@ class RoasterController:
             self.config.kp,
             self.config.ki,
             self.config.kd,
-            output_max=self.config.heater_segments,
+            output_max=100,
             output_min=0,
         )
-        self._heater = HeatController(number_of_segments=self.config.heater_segments)
+        self._pwm = DutyCyclePWM(cycle_s=self.config.pwm_cycle_s)
 
     def connect(self) -> None:
         with self._lock:
@@ -291,13 +267,16 @@ class RoasterController:
     def _control_loop(self) -> None:
         while not self._stop_event.is_set():
             start = time.monotonic()
+            current_temp = 0.0
+
+            with self._lock:
+                current_temp = self._current_temp_f
 
             try:
                 current_temp = self.hardware.read_temperature_f()
             except Exception as exc:
                 logging.warning("localroaster: read_temperature_f failed: %s", exc)
                 with self._lock:
-                    current_temp = self._current_temp_f
                     self._fault = str(exc)
 
             with self._lock:
@@ -310,21 +289,20 @@ class RoasterController:
 
                 if thermostat:
                     if state == RoasterState.ROASTING:
-                        if self._heater.about_to_rollover():
-                            output = self._pid.update(self._current_temp_f, target_temp)
-                            self._heater.heat_level = output
-                            self._heater_level = self._heater.heat_level
-                        heater_on = self._heater.generate_bangbang_output()
+                        pid_percent = self._pid.update(self._current_temp_f, target_temp)
+                        self._heater_level = int(round(pid_percent))
+                        heater_on = self._pwm.output(self._heater_level, now=start)
                         self._heater_output = heater_on
                         self._heat_setting = 3 if heater_on else 0
                     else:
-                        self._heater.heat_level = 0
                         self._heater_level = 0
                         self._heater_output = False
                         self._heat_setting = 0
                 else:
-                    self._heater_output = heat_setting > 0
-                    self._heater_level = heat_setting
+                    # Map legacy heat setting 0..3 to 0..100% duty for PWM.
+                    duty_percent = (heat_setting * 100.0) / 3.0
+                    self._heater_level = int(round(duty_percent))
+                    self._heater_output = self._pwm.output(self._heater_level, now=start)
 
                 heater_output = self._heater_output
 

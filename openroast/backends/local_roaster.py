@@ -32,7 +32,6 @@ class LocalRoaster:
             kp=kp,
             ki=ki,
             kd=kd,
-            heater_segments=heater_segments,
         )
         self._controller = create_controller(config=self._config, force_mock=force_mock)
         self._connect_state = 0

@@ -17,8 +17,8 @@ class ControllerConfig:
     kp: float = 0.06
     ki: float = 0.0075
     kd: float = 0.01
-    heater_segments: int = 8
-    sample_period_s: float = 0.25
+    sample_period_s: float = 0.5
+    pwm_cycle_s: float = 1.0
     ambient_temp_f: float = 72.0
     max_temp_f: float = 550.0
     min_display_temp_f: float = 150.0
