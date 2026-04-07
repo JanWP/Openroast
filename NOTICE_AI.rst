@@ -20,3 +20,23 @@ What this means for contributors
 - Keep commit history and documentation transparent about significant
   AI-assisted development where useful.
 
+Commit message disclosure policy
+--------------------------------
+
+This repository uses the following commit trailer scheme to disclose the level
+of AI tooling involvement:
+
+- ``Assisted-by: TOOL (OPTIONAL: MODEL)`` for commits where AI tooling was
+  involved in decision-making and/or generated only part of the code.
+- ``Generated-by: TOOL (OPTIONAL: MODEL)`` for commits where almost all code
+  was generated through AI tooling.
+
+The ``Co-authored-by`` trailer is reserved for human collaborators and is not
+used for AI disclosure.
+
+History note
+------------
+
+Commits in this fork after
+``f0254c650dee1be2d628230c1700b43eb79fed2d`` are marked using this policy.
+

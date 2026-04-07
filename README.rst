@@ -106,6 +106,15 @@ AI co-authorship disclosure
 This fork includes substantial AI-assisted and AI-authored changes (with very
 few exceptions), primarily using GitHub Copilot with GPT-5.3-Codex.
 
+Commit disclosure policy used in this repository:
+
+- ``Assisted-by: TOOL (OPTIONAL: MODEL)`` when AI tooling helped with
+  decisions or generated part of the change.
+- ``Generated-by: TOOL (OPTIONAL: MODEL)`` when almost all of a change was
+  generated through AI tooling.
+- ``Co-authored-by`` is reserved for human co-authors and is not used for AI
+  disclosure.
+
 For details, see ``NOTICE_AI.rst``.
 
 License
