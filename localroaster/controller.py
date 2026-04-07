@@ -258,6 +258,8 @@ class RoasterController:
 
     def roast(self) -> None:
         with self._lock:
+            if self._state != RoasterState.ROASTING:
+                self._pid.reset()
             self._state = RoasterState.ROASTING
         self._emit_telemetry()
 
