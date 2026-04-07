@@ -98,6 +98,8 @@ class RoasterController:
         self._fault: str | None = None
 
         self._telemetry_listeners: list[Callable[[Telemetry], None]] = []
+        self._heater_output_listeners: list[Callable[[bool], None]] = []
+        self._heater_level_listeners: list[Callable[[int], None]] = []
         self._state_transition_callback: Callable[[], None] | None = None
 
         self._pid = PID(
@@ -118,6 +120,7 @@ class RoasterController:
             self._threads_started = True
             self._stop_event.clear()
             threading.Thread(target=self._control_loop, name="localroaster-control", daemon=True).start()
+            threading.Thread(target=self._pwm_loop, name="localroaster-pwm", daemon=True).start()
             threading.Thread(target=self._timer_loop, name="localroaster-timer", daemon=True).start()
         self._emit_telemetry()
 
@@ -126,8 +129,8 @@ class RoasterController:
         with self._lock:
             self._connected = False
             self._state = RoasterState.DISCONNECTED
-            self._heater_output = False
-            self._heater_level = 0
+        self._set_heater_level(0)
+        self._set_heater_output(False, emit_telemetry=False)
         try:
             self.hardware.set_heater(False)
             self.hardware.close()
@@ -137,6 +140,12 @@ class RoasterController:
 
     def add_telemetry_listener(self, callback: Callable[[Telemetry], None]) -> None:
         self._telemetry_listeners.append(callback)
+
+    def add_heater_output_listener(self, callback: Callable[[bool], None]) -> None:
+        self._heater_output_listeners.append(callback)
+
+    def add_heater_level_listener(self, callback: Callable[[int], None]) -> None:
+        self._heater_level_listeners.append(callback)
 
     def set_state_transition_callback(self, callback: Callable[[], None] | None) -> None:
         self._state_transition_callback = callback
@@ -250,16 +259,59 @@ class RoasterController:
     def idle(self) -> None:
         with self._lock:
             self._state = RoasterState.IDLE
-            self._heater_level = 0
-            self._heater_output = False
+        self._set_heater_level(0)
+        self._set_heater_output(False, emit_telemetry=False)
         self._emit_telemetry()
 
     def sleep(self) -> None:
         with self._lock:
             self._state = RoasterState.SLEEPING
-            self._heater_level = 0
-            self._heater_output = False
+        self._set_heater_level(0)
+        self._set_heater_output(False, emit_telemetry=False)
         self._emit_telemetry()
+
+    def _set_heater_level(self, heater_level: int) -> bool:
+        changed = False
+        listeners: list[Callable[[int], None]] = []
+        heater_level = int(max(0, min(100, int(heater_level))))
+        with self._lock:
+            if self._heater_level != heater_level:
+                self._heater_level = heater_level
+                changed = True
+                listeners = list(self._heater_level_listeners)
+
+        if not changed:
+            return False
+
+        for listener in listeners:
+            try:
+                listener(heater_level)
+            except Exception as exc:  # pragma: no cover - listener safety
+                logging.warning("localroaster: heater level listener failed: %s", exc)
+        return True
+
+    def _set_heater_output(self, heater_on: bool, emit_telemetry: bool = True) -> bool:
+        changed = False
+        listeners: list[Callable[[bool], None]] = []
+        with self._lock:
+            heater_on = bool(heater_on)
+            if self._heater_output != heater_on:
+                self._heater_output = heater_on
+                changed = True
+                listeners = list(self._heater_output_listeners)
+
+        if not changed:
+            return False
+
+        for listener in listeners:
+            try:
+                listener(heater_on)
+            except Exception as exc:  # pragma: no cover - listener safety
+                logging.warning("localroaster: heater listener failed: %s", exc)
+
+        if emit_telemetry:
+            self._emit_telemetry()
+        return True
 
     def _emit_telemetry(self) -> None:
         snapshot = self.telemetry()
@@ -295,35 +347,63 @@ class RoasterController:
                 if thermostat:
                     if state == RoasterState.ROASTING:
                         pid_percent = self._pid.update(self._current_temp_k, target_temp_k)
-                        self._heater_level = int(round(pid_percent))
-                        heater_on = self._pwm.output(self._heater_level, now=start)
-                        self._heater_output = heater_on
-                        self._heat_setting = 3 if heater_on else 0
+                        new_heater_level = int(round(pid_percent))
+                        self._heat_setting = 3
                     else:
-                        self._heater_level = 0
-                        self._heater_output = False
+                        new_heater_level = 0
                         self._heat_setting = 0
                 else:
                     # Map legacy heat setting 0..3 to 0..100% duty for PWM.
                     duty_percent = (heat_setting * 100.0) / 3.0
-                    self._heater_level = int(round(duty_percent))
-                    self._heater_output = self._pwm.output(self._heater_level, now=start)
+                    new_heater_level = int(round(duty_percent))
 
-                heater_output = self._heater_output
+                heater_should_off = new_heater_level <= 0
+
+            self._set_heater_level(new_heater_level)
 
             try:
-                self.hardware.set_heater(heater_output)
                 self.hardware.set_fan_speed(fan_speed)
             except Exception as exc:
                 logging.warning("localroaster: hardware command failed: %s", exc)
                 with self._lock:
                     self._fault = str(exc)
 
+            if heater_should_off:
+                self._set_heater_output(False)
+
             self._emit_telemetry()
             elapsed = time.monotonic() - start
             sleep_for = self.config.sample_period_s - elapsed
             if sleep_for > 0:
                 self._stop_event.wait(sleep_for)
+
+    def _pwm_loop(self) -> None:
+        last_written: bool | None = None
+        tick_s = max(0.01, float(self.config.pwm_tick_s))
+
+        while not self._stop_event.is_set():
+            start = time.monotonic()
+
+            with self._lock:
+                heater_level = self._heater_level
+
+            heater_on = self._pwm.output(heater_level, now=start)
+
+            if heater_on != last_written:
+                try:
+                    self.hardware.set_heater(heater_on)
+                    last_written = heater_on
+                except Exception as exc:
+                    logging.warning("localroaster: heater command failed: %s", exc)
+                    with self._lock:
+                        self._fault = str(exc)
+
+            self._set_heater_output(heater_on)
+
+            elapsed = time.monotonic() - start
+            sleep_for = tick_s - elapsed
+            if sleep_for > 0 and self._stop_event.wait(sleep_for):
+                break
 
     def _timer_loop(self) -> None:
         while not self._stop_event.is_set():

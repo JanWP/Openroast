@@ -1,4 +1,5 @@
 import math
+import threading
 
 from localroaster.api import ControllerConfig
 from localroaster.controller import HardwareDriver, RoasterController
@@ -9,6 +10,7 @@ class MockHardwareDriver(HardwareDriver):
 
     def __init__(self, config: ControllerConfig | None = None):
         self.config = config or ControllerConfig()
+        self._lock = threading.Lock()
         self._temp_k = self.config.ambient_temp_k
         self._heater_on = False
         self._tau = 30.0
@@ -17,17 +19,20 @@ class MockHardwareDriver(HardwareDriver):
         self._fan_speed = 1
 
     def read_temperature_k(self) -> float:
-        fan_cooling = (self._fan_speed - 1) * 2.0
-        hot_target_k = max(self.config.max_temp_k - fan_cooling, self.config.ambient_temp_k)
-        target_k = hot_target_k if self._heater_on else self.config.ambient_temp_k
-        self._temp_k = self._a * self._temp_k + self._b * target_k
-        return self._temp_k
+        with self._lock:
+            fan_cooling = (self._fan_speed - 1) * 2.0
+            hot_target_k = max(self.config.max_temp_k - fan_cooling, self.config.ambient_temp_k)
+            target_k = hot_target_k if self._heater_on else self.config.ambient_temp_k
+            self._temp_k = self._a * self._temp_k + self._b * target_k
+            return self._temp_k
 
     def set_heater(self, on: bool) -> None:
-        self._heater_on = bool(on)
+        with self._lock:
+            self._heater_on = bool(on)
 
     def set_fan_speed(self, speed: int) -> None:
-        self._fan_speed = int(speed)
+        with self._lock:
+            self._fan_speed = int(speed)
 
 
 def create_mock_controller(config: ControllerConfig | None = None) -> RoasterController:

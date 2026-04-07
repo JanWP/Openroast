@@ -19,6 +19,7 @@ class ControllerConfig:
     kd: float = 0.01
     sample_period_s: float = 0.5
     pwm_cycle_s: float = 1.0
+    pwm_tick_s: float = 0.05
     ambient_temp_k: float = 295.15
     max_temp_k: float = 560.93
     min_display_temp_k: float = 338.71
