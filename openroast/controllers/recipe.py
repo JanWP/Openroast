@@ -8,6 +8,7 @@ import ctypes
 from openroast.temperature import (
     DEFAULT_TARGET_TEMPERATURE_C,
     TEMP_UNIT_F,
+    celsius_to_kelvin,
     celsius_to_temperature_unit,
     normalize_temperature_unit,
     recipe_to_celsius,
@@ -131,12 +132,24 @@ class Recipe(object):
             return self._default_target_temp_c
 
     def reset_roaster_settings(self):
+        self._set_roaster_target_temp_c(self._default_target_temp_c)
+        self.roaster.fan_speed = 1
+        self._set_roaster_time_remaining_s(0)
+
+    def _set_roaster_target_temp_c(self, target_temp_c):
+        if hasattr(self.roaster, "target_temp_k"):
+            self.roaster.target_temp_k = celsius_to_kelvin(target_temp_c)
+            return
         self.roaster.target_temp = int(round(celsius_to_temperature_unit(
-            self._default_target_temp_c,
+            target_temp_c,
             self._roaster_temperature_unit,
         )))
-        self.roaster.fan_speed = 1
-        self.roaster.time_remaining = 0
+
+    def _set_roaster_time_remaining_s(self, section_time_s):
+        if hasattr(self.roaster, "time_remaining_s"):
+            self.roaster.time_remaining_s = section_time_s
+            return
+        self.roaster.time_remaining = section_time_s
 
     def set_roaster_settings(self, target_temp_c, fan_speed, section_time_s, cooling):
         if cooling:
@@ -147,12 +160,9 @@ class Recipe(object):
            self.currentRecipeStep.value > 0):
             self.roaster.roast()
 
-        self.roaster.target_temp = int(round(celsius_to_temperature_unit(
-            target_temp_c,
-            self._roaster_temperature_unit,
-        )))
+        self._set_roaster_target_temp_c(target_temp_c)
         self.roaster.fan_speed = fan_speed
-        self.roaster.time_remaining = section_time_s
+        self._set_roaster_time_remaining_s(section_time_s)
 
     def load_current_section(self):
         self.set_roaster_settings(self.get_current_target_temp(),

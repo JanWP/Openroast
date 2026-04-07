@@ -14,8 +14,10 @@ from openroast.temperature import (
     MAX_TEMPERATURE_C,
     MIN_TEMPERATURE_C,
     TEMP_UNIT_F,
+    celsius_to_kelvin,
     celsius_to_temperature_unit,
     clamp_temperature_c,
+    kelvin_to_celsius,
     normalize_temperature_unit,
     temperature_to_celsius,
 )
@@ -121,7 +123,59 @@ class RoastTab(QtWidgets.QWidget):
         return int(round(celsius_to_temperature_unit(value, self._roaster_temperature_unit)))
 
     def graph_get_data(self):
-        self.graphWidget.append_x(self._roaster_temp_to_c(self.roaster.current_temp))
+        self.graphWidget.append_x(self._get_roaster_current_temp_c())
+
+    def _get_roaster_current_temp_c(self):
+        if hasattr(self.roaster, "current_temp_k"):
+            return clamp_temperature_c(
+                kelvin_to_celsius(self.roaster.current_temp_k),
+                low=self._min_temp_c,
+                high=self._max_temp_c,
+            )
+        return self._roaster_temp_to_c(self.roaster.current_temp)
+
+    def _get_roaster_target_temp_c(self):
+        if hasattr(self.roaster, "target_temp_k"):
+            return clamp_temperature_c(
+                kelvin_to_celsius(self.roaster.target_temp_k),
+                low=self._min_temp_c,
+                high=self._max_temp_c,
+            )
+        return self._roaster_temp_to_c(self.roaster.target_temp)
+
+    def _set_roaster_target_temp_c(self, value_c):
+        if hasattr(self.roaster, "target_temp_k"):
+            target_temp_k = celsius_to_kelvin(value_c)
+            if self.roaster.target_temp_k != target_temp_k:
+                self.roaster.target_temp_k = target_temp_k
+            return
+        roaster_value = self._c_to_roaster_temp(value_c)
+        if self.roaster.target_temp != roaster_value:
+            self.roaster.target_temp = roaster_value
+
+    def _get_roaster_time_remaining_s(self):
+        if hasattr(self.roaster, "time_remaining_s"):
+            return self.roaster.time_remaining_s
+        return self.roaster.time_remaining
+
+    def _set_roaster_time_remaining_s(self, value_s):
+        if hasattr(self.roaster, "time_remaining_s"):
+            if self.roaster.time_remaining_s != value_s:
+                self.roaster.time_remaining_s = value_s
+            return
+        if self.roaster.time_remaining != value_s:
+            self.roaster.time_remaining = value_s
+
+    def _get_roaster_total_time_s(self):
+        if hasattr(self.roaster, "total_time_s"):
+            return self.roaster.total_time_s
+        return self.roaster.total_time
+
+    def _set_roaster_total_time_s(self, value_s):
+        if hasattr(self.roaster, "total_time_s"):
+            self.roaster.total_time_s = value_s
+            return
+        self.roaster.total_time = value_s
 
     def save_roast_graph(self):
         self.graphWidget.save_roast_graph()
@@ -133,7 +187,7 @@ class RoastTab(QtWidgets.QWidget):
         # Update temperature widgets.
         self._set_text_if_changed(
             self.currentTempLabel,
-            str(self._roaster_temp_to_c(self.roaster.current_temp)),
+            str(self._get_roaster_current_temp_c()),
         )
 
         # Update timers.
@@ -144,7 +198,7 @@ class RoastTab(QtWidgets.QWidget):
         if(self.recipes.check_recipe_loaded()):
             progress_pct = (
                 self.recipes.get_current_section_time() -
-                self.roaster.time_remaining
+                self._get_roaster_time_remaining_s()
                 )
             progress_pct = progress_pct / self.recipes.get_current_section_time()
             progress_pct = round(progress_pct * 100)
@@ -440,7 +494,7 @@ class RoastTab(QtWidgets.QWidget):
             del blocker
 
     def update_target_temp(self):
-        target_temp_c = self._roaster_temp_to_c(self.roaster.target_temp)
+        target_temp_c = self._get_roaster_target_temp_c()
         self._set_text_if_changed(self.targetTempLabel, str(target_temp_c))
         self._set_value_if_changed(self.tempSlider, target_temp_c)
         self._set_value_if_changed(self.tempSpinBox, target_temp_c)
@@ -449,17 +503,13 @@ class RoastTab(QtWidgets.QWidget):
         value_c = self.tempSpinBox.value()
         self._set_text_if_changed(self.targetTempLabel, str(value_c))
         self._set_value_if_changed(self.tempSlider, value_c)
-        roaster_value = self._c_to_roaster_temp(value_c)
-        if self.roaster.target_temp != roaster_value:
-            self.roaster.target_temp = roaster_value
+        self._set_roaster_target_temp_c(value_c)
 
     def update_target_temp_slider(self):
         value_c = self.tempSlider.value()
         self._set_text_if_changed(self.targetTempLabel, str(value_c))
         self._set_value_if_changed(self.tempSpinBox, value_c)
-        roaster_value = self._c_to_roaster_temp(value_c)
-        if self.roaster.target_temp != roaster_value:
-            self.roaster.target_temp = roaster_value
+        self._set_roaster_target_temp_c(value_c)
 
     def update_fan_info(self):
         fan_speed = self.roaster.fan_speed
@@ -481,11 +531,10 @@ class RoastTab(QtWidgets.QWidget):
     def set_section_time(self):
         section_time_s = self.sectTimeSlider.value()
         self._set_text_if_changed(self.sectionTimeLabel, time.strftime("%M:%S", time.gmtime(section_time_s)))
-        if self.roaster.time_remaining != section_time_s:
-            self.roaster.time_remaining = section_time_s
+        self._set_roaster_time_remaining_s(section_time_s)
 
     def update_section_time(self):
-        section_time_s = self.roaster.time_remaining
+        section_time_s = self._get_roaster_time_remaining_s()
         self._set_value_if_changed(self.sectTimeSlider, section_time_s)
 
         spin_time = QtCore.QTime.fromString(str(time.strftime("%H:%M:%S",
@@ -501,8 +550,7 @@ class RoastTab(QtWidgets.QWidget):
 
         self._set_value_if_changed(self.sectTimeSlider, section_time_s)
 
-        if self.roaster.time_remaining != section_time_s:
-            self.roaster.time_remaining = section_time_s
+        self._set_roaster_time_remaining_s(section_time_s)
 
     def update_sect_time_slider(self):
         section_time_s = self.sectTimeSlider.value()
@@ -513,12 +561,11 @@ class RoastTab(QtWidgets.QWidget):
             time.gmtime(section_time_s))))
         self._set_time_if_changed(self.sectTimeSpinBox, spin_time)
 
-        if self.roaster.time_remaining != section_time_s:
-            self.roaster.time_remaining = section_time_s
+        self._set_roaster_time_remaining_s(section_time_s)
 
     def update_total_time(self):
         self._set_text_if_changed(self.totalTimeLabel, str(time.strftime("%M:%S",
-            time.gmtime(self.roaster.total_time))))
+            time.gmtime(self._get_roaster_total_time_s()))))
 
     def clear_roast(self):
         """ This method will clear the openroast.roaster, recipe, and reset the gui back
@@ -556,7 +603,7 @@ class RoastTab(QtWidgets.QWidget):
         self.update_target_temp()
 
         # Set totalTime to zero.
-        self.roaster.total_time = 0
+        self._set_roaster_total_time_s(0)
         self.update_total_time()
 
         # Clear roast graph.

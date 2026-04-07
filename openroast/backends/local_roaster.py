@@ -134,11 +134,23 @@ class LocalRoaster:
         self._controller.target_temp_k = celsius_to_kelvin(value)
 
     @property
+    def target_temp_k(self):
+        return float(self._controller.target_temp_k)
+
+    @target_temp_k.setter
+    def target_temp_k(self, value):
+        self._controller.target_temp_k = float(value)
+
+    @property
     def current_temp(self):
         temp_c = kelvin_to_celsius(self._controller.current_temp_k)
         max_temp_c = int(round(kelvin_to_celsius(self._config.max_temp_k)))
         # Preserve upper safety bound, but do not apply legacy SR700 low-temp floor.
         return int(round(min(max_temp_c, temp_c)))
+
+    @property
+    def current_temp_k(self):
+        return float(self._controller.current_temp_k)
 
     @property
     def time_remaining(self):
@@ -149,11 +161,27 @@ class LocalRoaster:
         self._controller.time_remaining_s = value
 
     @property
+    def time_remaining_s(self):
+        return self._controller.time_remaining_s
+
+    @time_remaining_s.setter
+    def time_remaining_s(self, value):
+        self._controller.time_remaining_s = value
+
+    @property
     def total_time(self):
         return self._controller.total_time_s
 
     @total_time.setter
     def total_time(self, value):
+        self._controller.total_time_s = value
+
+    @property
+    def total_time_s(self):
+        return self._controller.total_time_s
+
+    @total_time_s.setter
+    def total_time_s(self, value):
         self._controller.total_time_s = value
 
     @property
