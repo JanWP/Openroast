@@ -1,12 +1,8 @@
 # -*- coding: utf-8 -*-
 # Roastero, released under GPLv3
 
-import os
-import re
-import shutil
 import string
 
-from serial.tools import list_ports
 
 
 # def check_for_user_folder():

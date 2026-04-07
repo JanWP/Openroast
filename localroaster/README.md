@@ -61,7 +61,7 @@ Create `localroaster/drivers/default.py` that returns a `HardwareDriver` impleme
 from localroaster.controller import HardwareDriver
 
 class MyDriver(HardwareDriver):
-    def read_temperature_f(self) -> float:
+    def read_temperature_k(self) -> float:
         ...
 
     def set_heater(self, on: bool) -> None:
