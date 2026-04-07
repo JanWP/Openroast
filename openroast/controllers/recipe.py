@@ -53,9 +53,9 @@ class Recipe(object):
         else:
             return {}
 
-    def load_recipe_json(self, recipeJson):
-        # recipeJson is actually a dict...
-        normalized_recipe = recipe_to_celsius(recipeJson)
+    def load_recipe_json(self, recipe_json):
+        # recipe_json is actually a dict...
+        normalized_recipe = recipe_to_celsius(recipe_json)
         self.recipe_str.value = json.dumps(normalized_recipe).encode('utf_8')
         self.recipeLoaded.value = 1
 
@@ -82,19 +82,25 @@ class Recipe(object):
         return self.currentRecipeStep.value
 
     def get_current_fan_speed(self):
-        crnt_step = self.currentRecipeStep.value
-        return self._recipe()["steps"][crnt_step]["fanSpeed"]
+        current_step = self.currentRecipeStep.value
+        return self._recipe()["steps"][current_step]["fanSpeed"]
 
     def get_current_target_temp(self):
-        crnt_step = self.currentRecipeStep.value
-        if(self._recipe()["steps"][crnt_step].get("targetTemp")):
-            return self._recipe()["steps"][crnt_step]["targetTemp"]
+        current_step = self.currentRecipeStep.value
+        if(self._recipe()["steps"][current_step].get("targetTemp")):
+            return self._recipe()["steps"][current_step]["targetTemp"]
         else:
             return self._default_target_temp_c
 
+    def get_current_target_temp_c(self):
+        return self.get_current_target_temp()
+
     def get_current_section_time(self):
-        crnt_step = self.currentRecipeStep.value
-        return self._recipe()["steps"][crnt_step]["sectionTime"]
+        current_step = self.currentRecipeStep.value
+        return self._recipe()["steps"][current_step]["sectionTime"]
+
+    def get_current_section_time_s(self):
+        return self.get_current_section_time()
 
     def restart_current_recipe(self):
         self.currentRecipeStep.value = 0
@@ -109,9 +115,9 @@ class Recipe(object):
             return True
 
     def get_current_cooling_status(self):
-        crnt_step = self.currentRecipeStep.value
-        if(self._recipe()["steps"][crnt_step].get("cooling")):
-            return self._recipe()["steps"][crnt_step]["cooling"]
+        current_step = self.currentRecipeStep.value
+        if(self._recipe()["steps"][current_step].get("cooling")):
+            return self._recipe()["steps"][current_step]["cooling"]
         else:
             return False
 
@@ -132,21 +138,21 @@ class Recipe(object):
         self.roaster.fan_speed = 1
         self.roaster.time_remaining = 0
 
-    def set_roaster_settings(self, targetTemp, fanSpeed, sectionTime, cooling):
+    def set_roaster_settings(self, target_temp_c, fan_speed, section_time_s, cooling):
         if cooling:
             self.roaster.cool()
 
         # Prevent the roaster from starting when section time = 0 (ex clear)
-        if(not cooling and sectionTime > 0 and
+        if(not cooling and section_time_s > 0 and
            self.currentRecipeStep.value > 0):
             self.roaster.roast()
 
         self.roaster.target_temp = int(round(celsius_to_temperature_unit(
-            targetTemp,
+            target_temp_c,
             self._roaster_temperature_unit,
         )))
-        self.roaster.fan_speed = fanSpeed
-        self.roaster.time_remaining = sectionTime
+        self.roaster.fan_speed = fan_speed
+        self.roaster.time_remaining = section_time_s
 
     def load_current_section(self):
         self.set_roaster_settings(self.get_current_target_temp(),

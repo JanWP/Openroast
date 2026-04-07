@@ -4,7 +4,11 @@ import os
 import tempfile
 
 from openroast.controllers.recipe import Recipe
-from openroast.temperature import DEFAULT_TARGET_TEMPERATURE_C
+from openroast.temperature import (
+    DEFAULT_TARGET_TEMPERATURE_C,
+    RECIPE_UNIT_CELSIUS,
+    RECIPE_UNIT_KELVIN,
+)
 
 
 class FakeApp:
@@ -46,7 +50,20 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         )
 
         normalized = recipe.get_current_recipe()
-        self.assertEqual(normalized["temperatureUnit"], "C")
+        self.assertEqual(normalized["temperatureUnit"], RECIPE_UNIT_CELSIUS)
+        self.assertEqual(normalized["steps"][0]["targetTemp"], 100)
+
+    def test_load_recipe_json_accepts_kelvin_recipe_unit(self):
+        recipe = Recipe(roaster=FakeRoaster("C"), app=FakeApp())
+        recipe.load_recipe_json(
+            {
+                "temperatureUnit": RECIPE_UNIT_KELVIN,
+                "steps": [{"targetTemp": 373.15, "fanSpeed": 4, "sectionTime": 30}],
+            }
+        )
+
+        normalized = recipe.get_current_recipe()
+        self.assertEqual(normalized["temperatureUnit"], RECIPE_UNIT_CELSIUS)
         self.assertEqual(normalized["steps"][0]["targetTemp"], 100)
 
     def test_set_roaster_settings_converts_to_roaster_units_and_starts_roast(self):
@@ -55,7 +72,7 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
 
         # Section index > 0 enables roast() when sectionTime > 0 and not cooling.
         recipe.currentRecipeStep.value = 1
-        recipe.set_roaster_settings(targetTemp=100, fanSpeed=7, sectionTime=45, cooling=False)
+        recipe.set_roaster_settings(target_temp_c=100, fan_speed=7, section_time_s=45, cooling=False)
 
         self.assertEqual(roaster.target_temp, 212)
         self.assertEqual(roaster.fan_speed, 7)
@@ -68,7 +85,7 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         recipe = Recipe(roaster=roaster, app=FakeApp())
 
         recipe.currentRecipeStep.value = 1
-        recipe.set_roaster_settings(targetTemp=80, fanSpeed=9, sectionTime=60, cooling=True)
+        recipe.set_roaster_settings(target_temp_c=80, fan_speed=9, section_time_s=60, cooling=True)
 
         self.assertEqual(roaster.cool_calls, 1)
         self.assertEqual(roaster.roast_calls, 0)
@@ -88,7 +105,7 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         recipe = Recipe(roaster=FakeRoaster("C"), app=FakeApp())
         recipe.load_recipe_json(
             {
-                "temperatureUnit": "C",
+                "temperatureUnit": RECIPE_UNIT_CELSIUS,
                 "steps": [{"fanSpeed": 5, "sectionTime": 20}],
             }
         )
@@ -101,7 +118,7 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         recipe = Recipe(roaster=roaster, app=app)
         recipe.load_recipe_json(
             {
-                "temperatureUnit": "C",
+                "temperatureUnit": RECIPE_UNIT_CELSIUS,
                 "steps": [
                     {"targetTemp": 80, "fanSpeed": 3, "sectionTime": 20},
                     {"targetTemp": 100, "fanSpeed": 4, "sectionTime": 25},
@@ -122,7 +139,7 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         recipe = Recipe(roaster=roaster, app=FakeApp())
         recipe.load_recipe_json(
             {
-                "temperatureUnit": "C",
+                "temperatureUnit": RECIPE_UNIT_CELSIUS,
                 "steps": [{"targetTemp": 80, "fanSpeed": 3, "sectionTime": 20}],
             }
         )
@@ -155,9 +172,9 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
                 recipe.currentRecipeStep.value = case["step"]
 
                 recipe.set_roaster_settings(
-                    targetTemp=100,
-                    fanSpeed=5,
-                    sectionTime=case["section_time"],
+                    target_temp_c=100,
+                    fan_speed=5,
+                    section_time_s=case["section_time"],
                     cooling=case["cooling"],
                 )
 
@@ -178,7 +195,7 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
             with open(path2, "w", encoding="utf-8") as handle:
                 json.dump(
                     {
-                        "temperatureUnit": "C",
+                        "temperatureUnit": RECIPE_UNIT_CELSIUS,
                         "steps": [{"targetTemp": 95, "fanSpeed": 6, "sectionTime": 40}],
                     },
                     handle,
@@ -200,6 +217,26 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         finally:
             os.remove(path1)
             os.remove(path2)
+
+    def test_loading_legacy_recipe_does_not_rewrite_source_file(self):
+        roaster = FakeRoaster("C")
+        recipe = Recipe(roaster=roaster, app=FakeApp())
+
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        legacy = {"steps": [{"targetTemp": 212, "fanSpeed": 4, "sectionTime": 30}]}
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(legacy, handle)
+
+            recipe.load_recipe_file(path)
+            with open(path, encoding="utf-8") as handle:
+                persisted = json.load(handle)
+
+            self.assertEqual(persisted, legacy)
+            self.assertEqual(recipe.get_current_target_temp(), 100)
+        finally:
+            os.remove(path)
 
 
 if __name__ == "__main__":

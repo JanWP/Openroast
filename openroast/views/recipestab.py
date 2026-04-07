@@ -201,49 +201,49 @@ class RecipesTab(QtWidgets.QWidget):
     def load_recipe_file(self, filePath):
         """Used to load file from a path into selected recipe object."""
         with open(filePath, encoding='utf-8') as json_data:
-            recipeObject = json.load(json_data)
-        self.currentlySelectedRecipe = recipe_to_celsius(recipeObject)
+            recipe_object = json.load(json_data)
+        self.currentlySelectedRecipe = recipe_to_celsius(recipe_object)
         self.currentlySelectedRecipePath = filePath
         self.load_recipe_information(self.currentlySelectedRecipe)
 
-    def load_recipe_information(self, recipeObject):
+    def load_recipe_information(self, recipe_object):
         """Loads recipe information the into the right hand column fields.
         This method also populates the recipe steps table."""
-        self.nameLabel.setText(recipeObject["roastName"])
+        self.nameLabel.setText(recipe_object["roastName"])
         self.creatorLabel.setText("Created by " +
-            recipeObject["creator"])
+            recipe_object["creator"])
         self.roastTypeLabel.setText("Roast Type: " +
-            recipeObject["roastDescription"]["roastType"])
+            recipe_object["roastDescription"]["roastType"])
         self.beanRegionLabel.setText("Bean Region: " +
-            recipeObject["bean"]["region"])
+            recipe_object["bean"]["region"])
         self.beanCountryLabel.setText("Bean Country: " +
-            recipeObject["bean"]["country"])
-        self.descriptionBox.setText(recipeObject["roastDescription"]
+            recipe_object["bean"]["country"])
+        self.descriptionBox.setText(recipe_object["roastDescription"]
             ["description"])
-        self.currentBeanUrl = recipeObject["bean"]["source"]["link"]
+        self.currentBeanUrl = recipe_object["bean"]["source"]["link"]
 
         # Total Time
-        t = time.strftime("%M:%S", time.gmtime(recipeObject["totalTime"]))
-        self.totalTimeLabel.setText("Total Time: " + t + " minutes")
+        total_time_mmss = time.strftime("%M:%S", time.gmtime(recipe_object["totalTime"]))
+        self.totalTimeLabel.setText("Total Time: " + total_time_mmss + " minutes")
 
         # Steps spreadsheet
-        self.stepsTable.setRowCount(len(recipeObject["steps"]))
+        self.stepsTable.setRowCount(len(recipe_object["steps"]))
         self.stepsTable.setColumnCount(3)
         self.stepsTable.setHorizontalHeaderLabels(["Temperature (C)",
             "Fan Speed", "Section Time"])
 
-        for row in range(len(recipeObject["steps"])):
+        for row in range(len(recipe_object["steps"])):
 
             sectionTimeWidget = QtWidgets.QTableWidgetItem()
             sectionTempWidget = QtWidgets.QTableWidgetItem()
             sectionFanSpeedWidget = QtWidgets.QTableWidgetItem()
 
             sectionTimeWidget.setText(time.strftime("%M:%S",
-                time.gmtime(recipeObject["steps"][row]["sectionTime"])))
-            sectionFanSpeedWidget.setText(str(recipeObject["steps"][row]["fanSpeed"]))
+                time.gmtime(recipe_object["steps"][row]["sectionTime"])))
+            sectionFanSpeedWidget.setText(str(recipe_object["steps"][row]["fanSpeed"]))
 
-            if 'targetTemp' in recipeObject["steps"][row]:
-                sectionTempWidget.setText(f"{recipeObject['steps'][row]['targetTemp']} C")
+            if 'targetTemp' in recipe_object["steps"][row]:
+                sectionTempWidget.setText(f"{recipe_object['steps'][row]['targetTemp']} C")
             else:
                 sectionTempWidget.setText("Cooling")
 

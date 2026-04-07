@@ -118,11 +118,11 @@ class RoastGraphWidget():
         self._last_drawn_len = current_len
         self.graphCanvas.draw_idle()
 
-    def append_x(self, xCoord):
+    def append_x(self, temp_c):
         self.counter += 1
-        currentTime = datetime.datetime.fromtimestamp(self.counter)
-        self.graphXValueList.append(matplotlib.dates.date2num(currentTime))
-        self.graphYValueList.append(xCoord)
+        current_time = datetime.datetime.fromtimestamp(self.counter)
+        self.graphXValueList.append(matplotlib.dates.date2num(current_time))
+        self.graphYValueList.append(temp_c)
 
     def clear_graph(self):
         self.graphXValueList = []
@@ -165,10 +165,10 @@ class RoastGraphWidget():
                 if not self.graphXValueList:
                     return
                 init_time = matplotlib.dates.num2date(self.graphXValueList[0])
-                for x_val,y_val in zip(self.graphXValueList,self.graphYValueList):
+                for x_val, temp_c in zip(self.graphXValueList, self.graphYValueList):
                     x_time = matplotlib.dates.num2date(x_val)
                     elapsed_seconds = (x_time - init_time).seconds
-                    outfile.write("{0},{1}\n".format(elapsed_seconds, y_val))
+                    outfile.write("{0},{1}\n".format(elapsed_seconds, temp_c))
         except FileNotFoundError:
             # Occurs if file browser is canceled
             pass

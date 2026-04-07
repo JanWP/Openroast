@@ -142,16 +142,16 @@ class RoastTab(QtWidgets.QWidget):
 
         # Update current section progress bar.
         if(self.recipes.check_recipe_loaded()):
-            value = (
+            progress_pct = (
                 self.recipes.get_current_section_time() -
                 self.roaster.time_remaining
                 )
-            value = value / self.recipes.get_current_section_time()
-            value = round(value * 100)
+            progress_pct = progress_pct / self.recipes.get_current_section_time()
+            progress_pct = round(progress_pct * 100)
 
             bar = self.sectionBars[self.recipes.get_current_step_number()]
-            if bar.value() != value:
-                bar.setValue(value)
+            if bar.value() != progress_pct:
+                bar.setValue(progress_pct)
 
         # Check connection status of the openroast.roaster.
         if self.roaster.connected:
@@ -226,8 +226,8 @@ class RoastTab(QtWidgets.QWidget):
 
             for i in range(0, self.recipes.get_num_recipe_sections()):
                 # Calculate display time and generate label text.
-                time = self.recipes.get_section_time(i)
-                minutes, seconds = self.calc_display_time(time)
+                section_time_s = self.recipes.get_section_time(i)
+                minutes, seconds = self.calc_display_time(section_time_s)
                 labelText = (str(minutes) +  ":" + str(seconds) + "@" +
                     str(self.recipes.get_section_temp(i)) + "C")
 
@@ -254,7 +254,7 @@ class RoastTab(QtWidgets.QWidget):
                 progressBar.addWidget(bar, 0, i)
 
                 # Add stretch factor to column based upon minutes.
-                progressBar.setColumnStretch(i, time)
+                progressBar.setColumnStretch(i, section_time_s)
 
                 # Make the counter equal to i.
                 counter = i
@@ -275,10 +275,10 @@ class RoastTab(QtWidgets.QWidget):
         self.progressBar = self.create_progress_bar()
         self.layout.addLayout(self.progressBar, 1, 0, 1, 2, QtCore.Qt.AlignCenter)
 
-    def calc_display_time(self, time):
-        time = time / 60
-        minutes = math.floor((time))
-        seconds = int((time - math.floor(time)) * 60)
+    def calc_display_time(self, duration_s):
+        duration_min = duration_s / 60
+        minutes = math.floor((duration_min))
+        seconds = int((duration_min - math.floor(duration_min)) * 60)
 
         if(seconds == 0):
             seconds = '00'
@@ -440,10 +440,10 @@ class RoastTab(QtWidgets.QWidget):
             del blocker
 
     def update_target_temp(self):
-        value = self._roaster_temp_to_c(self.roaster.target_temp)
-        self._set_text_if_changed(self.targetTempLabel, str(value))
-        self._set_value_if_changed(self.tempSlider, value)
-        self._set_value_if_changed(self.tempSpinBox, value)
+        target_temp_c = self._roaster_temp_to_c(self.roaster.target_temp)
+        self._set_text_if_changed(self.targetTempLabel, str(target_temp_c))
+        self._set_value_if_changed(self.tempSlider, target_temp_c)
+        self._set_value_if_changed(self.tempSpinBox, target_temp_c)
 
     def update_target_temp_spin_box(self):
         value_c = self.tempSpinBox.value()
@@ -462,59 +462,59 @@ class RoastTab(QtWidgets.QWidget):
             self.roaster.target_temp = roaster_value
 
     def update_fan_info(self):
-        value = self.roaster.fan_speed
-        self._set_value_if_changed(self.fanSlider, value)
-        self._set_value_if_changed(self.fanSpeedSpinBox, value)
+        fan_speed = self.roaster.fan_speed
+        self._set_value_if_changed(self.fanSlider, fan_speed)
+        self._set_value_if_changed(self.fanSpeedSpinBox, fan_speed)
 
     def update_fan_speed_slider(self):
-        value = self.fanSlider.value()
-        self._set_value_if_changed(self.fanSpeedSpinBox, value)
-        if self.roaster.fan_speed != value:
-            self.roaster.fan_speed = value
+        fan_speed = self.fanSlider.value()
+        self._set_value_if_changed(self.fanSpeedSpinBox, fan_speed)
+        if self.roaster.fan_speed != fan_speed:
+            self.roaster.fan_speed = fan_speed
 
     def update_fan_spin_box(self):
-        value = self.fanSpeedSpinBox.value()
-        self._set_value_if_changed(self.fanSlider, value)
-        if self.roaster.fan_speed != value:
-            self.roaster.fan_speed = value
+        fan_speed = self.fanSpeedSpinBox.value()
+        self._set_value_if_changed(self.fanSlider, fan_speed)
+        if self.roaster.fan_speed != fan_speed:
+            self.roaster.fan_speed = fan_speed
 
     def set_section_time(self):
-        value = self.sectTimeSlider.value()
-        self._set_text_if_changed(self.sectionTimeLabel, time.strftime("%M:%S", time.gmtime(value)))
-        if self.roaster.time_remaining != value:
-            self.roaster.time_remaining = value
+        section_time_s = self.sectTimeSlider.value()
+        self._set_text_if_changed(self.sectionTimeLabel, time.strftime("%M:%S", time.gmtime(section_time_s)))
+        if self.roaster.time_remaining != section_time_s:
+            self.roaster.time_remaining = section_time_s
 
     def update_section_time(self):
-        value = self.roaster.time_remaining
-        self._set_value_if_changed(self.sectTimeSlider, value)
+        section_time_s = self.roaster.time_remaining
+        self._set_value_if_changed(self.sectTimeSlider, section_time_s)
 
         spin_time = QtCore.QTime.fromString(str(time.strftime("%H:%M:%S",
-            time.gmtime(value))))
+            time.gmtime(section_time_s))))
         self._set_time_if_changed(self.sectTimeSpinBox, spin_time)
 
         self._set_text_if_changed(self.sectionTimeLabel, str(time.strftime("%M:%S",
-            time.gmtime(value))))
+            time.gmtime(section_time_s))))
 
     def update_sect_time_spin_box(self):
-        value = QtCore.QTime(0, 0, 0).secsTo(self.sectTimeSpinBox.time())
-        self._set_text_if_changed(self.sectionTimeLabel, str(time.strftime("%M:%S", time.gmtime(value))))
+        section_time_s = QtCore.QTime(0, 0, 0).secsTo(self.sectTimeSpinBox.time())
+        self._set_text_if_changed(self.sectionTimeLabel, str(time.strftime("%M:%S", time.gmtime(section_time_s))))
 
-        self._set_value_if_changed(self.sectTimeSlider, value)
+        self._set_value_if_changed(self.sectTimeSlider, section_time_s)
 
-        if self.roaster.time_remaining != value:
-            self.roaster.time_remaining = value
+        if self.roaster.time_remaining != section_time_s:
+            self.roaster.time_remaining = section_time_s
 
     def update_sect_time_slider(self):
-        value = self.sectTimeSlider.value()
+        section_time_s = self.sectTimeSlider.value()
         self._set_text_if_changed(self.sectionTimeLabel, str(time.strftime("%M:%S",
-            time.gmtime(value))))
+            time.gmtime(section_time_s))))
 
         spin_time = QtCore.QTime.fromString(str(time.strftime("%H:%M:%S",
-            time.gmtime(value))))
+            time.gmtime(section_time_s))))
         self._set_time_if_changed(self.sectTimeSpinBox, spin_time)
 
-        if self.roaster.time_remaining != value:
-            self.roaster.time_remaining = value
+        if self.roaster.time_remaining != section_time_s:
+            self.roaster.time_remaining = section_time_s
 
     def update_total_time(self):
         self._set_text_if_changed(self.totalTimeLabel, str(time.strftime("%M:%S",
