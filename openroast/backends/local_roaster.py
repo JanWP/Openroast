@@ -29,14 +29,16 @@ class LocalRoaster:
         self,
         update_data_func=None,
         state_transition_func=None,
+        heater_output_func=None,
         thermostat=True,
         kp=0.06,
         ki=0.0075,
         kd=0.01,
         heater_segments=8,
         force_mock=False,
+        pwm_tick_s=None,
     ):
-        self._config = ControllerConfig(
+        config_kwargs = dict(
             thermostat=thermostat,
             kp=kp,
             ki=ki,
@@ -44,6 +46,9 @@ class LocalRoaster:
             min_display_temp_k=celsius_to_kelvin(self.temperature_min_c),
             max_temp_k=celsius_to_kelvin(self.temperature_max_c),
         )
+        if pwm_tick_s is not None:
+            config_kwargs["pwm_tick_s"] = float(pwm_tick_s)
+        self._config = ControllerConfig(**config_kwargs)
         self._controller = create_controller(config=self._config, force_mock=force_mock)
         self._connect_state = 0
         self._listeners_registered = False
@@ -51,17 +56,31 @@ class LocalRoaster:
         self._stop_callbacks = threading.Event()
         self._update_event = threading.Event()
         self._state_transition_event = threading.Event()
+        self._heater_output_event = threading.Event()
+        self._heater_output_state = False
+        self._heater_level_event = threading.Event()
+        self._heater_level_state = 0
 
         self._update_data_func = update_data_func
         self._state_transition_func = state_transition_func
+        self._heater_output_func = heater_output_func
+        self._heater_level_func = None
         self._update_thread = None
         self._state_transition_thread = None
+        self._heater_output_thread = None
+        self._heater_level_thread = None
 
     def _register_controller_listeners(self):
         if self._listeners_registered:
             return
         self._controller.add_telemetry_listener(self._on_telemetry)
         self._controller.set_state_transition_callback(self._on_state_transition)
+        add_heater_listener = getattr(self._controller, "add_heater_output_listener", None)
+        if callable(add_heater_listener):
+            add_heater_listener(self._on_heater_output_changed)
+        add_heater_level_listener = getattr(self._controller, "add_heater_level_listener", None)
+        if callable(add_heater_level_listener):
+            add_heater_level_listener(self._on_heater_level_changed)
         self._listeners_registered = True
 
     def _start_callback_threads(self):
@@ -83,6 +102,22 @@ class LocalRoaster:
                 daemon=True,
             )
             self._state_transition_thread.start()
+        if self._heater_output_func is not None:
+            self._heater_output_thread = threading.Thread(
+                target=self._run_event_callback,
+                args=(self._heater_output_event, lambda: self._heater_output_func(self._heater_output_state)),
+                name="openroast-local-heater-output",
+                daemon=True,
+            )
+            self._heater_output_thread.start()
+        if self._heater_level_func is not None:
+            self._heater_level_thread = threading.Thread(
+                target=self._run_event_callback,
+                args=(self._heater_level_event, lambda: self._heater_level_func(self._heater_level_state)),
+                name="openroast-local-heater-level",
+                daemon=True,
+            )
+            self._heater_level_thread.start()
         self._callback_threads_started = True
 
     def _run_event_callback(self, event, callback):
@@ -100,6 +135,14 @@ class LocalRoaster:
 
     def _on_state_transition(self):
         self._state_transition_event.set()
+
+    def _on_heater_output_changed(self, heater_on):
+        self._heater_output_state = bool(heater_on)
+        self._heater_output_event.set()
+
+    def _on_heater_level_changed(self, heater_level):
+        self._heater_level_state = int(heater_level)
+        self._heater_level_event.set()
 
     @property
     def connected(self):
@@ -229,6 +272,36 @@ class LocalRoaster:
         self._state_transition_func = func
         return True
 
+    def set_heater_output_func(self, func):
+        self._heater_output_func = func
+        if self._callback_threads_started and self._heater_output_thread is None and func is not None:
+            self._heater_output_thread = threading.Thread(
+                target=self._run_event_callback,
+                args=(self._heater_output_event, lambda: self._heater_output_func(self._heater_output_state)),
+                name="openroast-local-heater-output",
+                daemon=True,
+            )
+            self._heater_output_thread.start()
+        if func is not None:
+            self._heater_output_state = bool(self._controller.heater_output)
+            self._heater_output_event.set()
+        return True
+
+    def set_heater_level_func(self, func):
+        self._heater_level_func = func
+        if self._callback_threads_started and self._heater_level_thread is None and func is not None:
+            self._heater_level_thread = threading.Thread(
+                target=self._run_event_callback,
+                args=(self._heater_level_event, lambda: self._heater_level_func(self._heater_level_state)),
+                name="openroast-local-heater-level",
+                daemon=True,
+            )
+            self._heater_level_thread.start()
+        if func is not None:
+            self._heater_level_state = int(self._controller.heater_level)
+            self._heater_level_event.set()
+        return True
+
     def auto_connect(self):
         self._connect_state = self.CS_CONNECTING
         self._register_controller_listeners()
@@ -240,4 +313,6 @@ class LocalRoaster:
         self._stop_callbacks.set()
         self._update_event.set()
         self._state_transition_event.set()
+        self._heater_output_event.set()
+        self._heater_level_event.set()
         self._controller.shutdown()

@@ -15,8 +15,12 @@ from openroast.views import aboutwindow
 from openroast.version import __version__
 
 class MainWindow(QtWidgets.QMainWindow):
+    heaterOutputChanged = QtCore.pyqtSignal(bool)
+    heaterLevelChanged = QtCore.pyqtSignal(int)
+
     def __init__(self, recipes, roaster, compact_ui=False, fullscreen=False):
         super(MainWindow, self).__init__()
+        self._heaterLedOn = None
 
         # Define main window for the application.
         self.setWindowTitle('Openroast v%s' % __version__)
@@ -41,11 +45,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.create_shortcuts()
 
         self.apply_window_mode()
-
-        self._heaterDebugTimer = QtCore.QTimer(self)
-        self._heaterDebugTimer.setInterval(200)
-        self._heaterDebugTimer.timeout.connect(self.update_heater_debug_indicators)
-        self._heaterDebugTimer.start()
+        self.heaterOutputChanged.connect(self._apply_heater_led_state)
+        self.heaterLevelChanged.connect(self._apply_heater_level_text)
+        register_heater_cb = getattr(self.roaster, "set_heater_output_func", None)
+        if callable(register_heater_cb):
+            register_heater_cb(self.on_heater_output_changed)
+        register_heater_level_cb = getattr(self.roaster, "set_heater_level_func", None)
+        if callable(register_heater_level_cb):
+            register_heater_level_cb(self.on_heater_level_changed)
         self.update_heater_debug_indicators()
 
 
@@ -314,12 +321,29 @@ class MainWindow(QtWidgets.QMainWindow):
 
         return heater_level, bool(heater_output)
 
+    def on_heater_output_changed(self, heater_on):
+        self.heaterOutputChanged.emit(bool(heater_on))
+
+    def on_heater_level_changed(self, heater_level):
+        self.heaterLevelChanged.emit(int(heater_level))
+
     def update_heater_debug_indicators(self):
         if not hasattr(self, "heaterDebugLabel") or not hasattr(self, "heaterDebugLed"):
             return
 
         heater_level, heater_on = self._read_heater_debug_state()
+        self._apply_heater_level_text(heater_level)
+        self._apply_heater_led_state(heater_on)
+
+    def _apply_heater_level_text(self, heater_level):
+        heater_level = int(max(0, min(100, int(heater_level))))
         self.heaterDebugLabel.setText(f"Heater: {heater_level:3d}%")
+
+    def _apply_heater_led_state(self, heater_on):
+        heater_on = bool(heater_on)
+        if getattr(self, "_heaterLedOn", None) is heater_on:
+            return
+        self._heaterLedOn = heater_on
 
         if heater_on:
             self.heaterDebugLed.setStyleSheet(
@@ -340,6 +364,4 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_heater_debug_indicators()
 
     def closeEvent(self, event):
-        if hasattr(self, "_heaterDebugTimer"):
-            self._heaterDebugTimer.stop()
         self.roaster.disconnect()
