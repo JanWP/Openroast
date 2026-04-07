@@ -21,7 +21,11 @@ class FakeController:
 
         self.telemetry_listener = None
         self.state_transition_cb = None
+        self.heater_output_listener = None
+        self.heater_level_listener = None
         self.add_telemetry_listener_calls = 0
+        self.add_heater_output_listener_calls = 0
+        self.add_heater_level_listener_calls = 0
         self.set_state_transition_callback_calls = 0
 
         self.connect_calls = 0
@@ -38,6 +42,14 @@ class FakeController:
     def set_state_transition_callback(self, func):
         self.set_state_transition_callback_calls += 1
         self.state_transition_cb = func
+
+    def add_heater_output_listener(self, func):
+        self.add_heater_output_listener_calls += 1
+        self.heater_output_listener = func
+
+    def add_heater_level_listener(self, func):
+        self.add_heater_level_listener_calls += 1
+        self.heater_level_listener = func
 
     def connect(self):
         self.connect_calls += 1
@@ -145,11 +157,15 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertEqual(fake_controller.connect_calls, 1)
         self.assertEqual(roaster.connect_state, 0)
         self.assertEqual(fake_controller.add_telemetry_listener_calls, 1)
+        self.assertEqual(fake_controller.add_heater_output_listener_calls, 1)
+        self.assertEqual(fake_controller.add_heater_level_listener_calls, 1)
         self.assertEqual(fake_controller.set_state_transition_callback_calls, 1)
 
         roaster.auto_connect()
         self.assertEqual(fake_controller.connect_calls, 2)
         self.assertEqual(fake_controller.add_telemetry_listener_calls, 1)
+        self.assertEqual(fake_controller.add_heater_output_listener_calls, 1)
+        self.assertEqual(fake_controller.add_heater_level_listener_calls, 1)
         self.assertEqual(fake_controller.set_state_transition_callback_calls, 1)
 
     def test_auto_connect_with_callbacks_starts_threads_once(self):
@@ -203,6 +219,80 @@ class LocalRoasterAdapterTests(unittest.TestCase):
 
         fake_controller.connected = True
         self.assertFalse(roaster.set_state_transition_func(lambda: None))
+
+    def test_set_heater_output_func_allows_post_connect_registration(self):
+        fake_controller = FakeController()
+
+        class FakeThread:
+            started_count = 0
+
+            def __init__(self, *args, **kwargs):
+                self.target = kwargs.get("target")
+                self.args = kwargs.get("args")
+
+            def start(self):
+                FakeThread.started_count += 1
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller), patch(
+            "openroast.backends.local_roaster.threading.Thread", FakeThread
+        ):
+            roaster = LocalRoaster()
+            roaster.auto_connect()
+            self.assertTrue(roaster.set_heater_output_func(lambda _value: None))
+
+        self.assertEqual(FakeThread.started_count, 1)
+
+    def test_heater_output_listener_sets_adapter_event(self):
+        fake_controller = FakeController()
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster()
+
+        roaster.auto_connect()
+        self.assertIsNotNone(fake_controller.heater_output_listener)
+        self.assertFalse(roaster._heater_output_event.is_set())
+
+        fake_controller.heater_output_listener(True)
+
+        self.assertTrue(roaster._heater_output_event.is_set())
+        self.assertTrue(roaster._heater_output_state)
+
+    def test_set_heater_level_func_allows_post_connect_registration(self):
+        fake_controller = FakeController()
+
+        class FakeThread:
+            started_count = 0
+
+            def __init__(self, *args, **kwargs):
+                self.target = kwargs.get("target")
+                self.args = kwargs.get("args")
+
+            def start(self):
+                FakeThread.started_count += 1
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller), patch(
+            "openroast.backends.local_roaster.threading.Thread", FakeThread
+        ):
+            roaster = LocalRoaster()
+            roaster.auto_connect()
+            self.assertTrue(roaster.set_heater_level_func(lambda _value: None))
+
+        self.assertEqual(FakeThread.started_count, 1)
+
+    def test_heater_level_listener_sets_adapter_event(self):
+        fake_controller = FakeController()
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster()
+
+        roaster.auto_connect()
+        self.assertIsNotNone(fake_controller.heater_level_listener)
+        self.assertFalse(roaster._heater_level_event.is_set())
+
+        fake_controller.heater_level_listener(67)
+
+        self.assertTrue(roaster._heater_level_event.is_set())
+        self.assertEqual(roaster._heater_level_state, 67)
 
 
 if __name__ == "__main__":
