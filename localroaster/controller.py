@@ -40,9 +40,19 @@ class PID:
         self._integral = 0.0
         self._prev_error = 0.0
 
+    def reset(self) -> None:
+        """Clear accumulated state for a fresh control session."""
+        self._integral = 0.0
+        self._prev_error = 0.0
+
     def update(self, current: float, target: float) -> float:
         error = target - current
         self._integral += error
+        # Anti-windup: clamp integral so that ki * integral stays within output range.
+        if self.ki != 0.0:
+            integral_max = self.output_max / self.ki
+            integral_min = self.output_min / self.ki
+            self._integral = max(integral_min, min(integral_max, self._integral))
         derivative = error - self._prev_error
         self._prev_error = error
         output = self.kp * error + self.ki * self._integral + self.kd * derivative
@@ -343,8 +353,20 @@ class RoasterController:
                 target_temp_k = self._target_temp_k
                 heat_setting = self._heat_setting
                 fan_speed = self._fan_speed
+                max_temp_k = self.config.max_temp_k
 
-                if thermostat:
+                # Over-temperature safety: force heater off regardless of mode.
+                if current_temp_k > max_temp_k:
+                    new_heater_level = 0
+                    self._heat_setting = 0
+                    if self._fault is None:
+                        self._fault = "over-temperature safety cutoff"
+                    logging.warning(
+                        "localroaster: over-temperature cutoff at %.1f K (max %.1f K)",
+                        current_temp_k,
+                        max_temp_k,
+                    )
+                elif thermostat:
                     if state == RoasterState.ROASTING:
                         pid_percent = self._pid.update(self._current_temp_k, target_temp_k)
                         new_heater_level = int(round(pid_percent))
@@ -353,9 +375,12 @@ class RoasterController:
                         new_heater_level = 0
                         self._heat_setting = 0
                 else:
-                    # Map legacy heat setting 0..3 to 0..100% duty for PWM.
-                    duty_percent = (heat_setting * 100.0) / 3.0
-                    new_heater_level = int(round(duty_percent))
+                    # Non-thermostat: only heat when actively roasting.
+                    if state == RoasterState.ROASTING:
+                        duty_percent = (heat_setting * 100.0) / 3.0
+                        new_heater_level = int(round(duty_percent))
+                    else:
+                        new_heater_level = 0
 
                 heater_should_off = new_heater_level <= 0
 
