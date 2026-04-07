@@ -1,4 +1,7 @@
+import atexit
 import logging
+import os
+import signal
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -120,12 +123,59 @@ class RoasterController:
             output_min=0,
         )
         self._pwm = DutyCyclePWM(cycle_s=self.config.pwm_cycle_s)
+        self._exit_handler_registered = False
+
+    # ------------------------------------------------------------------
+    # Emergency shutdown on unexpected exit (atexit / SIGTERM)
+    # ------------------------------------------------------------------
+
+    def _register_exit_handler(self) -> None:
+        """Register atexit + SIGTERM hooks that force the heater off.
+
+        Only signals that Python can handle are covered (SIGTERM, SIGINT).
+        A hard kill (SIGKILL / power loss) cannot be caught in software.
+        """
+        if self._exit_handler_registered:
+            return
+        self._exit_handler_registered = True
+
+        atexit.register(self._emergency_heater_off)
+
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            prev = signal.getsignal(sig)
+            # Wrap any previous handler so we don't swallow it.
+
+            def _handler(signum, frame, _prev=prev):  # noqa: E301
+                self._emergency_heater_off()
+                if callable(_prev) and _prev not in (signal.SIG_DFL, signal.SIG_IGN):
+                    _prev(signum, frame)
+                elif _prev == signal.SIG_DFL:
+                    # Re-raise with default action so the process still exits.
+                    signal.signal(signum, signal.SIG_DFL)
+                    os.kill(os.getpid(), signum)
+
+            try:
+                signal.signal(sig, _handler)
+            except (OSError, ValueError):
+                # signal.signal() must be called from the main thread;
+                # if connect() is called from a worker thread, skip gracefully.
+                logging.debug(
+                    "localroaster: cannot register %s handler from non-main thread", sig.name
+                )
+
+    def _emergency_heater_off(self) -> None:
+        """Best-effort attempt to turn the heater off during process teardown."""
+        try:
+            self.hardware.set_heater(False)
+        except Exception:  # pragma: no cover - last-resort safety
+            pass
 
     def connect(self) -> None:
         with self._lock:
             self._connected = True
             if self._state == RoasterState.DISCONNECTED:
                 self._state = RoasterState.IDLE
+        self._register_exit_handler()
         if not self._threads_started:
             self._threads_started = True
             self._stop_event.clear()
