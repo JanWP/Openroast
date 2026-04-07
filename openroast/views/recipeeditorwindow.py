@@ -14,8 +14,11 @@ from PyQt5 import QtWidgets
 from openroast import tools
 from openroast import utils as utils
 from openroast.temperature import (
+    DEFAULT_TARGET_TEMPERATURE_C,
     MAX_TEMPERATURE_C,
     MIN_TEMPERATURE_C,
+    RECIPE_FORMAT_VERSION,
+    RECIPE_UNIT_CELSIUS,
     TEMPERATURE_STEP_C,
     recipe_to_celsius,
 )
@@ -33,9 +36,10 @@ class RecipeEditor(QtWidgets.QDialog):
         self.create_ui()
 
         self.recipe = {}
-        self.recipe["steps"] = [{'fanSpeed': 5, 'targetTemp': 150,
+        self.recipe["steps"] = [{'fanSpeed': 5, 'targetTemp': DEFAULT_TARGET_TEMPERATURE_C,
             'sectionTime': 0}]
-        self.recipe["temperatureUnit"] = "C"
+        self.recipe["temperatureUnit"] = RECIPE_UNIT_CELSIUS
+        self.recipe["formatVersion"] = RECIPE_FORMAT_VERSION
 
         if recipeLocation:
             self.load_recipe_file(recipeLocation)
@@ -368,7 +372,11 @@ class RecipeEditor(QtWidgets.QDialog):
         newSteps = steps
 
         # insert step
-        newSteps.insert(row+1, {'fanSpeed': 5, 'targetTemp': 150, 'sectionTime': 0})
+        newSteps.insert(row+1, {
+            'fanSpeed': 5,
+            'targetTemp': DEFAULT_TARGET_TEMPERATURE_C,
+            'sectionTime': 0,
+        })
 
         # Rebuild table with new steps
         self.rebuild_recipe_steps_table(newSteps)
@@ -426,7 +434,8 @@ class RecipeEditor(QtWidgets.QDialog):
         # Create Dictionary with all the new recipe information
         self.newRecipe = {}
         self.newRecipe["roastName"] = self.recipeName.text()
-        self.newRecipe["temperatureUnit"] = "C"
+        self.newRecipe["formatVersion"] = RECIPE_FORMAT_VERSION
+        self.newRecipe["temperatureUnit"] = RECIPE_UNIT_CELSIUS
         self.newRecipe["steps"] = self.get_current_table_values()
         self.newRecipe["roastDescription"] = {}
         self.newRecipe["roastDescription"]["roastType"] = self.recipeRoastType.text()

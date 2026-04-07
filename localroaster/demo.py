@@ -11,7 +11,7 @@ def main() -> None:
 
     controller = create_controller(ControllerConfig())
     controller.connect()
-    controller.target_temp_f = 420
+    controller.target_temp_k = 488.71
     controller.fan_speed = 5
     controller.time_remaining_s = max(0, args.seconds - 3)
     controller.roast()
@@ -20,9 +20,11 @@ def main() -> None:
     try:
         while time.monotonic() - start < args.seconds:
             telemetry = controller.telemetry()
+            current_temp_c = telemetry.current_temp_k - 273.15
+            target_temp_c = telemetry.target_temp_k - 273.15
             print(
-                f"state={telemetry.state} temp={telemetry.current_temp_f:6.1f}F "
-                f"target={telemetry.target_temp_f:3d} fan={telemetry.fan_speed} "
+                f"state={telemetry.state} temp={current_temp_c:6.1f}C "
+                f"target={target_temp_c:6.1f}C fan={telemetry.fan_speed} "
                 f"heater_on={int(telemetry.heater_output)} heater_level={telemetry.heater_level} "
                 f"remaining={telemetry.time_remaining_s:3d}s total={telemetry.total_time_s:3d}s"
             )

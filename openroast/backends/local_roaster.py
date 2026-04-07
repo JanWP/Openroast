@@ -12,8 +12,8 @@ from localroaster import ControllerConfig, RoasterState, create_controller
 from openroast.temperature import (
     MAX_TEMPERATURE_C,
     MIN_TEMPERATURE_C,
-    celsius_to_fahrenheit,
-    fahrenheit_to_celsius,
+    celsius_to_kelvin,
+    kelvin_to_celsius,
 )
 
 
@@ -41,8 +41,8 @@ class LocalRoaster:
             kp=kp,
             ki=ki,
             kd=kd,
-            min_display_temp_f=celsius_to_fahrenheit(self.temperature_min_c),
-            max_temp_f=celsius_to_fahrenheit(self.temperature_max_c),
+            min_display_temp_k=celsius_to_kelvin(self.temperature_min_c),
+            max_temp_k=celsius_to_kelvin(self.temperature_max_c),
         )
         self._controller = create_controller(config=self._config, force_mock=force_mock)
         self._connect_state = 0
@@ -127,16 +127,16 @@ class LocalRoaster:
 
     @property
     def target_temp(self):
-        return int(round(fahrenheit_to_celsius(self._controller.target_temp_f)))
+        return int(round(kelvin_to_celsius(self._controller.target_temp_k)))
 
     @target_temp.setter
     def target_temp(self, value):
-        self._controller.target_temp_f = int(round(celsius_to_fahrenheit(value)))
+        self._controller.target_temp_k = celsius_to_kelvin(value)
 
     @property
     def current_temp(self):
-        temp_c = fahrenheit_to_celsius(self._controller.current_temp_f)
-        max_temp_c = int(round(fahrenheit_to_celsius(self._config.max_temp_f)))
+        temp_c = kelvin_to_celsius(self._controller.current_temp_k)
+        max_temp_c = int(round(kelvin_to_celsius(self._config.max_temp_k)))
         # Preserve upper safety bound, but do not apply legacy SR700 low-temp floor.
         return int(round(min(max_temp_c, temp_c)))
 

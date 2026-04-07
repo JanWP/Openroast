@@ -19,17 +19,17 @@ class ControllerConfig:
     kd: float = 0.01
     sample_period_s: float = 0.5
     pwm_cycle_s: float = 1.0
-    ambient_temp_f: float = 72.0
-    max_temp_f: float = 550.0
-    min_display_temp_f: float = 150.0
+    ambient_temp_k: float = 295.15
+    max_temp_k: float = 560.93
+    min_display_temp_k: float = 338.71
 
 
 @dataclass(slots=True)
 class Telemetry:
     state: RoasterState
     connected: bool
-    current_temp_f: float
-    target_temp_f: int
+    current_temp_k: float
+    target_temp_k: float
     fan_speed: int
     heater_output: bool
     heater_level: int

@@ -39,10 +39,10 @@ class Max31855SsrDriver(HardwareDriver):
         self._heater.direction = digitalio.Direction.OUTPUT
         self._heater.value = (not self._heater_active_high)
 
-    def read_temperature_f(self) -> float:
+    def read_temperature_k(self) -> float:
         with self._lock:
             temp_c = self._sensor.temperature
-        return float(temp_c) * 9.0 / 5.0 + 32.0
+        return float(temp_c) + 273.15
 
     def set_heater(self, on: bool) -> None:
         with self._lock:

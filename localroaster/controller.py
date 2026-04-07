@@ -15,7 +15,7 @@ class HardwareDriver(ABC):
     """
 
     @abstractmethod
-    def read_temperature_f(self) -> float:
+    def read_temperature_k(self) -> float:
         raise NotImplementedError
 
     @abstractmethod
@@ -87,8 +87,8 @@ class RoasterController:
 
         self._state = RoasterState.DISCONNECTED
         self._connected = False
-        self._target_temp_f = int(self.config.min_display_temp_f)
-        self._current_temp_f = self.config.ambient_temp_f
+        self._target_temp_k = float(self.config.min_display_temp_k)
+        self._current_temp_k = float(self.config.ambient_temp_k)
         self._fan_speed = 1
         self._heat_setting = 0
         self._heater_level = 0
@@ -146,8 +146,8 @@ class RoasterController:
             return Telemetry(
                 state=self._state,
                 connected=self._connected,
-                current_temp_f=self._current_temp_f,
-                target_temp_f=self._target_temp_f,
+                current_temp_k=self._current_temp_k,
+                target_temp_k=self._target_temp_k,
                 fan_speed=self._fan_speed,
                 heater_output=self._heater_output,
                 heater_level=self._heater_level,
@@ -167,21 +167,21 @@ class RoasterController:
             return self._state
 
     @property
-    def current_temp_f(self) -> float:
+    def current_temp_k(self) -> float:
         with self._lock:
-            return self._current_temp_f
+            return self._current_temp_k
 
     @property
-    def target_temp_f(self) -> int:
+    def target_temp_k(self) -> float:
         with self._lock:
-            return self._target_temp_f
+            return self._target_temp_k
 
-    @target_temp_f.setter
-    def target_temp_f(self, value: int) -> None:
-        if value < self.config.min_display_temp_f or value > self.config.max_temp_f:
-            raise ValueError("target_temp_f out of range")
+    @target_temp_k.setter
+    def target_temp_k(self, value: float) -> None:
+        if value < self.config.min_display_temp_k or value > self.config.max_temp_k:
+            raise ValueError("target_temp_k out of range")
         with self._lock:
-            self._target_temp_f = int(value)
+            self._target_temp_k = float(value)
 
     @property
     def fan_speed(self) -> int:
@@ -272,29 +272,29 @@ class RoasterController:
     def _control_loop(self) -> None:
         while not self._stop_event.is_set():
             start = time.monotonic()
-            current_temp = 0.0
+            current_temp_k = 0.0
 
             with self._lock:
-                current_temp = self._current_temp_f
+                current_temp_k = self._current_temp_k
 
             try:
-                current_temp = self.hardware.read_temperature_f()
+                current_temp_k = self.hardware.read_temperature_k()
             except Exception as exc:
-                logging.warning("localroaster: read_temperature_f failed: %s", exc)
+                logging.warning("localroaster: read_temperature_k failed: %s", exc)
                 with self._lock:
                     self._fault = str(exc)
 
             with self._lock:
-                self._current_temp_f = current_temp
+                self._current_temp_k = current_temp_k
                 state = self._state
                 thermostat = self.config.thermostat
-                target_temp = self._target_temp_f
+                target_temp_k = self._target_temp_k
                 heat_setting = self._heat_setting
                 fan_speed = self._fan_speed
 
                 if thermostat:
                     if state == RoasterState.ROASTING:
-                        pid_percent = self._pid.update(self._current_temp_f, target_temp)
+                        pid_percent = self._pid.update(self._current_temp_k, target_temp_k)
                         self._heater_level = int(round(pid_percent))
                         heater_on = self._pwm.output(self._heater_level, now=start)
                         self._heater_output = heater_on
