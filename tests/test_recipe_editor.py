@@ -24,6 +24,16 @@ class RecipeEditorTests(unittest.TestCase):
 
             headers = [editor.recipeSteps.horizontalHeaderItem(i).text() for i in range(4)]
             self.assertEqual(headers, [f"T ({chr(176)}C)", "Fan", "Duration", "Modify"])
+
+            corner_widget = editor.editorTabs.cornerWidget(QtCore.Qt.TopRightCorner)
+            corner_layout = corner_widget.layout()
+            corner_texts = [corner_layout.itemAt(i).widget().text() for i in range(corner_layout.count())]
+            self.assertEqual(corner_texts, ["CLOSE", "SAVE", "SAVE AS"])
+
+            self.assertEqual(editor.closeButton.width(), editor.CORNER_BUTTON_WIDTH_CLOSE)
+            self.assertEqual(editor.saveButton.width(), editor.CORNER_BUTTON_WIDTH_SAVE)
+            self.assertEqual(editor.saveAsButton.width(), editor.CORNER_BUTTON_WIDTH_SAVE_AS)
+            self.assertEqual(editor.closeButton.height(), editor.CORNER_BUTTON_HEIGHT)
         finally:
             editor.close()
             self._app.processEvents()
@@ -145,6 +155,67 @@ class RecipeEditorTests(unittest.TestCase):
         finally:
             editor.close()
             self._app.processEvents()
+
+    def test_save_as_writes_to_selected_path(self):
+        editor = RecipeEditor(compact_ui=False)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            selected = os.path.join(temp_dir, "saved-by-save-as.json")
+            original = QtWidgets.QFileDialog.getSaveFileName
+            QtWidgets.QFileDialog.getSaveFileName = staticmethod(
+                lambda *_args, **_kwargs: (selected, "Recipe Files (*.json)")
+            )
+            try:
+                editor.save_recipe_as()
+            finally:
+                QtWidgets.QFileDialog.getSaveFileName = original
+
+            self.assertEqual(editor.recipe.get("file"), selected)
+            self.assertTrue(os.path.exists(selected))
+
+            with open(selected, encoding="utf-8") as handle:
+                saved = json.load(handle)
+            self.assertIn("steps", saved)
+
+        editor.close()
+        self._app.processEvents()
+
+    def test_save_as_cancel_does_not_change_file(self):
+        editor = RecipeEditor(compact_ui=False)
+        editor.recipe["file"] = "existing.json"
+        original = QtWidgets.QFileDialog.getSaveFileName
+        QtWidgets.QFileDialog.getSaveFileName = staticmethod(
+            lambda *_args, **_kwargs: ("", "")
+        )
+        try:
+            editor.save_recipe_as()
+        finally:
+            QtWidgets.QFileDialog.getSaveFileName = original
+
+        self.assertEqual(editor.recipe.get("file"), "existing.json")
+        editor.close()
+        self._app.processEvents()
+
+    def test_save_as_dialog_defaults_to_my_recipes_path(self):
+        editor = RecipeEditor(compact_ui=False)
+        editor.recipe["file"] = "/tmp/from-elsewhere.json"
+        editor.recipeName.setText("My Default")
+
+        captured = {}
+        original = QtWidgets.QFileDialog.getSaveFileName
+
+        def fake_get_save_file_name(_parent, _title, start_path, _filter):
+            captured["start_path"] = start_path
+            return "", ""
+
+        QtWidgets.QFileDialog.getSaveFileName = staticmethod(fake_get_save_file_name)
+        try:
+            editor.save_recipe_as()
+        finally:
+            QtWidgets.QFileDialog.getSaveFileName = original
+
+        self.assertEqual(captured["start_path"], editor._default_recipe_path())
+        editor.close()
+        self._app.processEvents()
 
 
 if __name__ == "__main__":

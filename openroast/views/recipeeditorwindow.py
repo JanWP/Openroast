@@ -126,6 +126,12 @@ class RecipeEditor(QtWidgets.QDialog):
     TAB_PADDING_V = 6
     TAB_PADDING_H = 12
 
+    # Corner action button sizing
+    CORNER_BUTTON_HEIGHT = 30
+    CORNER_BUTTON_WIDTH_CLOSE = 72
+    CORNER_BUTTON_WIDTH_SAVE = 72
+    CORNER_BUTTON_WIDTH_SAVE_AS = 92
+
     # Curve panel minimum heights
     CURVE_MIN_HEIGHT_COMPACT = 220
     CURVE_MIN_HEIGHT_DEFAULT = 360
@@ -205,13 +211,31 @@ class RecipeEditor(QtWidgets.QDialog):
 
         self.closeButton = QtWidgets.QPushButton("CLOSE")
         self.saveButton = QtWidgets.QPushButton("SAVE")
+        self.saveAsButton = QtWidgets.QPushButton("SAVE AS")
         self.closeButton.setObjectName("smallButton")
         self.saveButton.setObjectName("smallButton")
+        self.saveAsButton.setObjectName("smallButton")
+
+        self.closeButton.setFixedSize(
+            self.CORNER_BUTTON_WIDTH_CLOSE,
+            self.CORNER_BUTTON_HEIGHT,
+        )
+        self.saveButton.setFixedSize(
+            self.CORNER_BUTTON_WIDTH_SAVE,
+            self.CORNER_BUTTON_HEIGHT,
+        )
+        self.saveAsButton.setFixedSize(
+            self.CORNER_BUTTON_WIDTH_SAVE_AS,
+            self.CORNER_BUTTON_HEIGHT,
+        )
+
         self.closeButton.clicked.connect(self.close_edit_window)
         self.saveButton.clicked.connect(self.save_recipe)
+        self.saveAsButton.clicked.connect(self.save_recipe_as)
 
         layout.addWidget(self.closeButton)
         layout.addWidget(self.saveButton)
+        layout.addWidget(self.saveAsButton)
         return container
 
     def _build_tab_stylesheet(self):
@@ -888,15 +912,41 @@ class RecipeEditor(QtWidgets.QDialog):
         return converted_steps
 
     def save_recipe(self):
-        """Create and save a recipe file with current editor values."""
+        """Save recipe to current file path or default path."""
         if "file" in self.recipe:
             filePath = self.recipe["file"]
         else:
-            filePath = (
-                os.path.expanduser('~/Documents/Openroast/Recipes/My Recipes/')
-                + tools.format_filename(self.recipeName.text())
-                + ".json"
-            )
+            filePath = self._default_recipe_path()
+
+        self._save_recipe_to_path(filePath)
+
+    def save_recipe_as(self):
+        """Prompt for a new path and save recipe there."""
+        start_path = self._default_recipe_path()
+        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Save Recipe As",
+            start_path,
+            "Recipe Files (*.json);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        if not file_path.lower().endswith(".json"):
+            file_path = f"{file_path}.json"
+
+        self.recipe["file"] = file_path
+        self._save_recipe_to_path(file_path)
+
+    def _default_recipe_path(self):
+        return (
+            os.path.expanduser('~/Documents/Openroast/Recipes/My Recipes/')
+            + tools.format_filename(self.recipeName.text())
+            + ".json"
+        )
+
+    def _save_recipe_to_path(self, filePath):
+        """Create and save a recipe file at the specified path."""
 
         steps_c = self.get_current_table_values()
         selected_unit_label = self.temperatureUnitSelect.currentText()
