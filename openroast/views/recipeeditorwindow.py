@@ -91,7 +91,7 @@ class RecipeEditor(QtWidgets.QDialog):
         + COLUMN_WIDTH_FAN
         + COLUMN_WIDTH_DURATION_COMPACT
         + COLUMN_WIDTH_MODIFY_COMPACT
-        + 14
+        + TABLE_MIN_EXTRA_WIDTH
     )
     TABLE_ROW_HEIGHT_COMPACT = 30
 
@@ -935,8 +935,8 @@ class RecipeEditor(QtWidgets.QDialog):
         if not file_path.lower().endswith(".json"):
             file_path = f"{file_path}.json"
 
-        self.recipe["file"] = file_path
         self._save_recipe_to_path(file_path)
+        self.recipe["file"] = file_path
 
     def _default_recipe_path(self):
         return (
@@ -972,9 +972,10 @@ class RecipeEditor(QtWidgets.QDialog):
             self.newRecipe["totalTime"] += step["sectionTime"]
 
         jsonObject = json.dumps(self.newRecipe, indent=4)
-        if not os.path.exists(os.path.dirname(filePath)):
+        dir_path = os.path.dirname(filePath)
+        if dir_path and not os.path.exists(dir_path):
             try:
-                os.makedirs(os.path.dirname(filePath))
+                os.makedirs(dir_path)
             except OSError as exc:  # Guard against race condition
                 if exc.errno != errno.EEXIST:
                     raise

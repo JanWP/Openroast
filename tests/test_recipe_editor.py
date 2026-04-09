@@ -179,6 +179,26 @@ class RecipeEditorTests(unittest.TestCase):
         editor.close()
         self._app.processEvents()
 
+    def test_save_as_appends_json_extension(self):
+        editor = RecipeEditor(compact_ui=False)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            selected_without_ext = os.path.join(temp_dir, "saved-no-ext")
+            expected_path = f"{selected_without_ext}.json"
+            original = QtWidgets.QFileDialog.getSaveFileName
+            QtWidgets.QFileDialog.getSaveFileName = staticmethod(
+                lambda *_args, **_kwargs: (selected_without_ext, "Recipe Files (*.json)")
+            )
+            try:
+                editor.save_recipe_as()
+            finally:
+                QtWidgets.QFileDialog.getSaveFileName = original
+
+            self.assertEqual(editor.recipe.get("file"), expected_path)
+            self.assertTrue(os.path.exists(expected_path))
+
+        editor.close()
+        self._app.processEvents()
+
     def test_save_as_cancel_does_not_change_file(self):
         editor = RecipeEditor(compact_ui=False)
         editor.recipe["file"] = "existing.json"
@@ -214,6 +234,30 @@ class RecipeEditorTests(unittest.TestCase):
             QtWidgets.QFileDialog.getSaveFileName = original
 
         self.assertEqual(captured["start_path"], editor._default_recipe_path())
+        editor.close()
+        self._app.processEvents()
+
+    def test_save_as_failure_keeps_existing_file_path(self):
+        editor = RecipeEditor(compact_ui=False)
+        editor.recipe["file"] = "existing.json"
+        original_dialog = QtWidgets.QFileDialog.getSaveFileName
+        original_save_method = editor._save_recipe_to_path
+        QtWidgets.QFileDialog.getSaveFileName = staticmethod(
+            lambda *_args, **_kwargs: ("/tmp/will-fail.json", "Recipe Files (*.json)")
+        )
+
+        def fail_save(_path):
+            raise OSError("simulated write failure")
+
+        editor._save_recipe_to_path = fail_save
+        try:
+            with self.assertRaises(OSError):
+                editor.save_recipe_as()
+        finally:
+            QtWidgets.QFileDialog.getSaveFileName = original_dialog
+            editor._save_recipe_to_path = original_save_method
+
+        self.assertEqual(editor.recipe.get("file"), "existing.json")
         editor.close()
         self._app.processEvents()
 
