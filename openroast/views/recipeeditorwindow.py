@@ -83,9 +83,16 @@ class RecipeEditor(QtWidgets.QDialog):
     COLUMN_WIDTH_FAN = 34
     COLUMN_WIDTH_DURATION_COMPACT = 64
     COLUMN_WIDTH_DURATION_DEFAULT = 72
-    COLUMN_WIDTH_MODIFY = 136
+    COLUMN_WIDTH_MODIFY_COMPACT = 72
+    COLUMN_WIDTH_MODIFY_DEFAULT = 136
     TABLE_MIN_EXTRA_WIDTH = 14
-    TABLE_MIN_WIDTH = COLUMN_WIDTH_TEMP + COLUMN_WIDTH_FAN + COLUMN_WIDTH_DURATION_COMPACT + COLUMN_WIDTH_MODIFY + 14
+    TABLE_MIN_WIDTH = (
+        COLUMN_WIDTH_TEMP
+        + COLUMN_WIDTH_FAN
+        + COLUMN_WIDTH_DURATION_COMPACT
+        + COLUMN_WIDTH_MODIFY_COMPACT
+        + 14
+    )
     TABLE_ROW_HEIGHT_COMPACT = 30
 
     # In-cell editor widths
@@ -370,17 +377,22 @@ class RecipeEditor(QtWidgets.QDialog):
             if self.compact_ui
             else self.COLUMN_WIDTH_DURATION_DEFAULT
         )
+        modify_width = (
+            self.COLUMN_WIDTH_MODIFY_COMPACT
+            if self.compact_ui
+            else self.COLUMN_WIDTH_MODIFY_DEFAULT
+        )
 
         self.recipeSteps.setColumnWidth(0, self.COLUMN_WIDTH_TEMP)
         self.recipeSteps.setColumnWidth(1, self.COLUMN_WIDTH_FAN)
         self.recipeSteps.setColumnWidth(2, duration_width)
-        self.recipeSteps.setColumnWidth(3, self.COLUMN_WIDTH_MODIFY)
+        self.recipeSteps.setColumnWidth(3, modify_width)
         # Keep a little extra width beyond column sum for a vertical scroll bar and padding.
         self.recipeSteps.setMinimumWidth(
             self.COLUMN_WIDTH_TEMP
             + self.COLUMN_WIDTH_FAN
             + duration_width
-            + self.COLUMN_WIDTH_MODIFY
+            + modify_width
             + self.TABLE_MIN_EXTRA_WIDTH
         )
 
@@ -484,16 +496,6 @@ class RecipeEditor(QtWidgets.QDialog):
                 sectionFanSpeedWidget.addItems(fanSpeedChoices)
                 sectionFanSpeedWidget.setCurrentIndex(fanSpeedChoices.index(str(steps[row]["fanSpeed"])))
 
-                upArrow = QtWidgets.QPushButton()
-                upArrow.setObjectName("upArrow")
-                upArrow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/upSmall.png')))
-                upArrow.clicked.connect(functools.partial(self.move_recipe_step_up, row))
-
-                downArrow = QtWidgets.QPushButton()
-                downArrow.setObjectName("downArrow")
-                downArrow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/downSmall.png')))
-                downArrow.clicked.connect(functools.partial(self.move_recipe_step_down, row))
-
                 deleteRow = QtWidgets.QPushButton()
                 deleteRow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/delete.png')))
                 deleteRow.setObjectName("deleteRow")
@@ -507,8 +509,19 @@ class RecipeEditor(QtWidgets.QDialog):
                 modifyRowWidgetLayout = QtWidgets.QHBoxLayout()
                 modifyRowWidgetLayout.setSpacing(0)
                 modifyRowWidgetLayout.setContentsMargins(0, 0, 0, 0)
-                modifyRowWidgetLayout.addWidget(upArrow)
-                modifyRowWidgetLayout.addWidget(downArrow)
+                if not self.compact_ui:
+                    upArrow = QtWidgets.QPushButton()
+                    upArrow.setObjectName("upArrow")
+                    upArrow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/upSmall.png')))
+                    upArrow.clicked.connect(functools.partial(self.move_recipe_step_up, row))
+
+                    downArrow = QtWidgets.QPushButton()
+                    downArrow.setObjectName("downArrow")
+                    downArrow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/downSmall.png')))
+                    downArrow.clicked.connect(functools.partial(self.move_recipe_step_down, row))
+
+                    modifyRowWidgetLayout.addWidget(upArrow)
+                    modifyRowWidgetLayout.addWidget(downArrow)
                 modifyRowWidgetLayout.addWidget(deleteRow)
                 modifyRowWidgetLayout.addWidget(insertRow)
 

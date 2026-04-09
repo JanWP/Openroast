@@ -85,15 +85,42 @@ class RecipeEditorTests(unittest.TestCase):
                 editor.recipeSteps.columnWidth(2),
                 editor.COLUMN_WIDTH_DURATION_COMPACT,
             )
-            self.assertGreaterEqual(editor.recipeSteps.columnWidth(3), editor.COLUMN_WIDTH_MODIFY)
+            self.assertGreaterEqual(
+                editor.recipeSteps.columnWidth(3),
+                editor.COLUMN_WIDTH_MODIFY_COMPACT,
+            )
             expected_min_width = (
                 editor.COLUMN_WIDTH_TEMP
                 + editor.COLUMN_WIDTH_FAN
                 + editor.COLUMN_WIDTH_DURATION_COMPACT
-                + editor.COLUMN_WIDTH_MODIFY
+                + editor.COLUMN_WIDTH_MODIFY_COMPACT
                 + editor.TABLE_MIN_EXTRA_WIDTH
             )
             self.assertGreaterEqual(editor.recipeSteps.minimumWidth(), expected_min_width)
+        finally:
+            editor.close()
+            self._app.processEvents()
+
+    def test_compact_row_action_widget_omits_move_arrows(self):
+        editor = RecipeEditor(compact_ui=True)
+        try:
+            action_widget = editor.recipeSteps.cellWidget(0, 3)
+            self.assertIsNotNone(action_widget.findChild(QtWidgets.QPushButton, "deleteRow"))
+            self.assertIsNotNone(action_widget.findChild(QtWidgets.QPushButton, "insertRow"))
+            self.assertIsNone(action_widget.findChild(QtWidgets.QPushButton, "upArrow"))
+            self.assertIsNone(action_widget.findChild(QtWidgets.QPushButton, "downArrow"))
+        finally:
+            editor.close()
+            self._app.processEvents()
+
+    def test_default_row_action_widget_keeps_move_arrows(self):
+        editor = RecipeEditor(compact_ui=False)
+        try:
+            action_widget = editor.recipeSteps.cellWidget(0, 3)
+            self.assertIsNotNone(action_widget.findChild(QtWidgets.QPushButton, "deleteRow"))
+            self.assertIsNotNone(action_widget.findChild(QtWidgets.QPushButton, "insertRow"))
+            self.assertIsNotNone(action_widget.findChild(QtWidgets.QPushButton, "upArrow"))
+            self.assertIsNotNone(action_widget.findChild(QtWidgets.QPushButton, "downArrow"))
         finally:
             editor.close()
             self._app.processEvents()
