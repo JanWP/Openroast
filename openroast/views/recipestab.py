@@ -2,14 +2,17 @@
 # Roastero, released under GPLv3
 
 import os
-import json
 import time
 import webbrowser
 
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 
-from openroast.temperature import recipe_to_celsius
+from openroast.temperature import (
+    TEMP_UNIT_C,
+    celsius_to_temperature_unit,
+    normalize_temperature_unit,
+)
 from openroast.views import customqtwidgets
 from openroast.views import recipeeditorwindow
 
@@ -183,7 +186,7 @@ class RecipesTab(QtWidgets.QWidget):
         # Handles when a file is clicked
         else:
             # Load recipe information from file
-            self.load_recipe_file(self.selectedFilePath)
+            self.load_selected_recipe_from_path(self.selectedFilePath)
 
             # Set bean link button enabled/disabled if it is available or not.
             if(self.currentBeanUrl):
@@ -198,17 +201,17 @@ class RecipesTab(QtWidgets.QWidget):
             # Hide recipe selection label once a recipe is selected.
             self.selectionLabel.setHidden(True)
 
-    def load_recipe_file(self, filePath):
-        """Used to load file from a path into selected recipe object."""
-        with open(filePath, encoding='utf-8') as json_data:
-            recipe_object = json.load(json_data)
-        self.currentlySelectedRecipe = recipe_to_celsius(recipe_object)
-        self.currentlySelectedRecipePath = filePath
+    def load_selected_recipe_from_path(self, file_path):
+        """Load the currently selected recipe through the controller path."""
+        self.currentlySelectedRecipe = self.recipes_obj.load_recipe_file(file_path, store=False)
+        self.currentlySelectedRecipePath = file_path
         self.load_recipe_information(self.currentlySelectedRecipe)
 
     def load_recipe_information(self, recipe_object):
         """Loads recipe information the into the right hand column fields.
         This method also populates the recipe steps table."""
+        display_unit = normalize_temperature_unit(
+            recipe_object.get("displayTemperatureUnit"), default=TEMP_UNIT_C)
         self.nameLabel.setText(recipe_object["roastName"])
         self.creatorLabel.setText("Created by " +
             recipe_object["creator"])
@@ -229,7 +232,7 @@ class RecipesTab(QtWidgets.QWidget):
         # Steps spreadsheet
         self.stepsTable.setRowCount(len(recipe_object["steps"]))
         self.stepsTable.setColumnCount(3)
-        self.stepsTable.setHorizontalHeaderLabels(["Temperature (C)",
+        self.stepsTable.setHorizontalHeaderLabels([f"Temperature ({display_unit})",
             "Fan Speed", "Section Time"])
 
         for row in range(len(recipe_object["steps"])):
@@ -243,7 +246,11 @@ class RecipesTab(QtWidgets.QWidget):
             sectionFanSpeedWidget.setText(str(recipe_object["steps"][row]["fanSpeed"]))
 
             if 'targetTemp' in recipe_object["steps"][row]:
-                sectionTempWidget.setText(f"{recipe_object['steps'][row]['targetTemp']} C")
+                display_temp = int(round(celsius_to_temperature_unit(
+                    recipe_object['steps'][row]['targetTemp'],
+                    display_unit,
+                )))
+                sectionTempWidget.setText(f"{display_temp} {display_unit}")
             else:
                 sectionTempWidget.setText("Cooling")
 
@@ -272,23 +279,30 @@ class RecipesTab(QtWidgets.QWidget):
 
     def open_recipe_editor(self):
         """Method used to open Recipe Editor Window with an existing recipe."""
-        self.editorWindow = recipeeditorwindow.RecipeEditor(recipeLocation = self.currentlySelectedRecipePath)
+        self.editorWindow = recipeeditorwindow.RecipeEditor(
+            recipe_data=self.currentlySelectedRecipe,
+            recipe_path=self.currentlySelectedRecipePath,
+            compact_ui=getattr(self.MainWindow, "compact_ui", False),
+        )
         dialog_exec = getattr(self.editorWindow, "exec", self.editorWindow.exec_)
         dialog_exec()
 
         # Used to update the recipe in the recipes tab after editing
-        self.load_recipe_file(self.selectedFilePath)
+        self.load_selected_recipe_from_path(self.selectedFilePath)
 
 
     def create_new_recipe(self):
         """Method used to open Recipe Editor Window for a new recipe."""
-        self.editorWindow = recipeeditorwindow.RecipeEditor()
+        self.editorWindow = recipeeditorwindow.RecipeEditor(
+            recipe_data=self.recipes_obj.create_default_recipe(),
+            compact_ui=getattr(self.MainWindow, "compact_ui", False),
+        )
         dialog_exec = getattr(self.editorWindow, "exec", self.editorWindow.exec_)
         dialog_exec()
 
         # Used to update the recipe in the recipes tab after creation
         try:
-            self.load_recipe_file(self.selectedFilePath)
+            self.load_selected_recipe_from_path(self.selectedFilePath)
         except AttributeError:
             pass
         except IsADirectoryError:

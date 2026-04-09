@@ -8,6 +8,8 @@ from openroast.temperature import (
     DEFAULT_TARGET_TEMPERATURE_C,
     RECIPE_UNIT_CELSIUS,
     RECIPE_UNIT_KELVIN,
+    TEMP_UNIT_C,
+    TEMP_UNIT_F,
 )
 
 
@@ -51,6 +53,7 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
 
         normalized = recipe.get_current_recipe()
         self.assertEqual(normalized["temperatureUnit"], RECIPE_UNIT_CELSIUS)
+        self.assertEqual(normalized["displayTemperatureUnit"], TEMP_UNIT_F)
         self.assertEqual(normalized["steps"][0]["targetTemp"], 100)
 
     def test_load_recipe_json_accepts_kelvin_recipe_unit(self):
@@ -64,7 +67,14 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
 
         normalized = recipe.get_current_recipe()
         self.assertEqual(normalized["temperatureUnit"], RECIPE_UNIT_CELSIUS)
+        self.assertEqual(normalized["displayTemperatureUnit"], "K")
         self.assertEqual(normalized["steps"][0]["targetTemp"], 100)
+
+    def test_create_default_recipe_uses_celsius_display_intent(self):
+        recipe = Recipe(roaster=FakeRoaster("C"), app=FakeApp())
+        template = recipe.create_default_recipe()
+        self.assertEqual(template["temperatureUnit"], RECIPE_UNIT_CELSIUS)
+        self.assertEqual(template["displayTemperatureUnit"], TEMP_UNIT_C)
 
     def test_set_roaster_settings_converts_to_roaster_units_and_starts_roast(self):
         roaster = FakeRoaster("F")

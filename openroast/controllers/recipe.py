@@ -7,12 +7,56 @@ import ctypes
 
 from openroast.temperature import (
     DEFAULT_TARGET_TEMPERATURE_C,
+    RECIPE_FORMAT_VERSION,
+    RECIPE_UNIT_CELSIUS,
     TEMP_UNIT_F,
+    TEMP_UNIT_C,
     celsius_to_kelvin,
     celsius_to_temperature_unit,
     normalize_temperature_unit,
     recipe_to_celsius,
 )
+
+
+def normalize_recipe_for_runtime(recipe_json, *, default_source_unit=TEMP_UNIT_F):
+    source_unit = normalize_temperature_unit(
+        recipe_json.get("displayTemperatureUnit", recipe_json.get("temperatureUnit")),
+        default=default_source_unit,
+    )
+    normalized_recipe = recipe_to_celsius(recipe_json)
+    normalized_recipe["displayTemperatureUnit"] = source_unit
+    return normalized_recipe
+
+
+def build_default_recipe(*, default_display_unit=TEMP_UNIT_C):
+    display_unit = normalize_temperature_unit(default_display_unit, default=TEMP_UNIT_C)
+    return {
+        "roastName": "",
+        "creator": "",
+        "roastDescription": {
+            "roastType": "",
+            "description": "",
+        },
+        "bean": {
+            "region": "",
+            "country": "",
+            "source": {
+                "reseller": "",
+                "link": "",
+            },
+        },
+        "steps": [
+            {
+                "fanSpeed": 5,
+                "targetTemp": DEFAULT_TARGET_TEMPERATURE_C,
+                "sectionTime": 0,
+            }
+        ],
+        "totalTime": 0,
+        "formatVersion": RECIPE_FORMAT_VERSION,
+        "temperatureUnit": RECIPE_UNIT_CELSIUS,
+        "displayTemperatureUnit": display_unit,
+    }
 
 
 class Recipe(object):
@@ -45,6 +89,15 @@ class Recipe(object):
             default=TEMP_UNIT_F,
         )
 
+    def _normalize_recipe_for_runtime(self, recipe_json):
+        return normalize_recipe_for_runtime(
+            recipe_json,
+            default_source_unit=TEMP_UNIT_F,
+        )
+
+    def create_default_recipe(self):
+        return build_default_recipe(default_display_unit=TEMP_UNIT_C)
+
     def _recipe(self):
         # retrieve the recipe as a JSON string in shared memory.
         # needed to allow freshroastsr700 to access Recipe from
@@ -56,15 +109,20 @@ class Recipe(object):
 
     def load_recipe_json(self, recipe_json):
         # recipe_json is actually a dict...
-        normalized_recipe = recipe_to_celsius(recipe_json)
+        normalized_recipe = self._normalize_recipe_for_runtime(recipe_json)
         self.recipe_str.value = json.dumps(normalized_recipe).encode('utf_8')
         self.recipeLoaded.value = 1
+        return normalized_recipe
 
-    def load_recipe_file(self, recipeFile):
+    def load_recipe_file(self, recipeFile, store=True):
         # Load recipe file
         with open(recipeFile, encoding='utf-8') as recipeFileHandler:
             recipe_dict = json.load(recipeFileHandler)
-        self.load_recipe_json(recipe_dict)
+        normalized_recipe = self._normalize_recipe_for_runtime(recipe_dict)
+        if store:
+            self.recipe_str.value = json.dumps(normalized_recipe).encode('utf_8')
+            self.recipeLoaded.value = 1
+        return normalized_recipe
 
     def clear_recipe(self):
         self.recipeLoaded.value = 0
