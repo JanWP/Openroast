@@ -653,6 +653,10 @@ QComboBox#recipeEditCombo {
     font-family: "Asap";
     font: bold;
     font-size: 12px;
+    min-width: 0px;
+    max-width: 52px;
+    width: 52px;
+    padding-left: 2px;
 }
 
 QComboBox#recipeEditCombo:on { /* shift the text when the popup opens */
@@ -668,6 +672,7 @@ QComboBox#recipeEditCombo QAbstractItemView {
 QComboBox#recipeEditCombo::drop-down {
     background-color: transparent;
     border: none;
+    width: 10px;
 }
 
 QComboBox#recipeEditCombo::down-arrow {
@@ -681,6 +686,9 @@ QTimeEdit#recipeEditTime {
     color: #fff;
     font-family: "Asap";
     font: bold;
+    min-width: 0px;
+    max-width: 60px;
+    width: 60px;
 }
 
 QTimeEdit#recipeEditTime QSpinBox {
@@ -688,18 +696,22 @@ QTimeEdit#recipeEditTime QSpinBox {
     color: #fff;
     font-family: "Asap";
     font: bold;
+    min-width: 30px;
+    max-width: 30px;
 }
 
 QTimeEdit#recipeEditTime::up-button {
     background-color: transparent;
     border: none;
     image: url(static/images/upArrow.png);
+    width: 12px;
 }
 
 QTimeEdit#recipeEditTime::down-button {
     background-color: transparent;
     border: none;
     image: url(static/images/downArrow.png);
+    width: 12px;
 }
 
 QPushButton#upArrow {

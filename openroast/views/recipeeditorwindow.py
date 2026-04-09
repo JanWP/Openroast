@@ -11,77 +11,232 @@ from PyQt5 import QtGui
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.ticker import FuncFormatter
+
 from openroast import tools
 from openroast import utils as utils
+from openroast.controllers.recipe import build_default_recipe, normalize_recipe_for_runtime
 from openroast.temperature import (
     DEFAULT_TARGET_TEMPERATURE_C,
     MAX_TEMPERATURE_C,
     MIN_TEMPERATURE_C,
     RECIPE_FORMAT_VERSION,
     RECIPE_UNIT_CELSIUS,
+    RECIPE_UNIT_FAHRENHEIT,
+    RECIPE_UNIT_KELVIN,
+    TEMP_UNIT_C,
+    TEMP_UNIT_F,
+    TEMP_UNIT_K,
     TEMPERATURE_STEP_C,
-    recipe_to_celsius,
+    celsius_to_temperature_unit,
+    clamp_temperature_c,
+    normalize_temperature_unit,
+    temperature_to_celsius,
 )
 from openroast.views import customqtwidgets
 
+
+class CompactTempPickerCombo(customqtwidgets.ComboBoxNoWheel):
+    """Combo that opens a compact touch picker instead of a long dropdown."""
+
+    def __init__(self, on_pick, *args, **kwargs):
+        super(CompactTempPickerCombo, self).__init__(*args, **kwargs)
+        self._on_pick = on_pick
+
+    def showPopup(self):
+        if callable(self._on_pick):
+            self._on_pick()
+
+
+class CompactDurationEdit(customqtwidgets.TimeEditNoWheel):
+    """Time edit that opens a touch picker in compact mode."""
+
+    def __init__(self, on_pick, *args, **kwargs):
+        super(CompactDurationEdit, self).__init__(*args, **kwargs)
+        self._on_pick = on_pick
+        self.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+        self.installEventFilter(self)
+        line_edit = self.lineEdit()
+        if line_edit is not None:
+            line_edit.installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        if event.type() == QtCore.QEvent.MouseButtonRelease:
+            if callable(self._on_pick):
+                self._on_pick()
+            return True
+        return super(CompactDurationEdit, self).eventFilter(watched, event)
+
+
 class RecipeEditor(QtWidgets.QDialog):
-    def __init__(self, recipeLocation=None):
+    # Window sizing
+    WINDOW_MIN_WIDTH = 800
+    WINDOW_MIN_HEIGHT_COMPACT = 480
+    WINDOW_MIN_HEIGHT_DEFAULT = 600
+    WINDOW_RESIZE_WIDTH_DEFAULT = 980
+    WINDOW_RESIZE_HEIGHT_DEFAULT = 680
+
+    # Steps table geometry
+    COLUMN_WIDTH_TEMP = 34
+    COLUMN_WIDTH_FAN = 34
+    COLUMN_WIDTH_DURATION_COMPACT = 64
+    COLUMN_WIDTH_DURATION_DEFAULT = 72
+    COLUMN_WIDTH_MODIFY = 136
+    TABLE_MIN_EXTRA_WIDTH = 14
+    TABLE_MIN_WIDTH = COLUMN_WIDTH_TEMP + COLUMN_WIDTH_FAN + COLUMN_WIDTH_DURATION_COMPACT + COLUMN_WIDTH_MODIFY + 14
+    TABLE_ROW_HEIGHT_COMPACT = 30
+
+    # In-cell editor widths
+    TEMP_EDITOR_WIDTH_COMPACT = 26
+    TEMP_EDITOR_WIDTH_DEFAULT = 32
+    FAN_EDITOR_WIDTH_COMPACT = 26
+    FAN_EDITOR_WIDTH_DEFAULT = 32
+    TIME_EDITOR_WIDTH_COMPACT = 58
+    TIME_EDITOR_WIDTH_DEFAULT = 64
+
+    # Compact touch duration picker increments and limits.
+    DURATION_STEP_SMALL_S = 5
+    DURATION_STEP_LARGE_S = 30
+    DURATION_MAX_S = 59 * 60 + 59
+
+    # Short cooling label to fit narrow temperature column.
+    COOLING_LABEL = "Cool"
+
+    # Tab styling
+    TAB_WIDGET_OBJECT_NAME = "recipeEditorTabs"
+    TAB_PAGE_OBJECT_NAME_INFO = "recipeInfoPage"
+    TAB_PAGE_OBJECT_NAME_PROFILE = "heatingProfilePage"
+    TAB_TITLE_INFO = "Recipe info"
+    TAB_TITLE_PROFILE = "Heating profile"
+
+    COLOR_TAB_PANE_BG = "#444952"
+    COLOR_TAB_PANE_BORDER = "#23252a"
+    COLOR_TAB_BG = "#2e3138"
+    COLOR_TAB_TEXT = "#cfd6e0"
+    COLOR_TAB_SELECTED_TEXT = "#ffffff"
+    TAB_PADDING_V = 6
+    TAB_PADDING_H = 12
+
+    # Curve panel minimum heights
+    CURVE_MIN_HEIGHT_COMPACT = 220
+    CURVE_MIN_HEIGHT_DEFAULT = 360
+
+    # Compact touch temperature picker increments (display-unit steps)
+    TEMP_PICKER_STEP_SMALL = 1
+    TEMP_PICKER_STEP_LARGE = 5
+
+    def __init__(self, recipe_data=None, recipe_path=None, compact_ui=False):
         super(RecipeEditor, self).__init__()
+
+        self.compact_ui = bool(compact_ui)
+        self._display_temp_unit = TEMP_UNIT_C
+        self._selected_recipe_unit_label = RECIPE_UNIT_CELSIUS
+        self._updating_steps_table = False
 
         # Define main window for the application.
         self.setWindowTitle('Openroast')
-        self.setMinimumSize(800, 600)
+        if self.compact_ui:
+            self.setMinimumSize(self.WINDOW_MIN_WIDTH, self.WINDOW_MIN_HEIGHT_COMPACT)
+            self.resize(self.WINDOW_MIN_WIDTH, self.WINDOW_MIN_HEIGHT_COMPACT)
+        else:
+            self.setMinimumSize(self.WINDOW_MIN_WIDTH, self.WINDOW_MIN_HEIGHT_DEFAULT)
+            self.resize(self.WINDOW_RESIZE_WIDTH_DEFAULT, self.WINDOW_RESIZE_HEIGHT_DEFAULT)
         self.setContextMenuPolicy(QtCore.Qt.NoContextMenu)
 
         self.create_ui()
 
         self.recipe = {}
-        self.recipe["steps"] = [{'fanSpeed': 5, 'targetTemp': DEFAULT_TARGET_TEMPERATURE_C,
-            'sectionTime': 0}]
-        self.recipe["temperatureUnit"] = RECIPE_UNIT_CELSIUS
-        self.recipe["formatVersion"] = RECIPE_FORMAT_VERSION
+        self.load_recipe_data(
+            recipe_data if recipe_data is not None else build_default_recipe(default_display_unit=TEMP_UNIT_C),
+            recipe_path=recipe_path,
+        )
+        self.preload_recipe_information()
 
-        if recipeLocation:
-            self.load_recipe_file(recipeLocation)
-            self.preload_recipe_information()
-        else:
-            self.preload_recipe_steps(self.recipeSteps)
+    def load_recipe_data(self, recipe_data, recipe_path=None):
+        """Load recipe dictionary into editor state without reading files."""
+        self.recipe = normalize_recipe_for_runtime(
+            recipe_data,
+            default_source_unit=TEMP_UNIT_C,
+        )
+        self._display_temp_unit = normalize_temperature_unit(
+            self.recipe.get("displayTemperatureUnit", self.recipe.get("temperatureUnit")),
+            default=TEMP_UNIT_C,
+        )
+        self._selected_recipe_unit_label = {
+            TEMP_UNIT_C: RECIPE_UNIT_CELSIUS,
+            TEMP_UNIT_F: RECIPE_UNIT_FAHRENHEIT,
+            TEMP_UNIT_K: RECIPE_UNIT_KELVIN,
+        }[self._display_temp_unit]
+        self.recipe["displayTemperatureUnit"] = self._display_temp_unit
+        if recipe_path:
+            self.recipe["file"] = recipe_path
 
     def create_ui(self):
-        """A method used to create the basic ui for the Recipe Editor Window"""
-        # Create main layout for window.
+        """Create the recipe editor UI using top-level tabs."""
         self.layout = QtWidgets.QGridLayout(self)
-        self.layout.setRowStretch(1, 3)
+        self.layout.setContentsMargins(8, 8, 8, 8)
+        self.layout.setSpacing(6)
 
-        # Create input fields.
-        self.create_input_fields()
-        self.layout.addLayout(self.inputFieldLayout, 0, 0, 1, 2)
+        self.create_editor_tabs()
+        self.layout.addWidget(self.editorTabs, 0, 0)
 
-        # Create big edit boxes.
-        self.create_big_edit_boxes()
-        self.layout.addLayout(self.bigEditLayout, 1, 0, 1, 2)
+    def create_editor_tabs(self):
+        self.editorTabs = QtWidgets.QTabWidget()
+        self.editorTabs.setObjectName(self.TAB_WIDGET_OBJECT_NAME)
+        self.editorTabs.setStyleSheet(self._build_tab_stylesheet())
+        self.editorTabs.addTab(self.create_recipe_info_tab(), self.TAB_TITLE_INFO)
+        self.editorTabs.addTab(self.create_heating_profile_tab(), self.TAB_TITLE_PROFILE)
+        self.editorTabs.setCornerWidget(self._create_tab_corner_actions(), QtCore.Qt.TopRightCorner)
 
-        # Create Bottom Buttons.
-        self.create_bottom_buttons()
-        self.layout.addLayout(self.bottomButtonLayout, 2, 0, 1, 2)
+    def _create_tab_corner_actions(self):
+        container = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
 
+        self.closeButton = QtWidgets.QPushButton("CLOSE")
+        self.saveButton = QtWidgets.QPushButton("SAVE")
+        self.closeButton.setObjectName("smallButton")
+        self.saveButton.setObjectName("smallButton")
+        self.closeButton.clicked.connect(self.close_edit_window)
+        self.saveButton.clicked.connect(self.save_recipe)
 
-    def create_input_fields(self):
-        """Creates all of the UI components for the top of the Recipe Editor
-        Window."""
-        # Create layout for section.
-        self.inputFieldLayout = QtWidgets.QGridLayout()
+        layout.addWidget(self.closeButton)
+        layout.addWidget(self.saveButton)
+        return container
 
-        # Create labels for fields.
-        recipeNameLabel = QtWidgets.QLabel("Recipe Name: ")
-        recipeCreatorLabel = QtWidgets.QLabel("Created by: ")
-        recipeRoastTypeLabel = QtWidgets.QLabel("Roast Type: ")
-        beanRegionLabel = QtWidgets.QLabel("Bean Region: ")
-        beanCountryLabel = QtWidgets.QLabel("Bean Country: ")
-        beanLinkLabel = QtWidgets.QLabel("Bean Link: ")
-        beanStoreLabel = QtWidgets.QLabel("Bean Store Name: ")
+    def _build_tab_stylesheet(self):
+        return (
+            f"QTabWidget#{self.TAB_WIDGET_OBJECT_NAME}::pane {{"
+            f"background-color: {self.COLOR_TAB_PANE_BG}; border: 1px solid {self.COLOR_TAB_PANE_BORDER}; }}"
+            "QTabBar::tab {"
+            f"background: {self.COLOR_TAB_BG}; color: {self.COLOR_TAB_TEXT}; "
+            f"padding: {self.TAB_PADDING_V}px {self.TAB_PADDING_H}px; }}"
+            "QTabBar::tab:selected {"
+            f"background: {self.COLOR_TAB_PANE_BG}; color: {self.COLOR_TAB_SELECTED_TEXT}; }}"
+            f"QWidget#{self.TAB_PAGE_OBJECT_NAME_INFO}, QWidget#{self.TAB_PAGE_OBJECT_NAME_PROFILE} {{"
+            f"background-color: {self.COLOR_TAB_PANE_BG}; }}"
+            f"QWidget#{self.TAB_PAGE_OBJECT_NAME_INFO} QLabel, "
+            f"QWidget#{self.TAB_PAGE_OBJECT_NAME_PROFILE} QLabel {{"
+            f"color: {self.COLOR_TAB_SELECTED_TEXT}; }}"
+        )
 
-        # Create input fields.
+    def create_recipe_info_tab(self):
+        page = QtWidgets.QWidget()
+        page.setObjectName(self.TAB_PAGE_OBJECT_NAME_INFO)
+        layout = QtWidgets.QGridLayout(page)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
+
+        # Left side: short metadata fields and temperature unit selector.
+        formWidget = QtWidgets.QWidget()
+        formLayout = QtWidgets.QGridLayout(formWidget)
+        formLayout.setContentsMargins(0, 0, 0, 0)
+        formLayout.setHorizontalSpacing(6)
+        formLayout.setVerticalSpacing(4)
+
         self.recipeName = QtWidgets.QLineEdit()
         self.recipeCreator = QtWidgets.QLineEdit()
         self.recipeRoastType = QtWidgets.QLineEdit()
@@ -90,236 +245,287 @@ class RecipeEditor(QtWidgets.QDialog):
         self.beanLink = QtWidgets.QLineEdit()
         self.beanStore = QtWidgets.QLineEdit()
 
-        # Remove focus from input boxes.
-        self.recipeName.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
-        self.recipeCreator.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
-        self.recipeRoastType.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
-        self.beanRegion.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
-        self.beanCountry.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
-        self.beanLink.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
-        self.beanStore.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
+        for edit in (
+            self.recipeName,
+            self.recipeCreator,
+            self.recipeRoastType,
+            self.beanRegion,
+            self.beanCountry,
+            self.beanLink,
+            self.beanStore,
+        ):
+            edit.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
 
-        # Add objects to the inputFieldLayout
-        self.inputFieldLayout.addWidget(recipeNameLabel, 0, 0)
-        self.inputFieldLayout.addWidget(self.recipeName, 0, 1)
-        self.inputFieldLayout.addWidget(recipeCreatorLabel, 1, 0)
-        self.inputFieldLayout.addWidget(self.recipeCreator, 1, 1)
-        self.inputFieldLayout.addWidget(recipeRoastTypeLabel, 2, 0)
-        self.inputFieldLayout.addWidget(self.recipeRoastType, 2, 1)
-        self.inputFieldLayout.addWidget(beanRegionLabel, 3, 0)
-        self.inputFieldLayout.addWidget(self.beanRegion, 3, 1)
-        self.inputFieldLayout.addWidget(beanCountryLabel, 4, 0)
-        self.inputFieldLayout.addWidget(self.beanCountry, 4, 1)
-        self.inputFieldLayout.addWidget(beanLinkLabel, 5, 0)
-        self.inputFieldLayout.addWidget(self.beanLink, 5, 1)
-        self.inputFieldLayout.addWidget(beanStoreLabel, 6, 0)
-        self.inputFieldLayout.addWidget(self.beanStore, 6, 1)
+        self.temperatureUnitSelect = customqtwidgets.ComboBoxNoWheel()
+        self.temperatureUnitSelect.addItems([
+            RECIPE_UNIT_CELSIUS,
+            RECIPE_UNIT_FAHRENHEIT,
+            RECIPE_UNIT_KELVIN,
+        ])
+        self.temperatureUnitSelect.currentIndexChanged.connect(self.on_temperature_unit_changed)
 
-    def create_big_edit_boxes(self):
-        """Creates the Bottom section of the Recipe Editor Window. This method
-        creates the Description box and calls another method to make the
-        recipe steps table."""
-        # Create big edit box layout.
-        self.bigEditLayout = QtWidgets.QGridLayout()
+        form_fields = [
+            ("Recipe Name:", self.recipeName),
+            ("Created by:", self.recipeCreator),
+            ("Roast Type:", self.recipeRoastType),
+            ("Bean Region:", self.beanRegion),
+            ("Bean Country:", self.beanCountry),
+            ("Bean Link:", self.beanLink),
+            ("Bean Store Name:", self.beanStore),
+            ("Temperature unit:", self.temperatureUnitSelect),
+        ]
+        for row, (label_text, widget) in enumerate(form_fields):
+            formLayout.addWidget(QtWidgets.QLabel(label_text), row, 0)
+            formLayout.addWidget(widget, row, 1)
 
-        # Create labels for the edit boxes.
-        recipeDescriptionBoxLabel = QtWidgets.QLabel("Description: ")
-        recipeStepsLabel = QtWidgets.QLabel("Steps: ")
-
-        # Create widgets.
+        # Right side: large description box.
+        descWidget = QtWidgets.QWidget()
+        descLayout = QtWidgets.QVBoxLayout(descWidget)
+        descLayout.setContentsMargins(0, 0, 0, 0)
+        descLayout.setSpacing(4)
+        descLayout.addWidget(QtWidgets.QLabel("Description:"))
         self.recipeDescriptionBox = QtWidgets.QTextEdit()
+        descLayout.addWidget(self.recipeDescriptionBox)
+
+        layout.addWidget(formWidget, 0, 0)
+        layout.addWidget(descWidget, 0, 1)
+        layout.setColumnStretch(0, 2)
+        layout.setColumnStretch(1, 3)
+
+        return page
+
+    def create_heating_profile_tab(self):
+        page = QtWidgets.QWidget()
+        page.setObjectName(self.TAB_PAGE_OBJECT_NAME_PROFILE)
+        layout = QtWidgets.QHBoxLayout(page)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
+        page.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+
         self.recipeSteps = self.create_steps_spreadsheet()
+        self._configure_steps_table_widths()
 
-        # Add widgets to layout.
-        self.bigEditLayout.addWidget(recipeDescriptionBoxLabel, 0, 0)
-        self.bigEditLayout.addWidget(self.recipeDescriptionBox, 1, 0)
-        self.bigEditLayout.addWidget(recipeStepsLabel, 0, 1)
-        self.bigEditLayout.addWidget(self.recipeSteps, 1, 1)
+        # Right side uses as much area as possible to prepare for drag-edit support.
+        self.curveWidget = QtWidgets.QWidget()
+        self.curveWidget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        curveLayout = QtWidgets.QVBoxLayout(self.curveWidget)
+        curveLayout.setContentsMargins(0, 0, 0, 0)
+        curveLayout.setSpacing(4)
+        curveLayout.addWidget(QtWidgets.QLabel("Heating curve:"))
 
-    def create_bottom_buttons(self):
-        """Creates the button panel on the bottom of the Recipe Editor
-        Window."""
-        # Set bottom button layout.
-        self.bottomButtonLayout = QtWidgets.QHBoxLayout()
-        self.bottomButtonLayout.setSpacing(0)
+        self.recipeCurveFigure = Figure(facecolor='#444952')
+        self.recipeCurveCanvas = FigureCanvas(self.recipeCurveFigure)
+        self.recipeCurveCanvas.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.recipeCurveCanvas.setMinimumHeight(
+            self.CURVE_MIN_HEIGHT_COMPACT if self.compact_ui else self.CURVE_MIN_HEIGHT_DEFAULT
+        )
+        self.recipeCurveAxes = self.recipeCurveFigure.add_subplot(111)
+        self.recipeCurveFigure.subplots_adjust(left=0.14, right=0.985, top=0.95, bottom=0.12)
+        curveLayout.addWidget(self.recipeCurveCanvas)
 
-        # Create buttons.
-        self.saveButton = QtWidgets.QPushButton("SAVE")
-        self.closeButton = QtWidgets.QPushButton("CLOSE")
+        splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        splitter.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        splitter.addWidget(self.recipeSteps)
+        splitter.addWidget(self.curveWidget)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 3)
+        splitter.setChildrenCollapsible(False)
 
-        # Assign object names to the buttons.
-        self.saveButton.setObjectName("smallButton")
-        self.saveButton.clicked.connect(self.save_recipe)
-        self.closeButton.setObjectName("smallButton")
-        self.closeButton.clicked.connect(self.close_edit_window)
+        # Derive initial split from table geometry constants so tuning constants
+        # (column widths/editor widths/TABLE_MIN_WIDTH) directly affects layout.
+        base_width = self.WINDOW_MIN_WIDTH if self.compact_ui else self.WINDOW_RESIZE_WIDTH_DEFAULT
+        layout_overhead = 36  # outer margins + splitter handle + tab/frame overhead
+        min_plot_width = 240
+        left_width = self.recipeSteps.minimumWidth()
+        right_width = max(min_plot_width, base_width - left_width - layout_overhead)
+        splitter.setSizes([left_width, right_width])
 
-        # Create Spacer.
-        self.spacer = QtWidgets.QWidget()
-        self.spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        layout.addWidget(splitter)
+        return page
 
-        # Add widgets to the layout.
-        self.bottomButtonLayout.addWidget(self.spacer)
-        self.bottomButtonLayout.addWidget(self.closeButton)
-        self.bottomButtonLayout.addWidget(self.saveButton)
 
     def create_steps_spreadsheet(self):
-        """Creates Recipe Steps table. It does not populate the table in this
-        method."""
+        """Creates Recipe Steps table. It does not populate the table in this method."""
         recipeStepsTable = QtWidgets.QTableWidget()
         recipeStepsTable.setShowGrid(False)
         recipeStepsTable.setAlternatingRowColors(True)
         recipeStepsTable.setCornerButtonEnabled(False)
-        recipeStepsTable.horizontalHeader().setSectionResizeMode(1)
         recipeStepsTable.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        recipeStepsTable.verticalHeader().setVisible(False)
 
-        # Steps spreadsheet
         recipeStepsTable.setColumnCount(4)
-        recipeStepsTable.setHorizontalHeaderLabels(["Temperature (C)",
-            "Fan Speed", "Section Time", "Modify"])
+        self._update_steps_header_labels(recipeStepsTable)
 
         return recipeStepsTable
+
+    def _configure_steps_table_widths(self):
+        header = self.recipeSteps.horizontalHeader()
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.Fixed)
+        header.setSectionResizeMode(3, QtWidgets.QHeaderView.Fixed)
+
+        duration_width = (
+            self.COLUMN_WIDTH_DURATION_COMPACT
+            if self.compact_ui
+            else self.COLUMN_WIDTH_DURATION_DEFAULT
+        )
+
+        self.recipeSteps.setColumnWidth(0, self.COLUMN_WIDTH_TEMP)
+        self.recipeSteps.setColumnWidth(1, self.COLUMN_WIDTH_FAN)
+        self.recipeSteps.setColumnWidth(2, duration_width)
+        self.recipeSteps.setColumnWidth(3, self.COLUMN_WIDTH_MODIFY)
+        # Keep a little extra width beyond column sum for a vertical scroll bar and padding.
+        self.recipeSteps.setMinimumWidth(
+            self.COLUMN_WIDTH_TEMP
+            + self.COLUMN_WIDTH_FAN
+            + duration_width
+            + self.COLUMN_WIDTH_MODIFY
+            + self.TABLE_MIN_EXTRA_WIDTH
+        )
+
+        if self.compact_ui:
+            self.recipeSteps.verticalHeader().setDefaultSectionSize(self.TABLE_ROW_HEIGHT_COMPACT)
+
+    def _current_unit_symbol(self):
+        return normalize_temperature_unit(self._display_temp_unit, default=TEMP_UNIT_C)
+
+    def _current_unit_display_label(self):
+        return self._current_unit_symbol()
+
+    def _update_steps_header_labels(self, table):
+        unit_symbol = self._current_unit_display_label()
+        table.setHorizontalHeaderLabels([
+            f"T ({chr(176)}{unit_symbol})",
+            "Fan",
+            "Duration",
+            "Modify",
+        ])
 
     def close_edit_window(self):
         """Method used to close the Recipe Editor Window."""
         self.close()
 
     def preload_recipe_steps(self, recipeStepsTable):
-        """Method that just calls load_recipe_steps() with a table specified and
-        uses the pre-existing loaded recipe steps in the object."""
+        """Load existing recipe steps into the editor table."""
         steps = self.recipe["steps"]
         self.load_recipe_steps(recipeStepsTable, steps)
 
+    def _display_temp_choices(self):
+        choices = []
+        for temp_c in range(MIN_TEMPERATURE_C, MAX_TEMPERATURE_C + 1, TEMPERATURE_STEP_C):
+            display_value = int(round(celsius_to_temperature_unit(temp_c, self._display_temp_unit)))
+            if str(display_value) not in choices:
+                choices.append(str(display_value))
+        return [self.COOLING_LABEL] + choices
+
     def load_recipe_steps(self, recipeStepsTable, steps):
-        """Takes two arguments. One being the table and the second being the
-        rows you'd like to add. It does not clear the table and simply adds the
-        rows on the bottom if there are exiting rows."""
-        # Create spreadsheet choices
-        fanSpeedChoices = [str(x) for x in range(1,10)]
-        targetTempChoices = ["Cooling"] + [
-            str(x) for x in range(MIN_TEMPERATURE_C, MAX_TEMPERATURE_C + 1, TEMPERATURE_STEP_C)
-        ]
+        """Populate a recipe steps table from normalized Celsius step values."""
+        fanSpeedChoices = [str(x) for x in range(1, 10)]
+        targetTempChoices = self._display_temp_choices()
 
-        # loop through recipe and load each step
-        for row in range(len(steps)):
-            recipeStepsTable.insertRow(recipeStepsTable.rowCount())
-            # Temperature Value
-            sectionTempWidget = customqtwidgets.ComboBoxNoWheel()
-            sectionTempWidget.setObjectName("recipeEditCombo")
-            sectionTempWidget.addItems(targetTempChoices)
-            sectionTempWidget.insertSeparator(1)
+        self._updating_steps_table = True
+        try:
+            for row in range(len(steps)):
+                recipeStepsTable.insertRow(recipeStepsTable.rowCount())
 
-            if 'targetTemp' in steps[row]:
-                sectionTemp = steps[row]["targetTemp"]
-                # Accommodate for temperature not fitting in 5 degree increment list
-                if str(steps[row]["targetTemp"]) in targetTempChoices:
-                    sectionTempWidget.setCurrentIndex(
-                        targetTempChoices.index(
-                        str(steps[row]["targetTemp"]))+1)
+                if self.compact_ui:
+                    sectionTempWidget = CompactTempPickerCombo(
+                        functools.partial(self.open_compact_temp_picker, row)
+                    )
                 else:
-                    roundedNumber = steps[row]["targetTemp"] - (steps[row]["targetTemp"] % TEMPERATURE_STEP_C)
-                    sectionTempWidget.insertItem(targetTempChoices.index(str(roundedNumber))+2, str(steps[row]["targetTemp"]))
-                    sectionTempWidget.setCurrentIndex(targetTempChoices.index(str(roundedNumber))+2)
-
-            elif 'cooling' in steps[row]:
-                sectionTemp = "Cooling"
-                sectionTempWidget.setCurrentIndex(targetTempChoices.index("Cooling"))
-
-
-            # Time Value
-            sectionTimeWidget = customqtwidgets.TimeEditNoWheel()
-            sectionTimeWidget.setObjectName("recipeEditTime")
-            sectionTimeWidget.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
-            sectionTimeWidget.setDisplayFormat("mm:ss")
-            # Set QTimeEdit to the right time from recipe
-            sectionTimeStr = time.strftime("%M:%S", time.gmtime(steps[row]["sectionTime"]))
-            sectionTime = QtCore.QTime().fromString(sectionTimeStr, "mm:ss")
-            sectionTimeWidget.setTime(sectionTime)
-
-            # Fan Speed Value
-            sectionFanSpeedWidget = customqtwidgets.ComboBoxNoWheel()
-            sectionFanSpeedWidget.setObjectName("recipeEditCombo")
-
-            sectionFanSpeedWidget.addItems(fanSpeedChoices)
-            sectionFanSpeedWidget.setCurrentIndex(fanSpeedChoices.index(str(steps[row]["fanSpeed"])))
-
-            # Modify Row field
-            upArrow = QtWidgets.QPushButton()
-            upArrow.setObjectName("upArrow")
-            #upArrow.setIcon(QtGui.QIcon('static/images/upSmall.png'))
-            upArrow.setIcon(
-                QtGui.QIcon(
-                    utils.get_resource_filename(
-                        'static/images/upSmall.png'
-                    )
+                    sectionTempWidget = customqtwidgets.ComboBoxNoWheel()
+                sectionTempWidget.setObjectName("recipeEditCombo")
+                sectionTempWidget.setFixedWidth(
+                    self.TEMP_EDITOR_WIDTH_COMPACT if self.compact_ui else self.TEMP_EDITOR_WIDTH_DEFAULT
                 )
-            )
-            upArrow.clicked.connect(functools.partial(self.move_recipe_step_up, row))
-            downArrow = QtWidgets.QPushButton()
-            downArrow.setObjectName("downArrow")
-            #downArrow.setIcon(QtGui.QIcon('static/images/downSmall.png'))
-            downArrow.setIcon(
-                QtGui.QIcon(
-                    utils.get_resource_filename(
-                        'static/images/downSmall.png'
+                sectionTempWidget.addItems(targetTempChoices)
+                sectionTempWidget.insertSeparator(1)
+
+                if 'targetTemp' in steps[row]:
+                    temp_display = int(round(
+                        celsius_to_temperature_unit(steps[row]["targetTemp"], self._display_temp_unit)
+                    ))
+                    temp_display_text = str(temp_display)
+                    if temp_display_text in targetTempChoices:
+                        sectionTempWidget.setCurrentIndex(targetTempChoices.index(temp_display_text) + 1)
+                    else:
+                        sectionTempWidget.addItem(temp_display_text)
+                        sectionTempWidget.setCurrentIndex(sectionTempWidget.count() - 1)
+                elif 'cooling' in steps[row]:
+                    sectionTempWidget.setCurrentIndex(targetTempChoices.index(self.COOLING_LABEL))
+
+                if not self.compact_ui:
+                    sectionTempWidget.currentIndexChanged.connect(self.on_steps_changed)
+
+                if self.compact_ui:
+                    sectionTimeWidget = CompactDurationEdit(
+                        functools.partial(self.open_compact_duration_picker, row)
                     )
+                else:
+                    sectionTimeWidget = customqtwidgets.TimeEditNoWheel()
+                sectionTimeWidget.setObjectName("recipeEditTime")
+                sectionTimeWidget.setFixedWidth(
+                    self.TIME_EDITOR_WIDTH_COMPACT if self.compact_ui else self.TIME_EDITOR_WIDTH_DEFAULT
                 )
-            )
-            downArrow.clicked.connect(functools.partial(self.move_recipe_step_down, row))
-            deleteRow = QtWidgets.QPushButton()
-            # deleteRow.setIcon(QtGui.QIcon('static/images/delete.png'))
-            deleteRow.setIcon(
-                QtGui.QIcon(
-                    utils.get_resource_filename(
-                        'static/images/delete.png'
-                    )
+                sectionTimeWidget.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
+                sectionTimeWidget.setDisplayFormat("mm:ss")
+                sectionTimeStr = time.strftime("%M:%S", time.gmtime(steps[row]["sectionTime"]))
+                sectionTime = QtCore.QTime().fromString(sectionTimeStr, "mm:ss")
+                sectionTimeWidget.setTime(sectionTime)
+                if not self.compact_ui:
+                    sectionTimeWidget.timeChanged.connect(self.on_steps_changed)
+
+                sectionFanSpeedWidget = customqtwidgets.ComboBoxNoWheel()
+                sectionFanSpeedWidget.setObjectName("recipeEditCombo")
+                sectionFanSpeedWidget.setFixedWidth(
+                    self.FAN_EDITOR_WIDTH_COMPACT if self.compact_ui else self.FAN_EDITOR_WIDTH_DEFAULT
                 )
-            )
-            deleteRow.setObjectName("deleteRow")
-            deleteRow.clicked.connect(functools.partial(self.delete_recipe_step, row))
-            insertRow = QtWidgets.QPushButton()
-            # insertRow.setIcon(QtGui.QIcon('static/images/plus.png'))
-            insertRow.setIcon(
-                QtGui.QIcon(
-                    utils.get_resource_filename(
-                        'static/images/plus.png'
-                    )
-                )
-            )
-            insertRow.setObjectName("insertRow")
-            insertRow.clicked.connect(functools.partial(self.insert_recipe_step, row))
+                sectionFanSpeedWidget.addItems(fanSpeedChoices)
+                sectionFanSpeedWidget.setCurrentIndex(fanSpeedChoices.index(str(steps[row]["fanSpeed"])))
 
-            # Create a grid layout to add all the widgets to
-            modifyRowWidgetLayout = QtWidgets.QHBoxLayout()
-            modifyRowWidgetLayout.setSpacing(0)
-            modifyRowWidgetLayout.setContentsMargins(0,0,0,0)
-            modifyRowWidgetLayout.addWidget(upArrow)
-            modifyRowWidgetLayout.addWidget(downArrow)
-            modifyRowWidgetLayout.addWidget(deleteRow)
-            modifyRowWidgetLayout.addWidget(insertRow)
+                upArrow = QtWidgets.QPushButton()
+                upArrow.setObjectName("upArrow")
+                upArrow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/upSmall.png')))
+                upArrow.clicked.connect(functools.partial(self.move_recipe_step_up, row))
 
-            # Assign Layout to a QWidget to add to a single column
-            modifyRowWidget = QtWidgets.QWidget()
-            modifyRowWidget.setObjectName("buttonTable")
-            modifyRowWidget.setLayout(modifyRowWidgetLayout)
+                downArrow = QtWidgets.QPushButton()
+                downArrow.setObjectName("downArrow")
+                downArrow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/downSmall.png')))
+                downArrow.clicked.connect(functools.partial(self.move_recipe_step_down, row))
 
-            # Add widgets
-            recipeStepsTable.setCellWidget(row, 0, sectionTempWidget)
-            recipeStepsTable.setCellWidget(row, 1, sectionFanSpeedWidget)
-            recipeStepsTable.setCellWidget(row, 2, sectionTimeWidget)
-            recipeStepsTable.setCellWidget(row, 3, modifyRowWidget)
+                deleteRow = QtWidgets.QPushButton()
+                deleteRow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/delete.png')))
+                deleteRow.setObjectName("deleteRow")
+                deleteRow.clicked.connect(functools.partial(self.delete_recipe_step, row))
 
-    def load_recipe_file(self, recipeFile):
-        """Takes a file location and opens that file. It then loads the contents
-        which should be JSON and makes a python dictionary from the contents.
-        The python dictionary is created as self.recipe."""
-        # Load recipe file
-        with open(recipeFile, encoding='utf-8') as recipeFileHandler:
-            self.recipe = recipe_to_celsius(json.load(recipeFileHandler))
-        self.recipe["file"] = recipeFile
+                insertRow = QtWidgets.QPushButton()
+                insertRow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/plus.png')))
+                insertRow.setObjectName("insertRow")
+                insertRow.clicked.connect(functools.partial(self.insert_recipe_step, row))
+
+                modifyRowWidgetLayout = QtWidgets.QHBoxLayout()
+                modifyRowWidgetLayout.setSpacing(0)
+                modifyRowWidgetLayout.setContentsMargins(0, 0, 0, 0)
+                modifyRowWidgetLayout.addWidget(upArrow)
+                modifyRowWidgetLayout.addWidget(downArrow)
+                modifyRowWidgetLayout.addWidget(deleteRow)
+                modifyRowWidgetLayout.addWidget(insertRow)
+
+                modifyRowWidget = QtWidgets.QWidget()
+                modifyRowWidget.setObjectName("buttonTable")
+                modifyRowWidget.setLayout(modifyRowWidgetLayout)
+
+                recipeStepsTable.setCellWidget(row, 0, sectionTempWidget)
+                recipeStepsTable.setCellWidget(row, 1, sectionFanSpeedWidget)
+                recipeStepsTable.setCellWidget(row, 2, sectionTimeWidget)
+                recipeStepsTable.setCellWidget(row, 3, modifyRowWidget)
+        finally:
+            self._updating_steps_table = False
+
 
     def preload_recipe_information(self):
-        """Loads information from self.recipe and prefills all the fields in the
-        form."""
+        """Load information from self.recipe and prefill all form fields."""
         self.recipeName.setText(self.recipe["roastName"])
         self.recipeCreator.setText(self.recipe["creator"])
         self.recipeRoastType.setText(self.recipe["roastDescription"]["roastType"])
@@ -329,114 +535,365 @@ class RecipeEditor(QtWidgets.QDialog):
         self.beanStore.setText(self.recipe["bean"]["source"]["reseller"])
         self.recipeDescriptionBox.setText(self.recipe["roastDescription"]["description"])
 
+        index = self.temperatureUnitSelect.findText(self._selected_recipe_unit_label)
+        if index >= 0:
+            self.temperatureUnitSelect.setCurrentIndex(index)
+
         self.preload_recipe_steps(self.recipeSteps)
+        self.update_recipe_curve()
+
+    def on_temperature_unit_changed(self):
+        steps_c = self.get_current_table_values()
+        selected_label = self.temperatureUnitSelect.currentText()
+        self._display_temp_unit = normalize_temperature_unit(selected_label, default=TEMP_UNIT_C)
+        self._selected_recipe_unit_label = selected_label
+        self._update_steps_header_labels(self.recipeSteps)
+        if not steps_c:
+            self.update_recipe_curve()
+            return
+        self.rebuild_recipe_steps_table(steps_c)
+
+    def on_steps_changed(self):
+        if self._updating_steps_table:
+            return
+        self.update_recipe_curve()
+
+    def open_compact_temp_picker(self, row):
+        """Open touch picker for temperature selection in compact mode."""
+        widget = self.recipeSteps.cellWidget(row, 0)
+        if widget is None:
+            return
+        selected_text = self._prompt_compact_temperature_selection(widget.currentText())
+        if selected_text is None:
+            return
+
+        selected_index = widget.findText(selected_text)
+        if selected_index < 0:
+            widget.addItem(selected_text)
+            selected_index = widget.findText(selected_text)
+
+        widget.blockSignals(True)
+        widget.setCurrentIndex(selected_index)
+        widget.blockSignals(False)
+        self.on_steps_changed()
+
+    def open_compact_duration_picker(self, row):
+        """Open touch picker for duration selection in compact mode."""
+        widget = self.recipeSteps.cellWidget(row, 2)
+        if widget is None:
+            return
+        current_seconds = QtCore.QTime(0, 0, 0).secsTo(widget.time())
+        selected_seconds = self._prompt_compact_duration_selection(current_seconds)
+        if selected_seconds is None:
+            return
+
+        widget.blockSignals(True)
+        widget.setTime(QtCore.QTime(0, 0, 0).addSecs(int(selected_seconds)))
+        widget.blockSignals(False)
+        self.on_steps_changed()
+
+    def _prompt_compact_temperature_selection(self, current_text):
+        """Return selected display-unit temperature text or None if canceled."""
+        min_display = int(round(celsius_to_temperature_unit(MIN_TEMPERATURE_C, self._display_temp_unit)))
+        max_display = int(round(celsius_to_temperature_unit(MAX_TEMPERATURE_C, self._display_temp_unit)))
+
+        state = {
+            "cooling": current_text == self.COOLING_LABEL,
+            "value": min_display,
+        }
+        if not state["cooling"]:
+            try:
+                state["value"] = int(current_text)
+            except (TypeError, ValueError):
+                state["value"] = min_display
+
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("Set Temperature")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(320 if self.compact_ui else 360)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+        value_label = QtWidgets.QLabel()
+        value_label.setAlignment(QtCore.Qt.AlignCenter)
+        value_label.setObjectName("label")
+
+        def refresh_label():
+            if state["cooling"]:
+                value_label.setText(self.COOLING_LABEL)
+            else:
+                value_label.setText(f"{state['value']} {self._current_unit_display_label()}")
+
+        def set_cooling(enabled):
+            state["cooling"] = bool(enabled)
+            refresh_label()
+
+        def adjust(delta):
+            if state["cooling"]:
+                state["cooling"] = False
+            state["value"] = max(min_display, min(max_display, state["value"] + int(delta)))
+            refresh_label()
+
+        cooling_toggle = QtWidgets.QPushButton("Cooling")
+        cooling_toggle.setCheckable(True)
+        cooling_toggle.setChecked(state["cooling"])
+        cooling_toggle.clicked.connect(set_cooling)
+
+        step_row = QtWidgets.QHBoxLayout()
+        minus_big = QtWidgets.QPushButton(f"-{self.TEMP_PICKER_STEP_LARGE}")
+        minus_small = QtWidgets.QPushButton(f"-{self.TEMP_PICKER_STEP_SMALL}")
+        plus_small = QtWidgets.QPushButton(f"+{self.TEMP_PICKER_STEP_SMALL}")
+        plus_big = QtWidgets.QPushButton(f"+{self.TEMP_PICKER_STEP_LARGE}")
+        minus_big.clicked.connect(lambda: adjust(-self.TEMP_PICKER_STEP_LARGE))
+        minus_small.clicked.connect(lambda: adjust(-self.TEMP_PICKER_STEP_SMALL))
+        plus_small.clicked.connect(lambda: adjust(self.TEMP_PICKER_STEP_SMALL))
+        plus_big.clicked.connect(lambda: adjust(self.TEMP_PICKER_STEP_LARGE))
+        step_row.addWidget(minus_big)
+        step_row.addWidget(minus_small)
+        step_row.addWidget(plus_small)
+        step_row.addWidget(plus_big)
+
+        action_row = QtWidgets.QHBoxLayout()
+        cancel_button = QtWidgets.QPushButton("Cancel")
+        apply_button = QtWidgets.QPushButton("Apply")
+        cancel_button.clicked.connect(dialog.reject)
+        apply_button.clicked.connect(dialog.accept)
+        action_row.addWidget(cancel_button)
+        action_row.addWidget(apply_button)
+
+        refresh_label()
+        layout.addWidget(value_label)
+        layout.addWidget(cooling_toggle)
+        layout.addLayout(step_row)
+        layout.addLayout(action_row)
+
+        dialog_exec = getattr(dialog, "exec", dialog.exec_)
+        if not dialog_exec():
+            return None
+        if state["cooling"]:
+            return self.COOLING_LABEL
+        return str(state["value"])
+
+    def _prompt_compact_duration_selection(self, current_seconds):
+        """Return selected duration in seconds, or None if canceled."""
+        state = {
+            "seconds": int(max(0, min(self.DURATION_MAX_S, int(current_seconds)))),
+        }
+
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("Set Duration")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(320 if self.compact_ui else 360)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+        value_label = QtWidgets.QLabel()
+        value_label.setAlignment(QtCore.Qt.AlignCenter)
+        value_label.setObjectName("label")
+
+        def format_mmss(total_seconds):
+            return time.strftime("%M:%S", time.gmtime(max(0, int(total_seconds))))
+
+        def refresh_label():
+            value_label.setText(format_mmss(state["seconds"]))
+
+        def adjust(delta):
+            state["seconds"] = max(0, min(self.DURATION_MAX_S, state["seconds"] + int(delta)))
+            refresh_label()
+
+        step_row = QtWidgets.QHBoxLayout()
+        minus_big = QtWidgets.QPushButton(f"-{self.DURATION_STEP_LARGE_S}s")
+        minus_small = QtWidgets.QPushButton(f"-{self.DURATION_STEP_SMALL_S}s")
+        plus_small = QtWidgets.QPushButton(f"+{self.DURATION_STEP_SMALL_S}s")
+        plus_big = QtWidgets.QPushButton(f"+{self.DURATION_STEP_LARGE_S}s")
+        minus_big.clicked.connect(lambda: adjust(-self.DURATION_STEP_LARGE_S))
+        minus_small.clicked.connect(lambda: adjust(-self.DURATION_STEP_SMALL_S))
+        plus_small.clicked.connect(lambda: adjust(self.DURATION_STEP_SMALL_S))
+        plus_big.clicked.connect(lambda: adjust(self.DURATION_STEP_LARGE_S))
+        step_row.addWidget(minus_big)
+        step_row.addWidget(minus_small)
+        step_row.addWidget(plus_small)
+        step_row.addWidget(plus_big)
+
+        action_row = QtWidgets.QHBoxLayout()
+        cancel_button = QtWidgets.QPushButton("Cancel")
+        apply_button = QtWidgets.QPushButton("Apply")
+        cancel_button.clicked.connect(dialog.reject)
+        apply_button.clicked.connect(dialog.accept)
+        action_row.addWidget(cancel_button)
+        action_row.addWidget(apply_button)
+
+        refresh_label()
+        layout.addWidget(value_label)
+        layout.addLayout(step_row)
+        layout.addLayout(action_row)
+
+        dialog_exec = getattr(dialog, "exec", dialog.exec_)
+        if not dialog_exec():
+            return None
+        return int(state["seconds"])
 
     def move_recipe_step_up(self, row):
         """This method will take a row and swap it the row above it."""
         if row != 0:
-            steps = self.get_current_table_values()
-            newSteps = steps
-
-            # Swap the steps
-            newSteps[row], newSteps[row-1] = newSteps[row-1], newSteps[row]
-
-            # Rebuild table with new steps
+            newSteps = self.get_current_table_values()
+            newSteps[row], newSteps[row - 1] = newSteps[row - 1], newSteps[row]
             self.rebuild_recipe_steps_table(newSteps)
 
     def move_recipe_step_down(self, row):
         """This method will take a row and swap it the row below it."""
-        if row != self.recipeSteps.rowCount()-1:
-            steps = self.get_current_table_values()
-            newSteps = steps
-
-            # Swap the steps
-            newSteps[row], newSteps[row+1] = newSteps[row+1], newSteps[row]
-
-            # Rebuild table with new steps
+        if row != self.recipeSteps.rowCount() - 1:
+            newSteps = self.get_current_table_values()
+            newSteps[row], newSteps[row + 1] = newSteps[row + 1], newSteps[row]
             self.rebuild_recipe_steps_table(newSteps)
 
     def delete_recipe_step(self, row):
         """This method will take a row delete it."""
-        steps = self.get_current_table_values()
-        newSteps = steps
-
-        # Delete step
+        newSteps = self.get_current_table_values()
         newSteps.pop(row)
-
-        # Rebuild table with new steps
         self.rebuild_recipe_steps_table(newSteps)
 
     def insert_recipe_step(self, row):
-        """Inserts a row below the specified row wit generic values."""
-        steps = self.get_current_table_values()
-        newSteps = steps
-
-        # insert step
-        newSteps.insert(row+1, {
+        """Inserts a row below the specified row with generic values."""
+        newSteps = self.get_current_table_values()
+        newSteps.insert(row + 1, {
             'fanSpeed': 5,
             'targetTemp': DEFAULT_TARGET_TEMPERATURE_C,
             'sectionTime': 0,
         })
-
-        # Rebuild table with new steps
         self.rebuild_recipe_steps_table(newSteps)
 
+    def _parse_display_temperature(self, value_text):
+        temp_display = int(value_text)
+        temp_c = temperature_to_celsius(temp_display, self._display_temp_unit)
+        return clamp_temperature_c(temp_c)
+
     def get_current_table_values(self):
-        """Used to read all the current table values from the recipeSteps table
-        and build a dictionary of all the values."""
+        """Read current table values and return step dictionaries in Celsius."""
         recipeSteps = []
         for row in range(0, self.recipeSteps.rowCount()):
             currentRow = {}
-            currentRow["sectionTime"] = QtCore.QTime(0, 0, 0).secsTo(self.recipeSteps.cellWidget(row, 2).time())
+            currentRow["sectionTime"] = QtCore.QTime(0, 0, 0).secsTo(
+                self.recipeSteps.cellWidget(row, 2).time()
+            )
             currentRow["fanSpeed"] = int(self.recipeSteps.cellWidget(row, 1).currentText())
 
-            # Get Temperature or cooling
-            if self.recipeSteps.cellWidget(row, 0).currentText() == "Cooling":
+            temp_text = self.recipeSteps.cellWidget(row, 0).currentText()
+            if temp_text == self.COOLING_LABEL:
                 currentRow["cooling"] = True
             else:
-                currentRow["targetTemp"] = int(self.recipeSteps.cellWidget(row, 0).currentText())
+                currentRow["targetTemp"] = self._parse_display_temperature(temp_text)
 
             recipeSteps.append(currentRow)
 
-        # Return copied rows
         return recipeSteps
 
     def rebuild_recipe_steps_table(self, newSteps):
-        """Used to reload all the rows in the recipe steps table with new steps.
-        """
-        # Alert user if they try to delete all the steps
+        """Reload rows in the recipe steps table with new steps."""
         if len(newSteps) < 1:
             alert = QtWidgets.QMessageBox()
             alert.setWindowTitle('openroast')
-            if hasattr(self, "style"):
-                alert.setStyleSheet(self.style)
+            style_sheet = self.styleSheet()
+            if not style_sheet:
+                app = QtWidgets.QApplication.instance()
+                style_sheet = app.styleSheet() if app is not None else ""
+            if isinstance(style_sheet, str) and style_sheet:
+                alert.setStyleSheet(style_sheet)
             alert.setText("You must have atleast one step!")
             dialog_exec = getattr(alert, "exec", alert.exec_)
             dialog_exec()
+            return
 
-        else:
-            # Delete all the current rows
-            while self.recipeSteps.rowCount() > 0:
-                self.recipeSteps.removeRow(0)
-            # Add the new step sequence
-            self.load_recipe_steps(self.recipeSteps, newSteps)
+        while self.recipeSteps.rowCount() > 0:
+            self.recipeSteps.removeRow(0)
+        self.load_recipe_steps(self.recipeSteps, newSteps)
+        self.update_recipe_curve()
+
+    def update_recipe_curve(self):
+        steps = self.get_current_table_values()
+
+        self.recipeCurveAxes.clear()
+        self.recipeCurveAxes.set_facecolor('#23252a')
+        self.recipeCurveAxes.get_xaxis().label.set_color('white')
+        self.recipeCurveAxes.get_yaxis().label.set_color('white')
+        self.recipeCurveAxes.tick_params(axis='x', colors='white')
+        self.recipeCurveAxes.tick_params(axis='y', colors='white')
+
+        unit_symbol = self._current_unit_display_label()
+        self.recipeCurveAxes.set_xlabel("Time")
+        self.recipeCurveAxes.set_ylabel(f"Temperature ({chr(176)}{unit_symbol})")
+
+        x_seconds = [0]
+        baseline_c = float(MIN_TEMPERATURE_C)
+        y_values = [celsius_to_temperature_unit(baseline_c, self._display_temp_unit)]
+
+        elapsed_s = 0
+        last_temp_display = y_values[0]
+        for step in steps:
+            target_c = baseline_c if step.get("cooling") else float(step.get("targetTemp", baseline_c))
+            target_display = celsius_to_temperature_unit(target_c, self._display_temp_unit)
+
+            x_seconds.append(elapsed_s)
+            y_values.append(target_display)
+
+            elapsed_s += int(step.get("sectionTime", 0))
+            x_seconds.append(elapsed_s)
+            y_values.append(target_display)
+            last_temp_display = target_display
+
+        if elapsed_s == 0:
+            x_seconds.append(1)
+            y_values.append(last_temp_display)
+
+        self.recipeCurveAxes.plot(x_seconds, y_values, color='#8ab71b', linewidth=2.0)
+
+        y_min_display = celsius_to_temperature_unit(float(MIN_TEMPERATURE_C), self._display_temp_unit)
+        y_max_display = max(y_values) if y_values else y_min_display
+        if y_max_display <= y_min_display:
+            y_max_display = y_min_display + 1.0
+
+        self.recipeCurveAxes.set_xlim(0, max(1, elapsed_s))
+        self.recipeCurveAxes.set_ylim(y_min_display, y_max_display + 5.0)
+        self.recipeCurveAxes.xaxis.set_major_formatter(FuncFormatter(
+            lambda value, _pos: time.strftime("%M:%S", time.gmtime(max(0, int(value))))
+        ))
+
+        self.recipeCurveCanvas.draw_idle()
+
+    def _convert_steps_for_save(self, steps_c, output_unit_symbol):
+        converted_steps = []
+        for step in steps_c:
+            converted = {
+                "sectionTime": int(step["sectionTime"]),
+                "fanSpeed": int(step["fanSpeed"]),
+            }
+            if step.get("cooling"):
+                converted["cooling"] = True
+            else:
+                converted["targetTemp"] = int(round(
+                    celsius_to_temperature_unit(step["targetTemp"], output_unit_symbol)
+                ))
+            converted_steps.append(converted)
+        return converted_steps
 
     def save_recipe(self):
-        """Pulls in all of the information in the window and creates a new
-        recipe file with the specified contents."""
-        # Determine Recipe File Name
+        """Create and save a recipe file with current editor values."""
         if "file" in self.recipe:
             filePath = self.recipe["file"]
         else:
-            filePath = os.path.expanduser('~/Documents/Openroast/Recipes/My Recipes/') + tools.format_filename(self.recipeName.text()) + ".json"
-            # TODO: Account for existing file with same name
+            filePath = (
+                os.path.expanduser('~/Documents/Openroast/Recipes/My Recipes/')
+                + tools.format_filename(self.recipeName.text())
+                + ".json"
+            )
 
-        # Create Dictionary with all the new recipe information
+        steps_c = self.get_current_table_values()
+        selected_unit_label = self.temperatureUnitSelect.currentText()
+        output_unit_symbol = normalize_temperature_unit(selected_unit_label, default=TEMP_UNIT_C)
+
         self.newRecipe = {}
         self.newRecipe["roastName"] = self.recipeName.text()
         self.newRecipe["formatVersion"] = RECIPE_FORMAT_VERSION
-        self.newRecipe["temperatureUnit"] = RECIPE_UNIT_CELSIUS
-        self.newRecipe["steps"] = self.get_current_table_values()
+        self.newRecipe["temperatureUnit"] = selected_unit_label
+        self.newRecipe["steps"] = self._convert_steps_for_save(steps_c, output_unit_symbol)
         self.newRecipe["roastDescription"] = {}
         self.newRecipe["roastDescription"]["roastType"] = self.recipeRoastType.text()
         self.newRecipe["roastDescription"]["description"] = self.recipeDescriptionBox.toPlainText()
@@ -451,15 +908,11 @@ class RecipeEditor(QtWidgets.QDialog):
         for step in self.newRecipe["steps"]:
             self.newRecipe["totalTime"] += step["sectionTime"]
 
-        # Write the recipe to a file
         jsonObject = json.dumps(self.newRecipe, indent=4)
-        # will need to create dir if it doesn't exist
-        # note that this should never happen because this folder is created
-        # at OpenroastApp.__init__() time.
         if not os.path.exists(os.path.dirname(filePath)):
             try:
                 os.makedirs(os.path.dirname(filePath))
-            except OSError as exc: # Guard against race condition
+            except OSError as exc:  # Guard against race condition
                 if exc.errno != errno.EEXIST:
                     raise
         with open(filePath, 'w', encoding='utf-8') as file:
