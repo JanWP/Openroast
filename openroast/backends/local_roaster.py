@@ -56,9 +56,7 @@ class LocalRoaster:
         self._stop_callbacks = threading.Event()
         self._update_event = threading.Event()
         self._state_transition_event = threading.Event()
-        self._heater_output_event = threading.Event()
         self._heater_output_state = False
-        self._heater_level_event = threading.Event()
         self._heater_level_state = 0
 
         self._update_data_func = update_data_func
@@ -67,8 +65,6 @@ class LocalRoaster:
         self._heater_level_func = None
         self._update_thread = None
         self._state_transition_thread = None
-        self._heater_output_thread = None
-        self._heater_level_thread = None
 
     def _register_controller_listeners(self):
         if self._listeners_registered:
@@ -102,22 +98,6 @@ class LocalRoaster:
                 daemon=True,
             )
             self._state_transition_thread.start()
-        if self._heater_output_func is not None:
-            self._heater_output_thread = threading.Thread(
-                target=self._run_event_callback,
-                args=(self._heater_output_event, lambda: self._heater_output_func(self._heater_output_state)),
-                name="openroast-local-heater-output",
-                daemon=True,
-            )
-            self._heater_output_thread.start()
-        if self._heater_level_func is not None:
-            self._heater_level_thread = threading.Thread(
-                target=self._run_event_callback,
-                args=(self._heater_level_event, lambda: self._heater_level_func(self._heater_level_state)),
-                name="openroast-local-heater-level",
-                daemon=True,
-            )
-            self._heater_level_thread.start()
         self._callback_threads_started = True
 
     def _run_event_callback(self, event, callback):
@@ -138,11 +118,19 @@ class LocalRoaster:
 
     def _on_heater_output_changed(self, heater_on):
         self._heater_output_state = bool(heater_on)
-        self._heater_output_event.set()
+        if self._heater_output_func is not None:
+            try:
+                self._heater_output_func(self._heater_output_state)
+            except Exception as exc:  # pragma: no cover - defensive callback handling
+                logging.warning("LocalRoaster callback failed: %s", exc)
 
     def _on_heater_level_changed(self, heater_level):
         self._heater_level_state = int(heater_level)
-        self._heater_level_event.set()
+        if self._heater_level_func is not None:
+            try:
+                self._heater_level_func(self._heater_level_state)
+            except Exception as exc:  # pragma: no cover - defensive callback handling
+                logging.warning("LocalRoaster callback failed: %s", exc)
 
     @property
     def connected(self):
@@ -274,32 +262,22 @@ class LocalRoaster:
 
     def set_heater_output_func(self, func):
         self._heater_output_func = func
-        if self._callback_threads_started and self._heater_output_thread is None and func is not None:
-            self._heater_output_thread = threading.Thread(
-                target=self._run_event_callback,
-                args=(self._heater_output_event, lambda: self._heater_output_func(self._heater_output_state)),
-                name="openroast-local-heater-output",
-                daemon=True,
-            )
-            self._heater_output_thread.start()
         if func is not None:
             self._heater_output_state = bool(self._controller.heater_output)
-            self._heater_output_event.set()
+            try:
+                func(self._heater_output_state)
+            except Exception as exc:  # pragma: no cover - defensive callback handling
+                logging.warning("LocalRoaster callback failed: %s", exc)
         return True
 
     def set_heater_level_func(self, func):
         self._heater_level_func = func
-        if self._callback_threads_started and self._heater_level_thread is None and func is not None:
-            self._heater_level_thread = threading.Thread(
-                target=self._run_event_callback,
-                args=(self._heater_level_event, lambda: self._heater_level_func(self._heater_level_state)),
-                name="openroast-local-heater-level",
-                daemon=True,
-            )
-            self._heater_level_thread.start()
         if func is not None:
             self._heater_level_state = int(self._controller.heater_level)
-            self._heater_level_event.set()
+            try:
+                func(self._heater_level_state)
+            except Exception as exc:  # pragma: no cover - defensive callback handling
+                logging.warning("LocalRoaster callback failed: %s", exc)
         return True
 
     def auto_connect(self):
@@ -313,6 +291,4 @@ class LocalRoaster:
         self._stop_callbacks.set()
         self._update_event.set()
         self._state_transition_event.set()
-        self._heater_output_event.set()
-        self._heater_level_event.set()
         self._controller.shutdown()

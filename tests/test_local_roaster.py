@@ -240,22 +240,23 @@ class LocalRoasterAdapterTests(unittest.TestCase):
             roaster.auto_connect()
             self.assertTrue(roaster.set_heater_output_func(lambda _value: None))
 
-        self.assertEqual(FakeThread.started_count, 1)
+        self.assertEqual(FakeThread.started_count, 0)
 
-    def test_heater_output_listener_sets_adapter_event(self):
+    def test_heater_output_listener_calls_registered_callback(self):
         fake_controller = FakeController()
 
         with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
             roaster = LocalRoaster()
 
+        seen = []
+        roaster.set_heater_output_func(lambda value: seen.append(bool(value)))
         roaster.auto_connect()
         self.assertIsNotNone(fake_controller.heater_output_listener)
-        self.assertFalse(roaster._heater_output_event.is_set())
 
         fake_controller.heater_output_listener(True)
 
-        self.assertTrue(roaster._heater_output_event.is_set())
         self.assertTrue(roaster._heater_output_state)
+        self.assertIn(True, seen)
 
     def test_set_heater_level_func_allows_post_connect_registration(self):
         fake_controller = FakeController()
@@ -277,22 +278,23 @@ class LocalRoasterAdapterTests(unittest.TestCase):
             roaster.auto_connect()
             self.assertTrue(roaster.set_heater_level_func(lambda _value: None))
 
-        self.assertEqual(FakeThread.started_count, 1)
+        self.assertEqual(FakeThread.started_count, 0)
 
-    def test_heater_level_listener_sets_adapter_event(self):
+    def test_heater_level_listener_calls_registered_callback(self):
         fake_controller = FakeController()
 
         with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
             roaster = LocalRoaster()
 
+        seen = []
+        roaster.set_heater_level_func(lambda value: seen.append(int(value)))
         roaster.auto_connect()
         self.assertIsNotNone(fake_controller.heater_level_listener)
-        self.assertFalse(roaster._heater_level_event.is_set())
 
         fake_controller.heater_level_listener(67)
 
-        self.assertTrue(roaster._heater_level_event.is_set())
         self.assertEqual(roaster._heater_level_state, 67)
+        self.assertIn(67, seen)
 
 
 if __name__ == "__main__":
