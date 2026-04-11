@@ -130,6 +130,18 @@ class RecipeEditorTests(unittest.TestCase):
             editor.close()
             self._app.processEvents()
 
+    def test_compact_steps_header_font_is_smaller_than_default(self):
+        compact_editor = RecipeEditor(compact_ui=True)
+        default_editor = RecipeEditor(compact_ui=False)
+        try:
+            compact_size = compact_editor.recipeSteps.horizontalHeader().font().pointSizeF()
+            default_size = default_editor.recipeSteps.horizontalHeader().font().pointSizeF()
+            self.assertLess(compact_size, default_size)
+        finally:
+            compact_editor.close()
+            default_editor.close()
+            self._app.processEvents()
+
     def test_compact_row_action_widget_omits_move_arrows(self):
         editor = RecipeEditor(compact_ui=True)
         try:

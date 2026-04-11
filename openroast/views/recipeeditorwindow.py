@@ -466,6 +466,14 @@ class RecipeEditor(QtWidgets.QDialog):
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.Fixed)
         header.setSectionResizeMode(3, QtWidgets.QHeaderView.Fixed)
 
+        if self.compact_ui:
+            font = header.font()
+            base_size = font.pointSizeF()
+            if base_size <= 0:
+                base_size = 11.0
+            font.setPointSizeF(max(8.0, base_size - 1.0))
+            header.setFont(font)
+
         duration_width = (
             self.COLUMN_WIDTH_DURATION_COMPACT
             if self.compact_ui
