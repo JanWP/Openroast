@@ -94,6 +94,20 @@ class DutyCyclePWMTests(unittest.TestCase):
         pwm = DutyCyclePWM(cycle_s=0.01)
         self.assertGreaterEqual(pwm.cycle_s, 0.1)
 
+    def test_state_and_delay_reports_falling_edge_for_partial_duty(self):
+        pwm = DutyCyclePWM(cycle_s=1.0)
+        base = time.monotonic()
+        heater_on, delay_s = pwm.state_and_delay(50.0, now=base + 0.1)
+        self.assertTrue(heater_on)
+        self.assertAlmostEqual(delay_s, 0.4, places=2)
+
+    def test_state_and_delay_reports_next_cycle_when_currently_off(self):
+        pwm = DutyCyclePWM(cycle_s=1.0)
+        base = time.monotonic()
+        heater_on, delay_s = pwm.state_and_delay(50.0, now=base + 0.8)
+        self.assertFalse(heater_on)
+        self.assertAlmostEqual(delay_s, 0.2, places=2)
+
 
 # ---------------------------------------------------------------------------
 # RoasterController safety tests (using a recording driver)

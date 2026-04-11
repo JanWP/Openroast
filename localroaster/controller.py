@@ -70,6 +70,10 @@ class DutyCyclePWM:
         self._cycle_start = time.monotonic()
 
     def output(self, duty_percent: float, now: float | None = None) -> bool:
+        state, _ = self.state_and_delay(duty_percent, now=now)
+        return state
+
+    def state_and_delay(self, duty_percent: float, now: float | None = None) -> tuple[bool, float]:
         duty = max(0.0, min(100.0, float(duty_percent)))
         if now is None:
             now = time.monotonic()
@@ -80,7 +84,19 @@ class DutyCyclePWM:
             elapsed = now - self._cycle_start
 
         on_time = self.cycle_s * (duty / 100.0)
-        return elapsed < on_time
+        heater_on = elapsed < on_time
+
+        if duty <= 0.0 or duty >= 100.0:
+            # No intra-cycle edge; wake at cycle boundary (or earlier on level change).
+            delay_s = self.cycle_s - elapsed
+        elif heater_on:
+            # Next edge is falling edge at on_time.
+            delay_s = on_time - elapsed
+        else:
+            # Next edge is rising edge at next cycle boundary.
+            delay_s = self.cycle_s - elapsed
+
+        return heater_on, max(0.001, float(delay_s))
 
 
 class RoasterController:
@@ -96,6 +112,7 @@ class RoasterController:
 
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
+        self._pwm_wake_event = threading.Event()
         self._threads_started = False
 
         self._state = RoasterState.DISCONNECTED
@@ -191,6 +208,7 @@ class RoasterController:
             self._state = RoasterState.DISCONNECTED
         self._set_heater_level(0)
         self._set_heater_output(False, emit_telemetry=False)
+        self._pwm_wake_event.set()
         try:
             self.hardware.set_heater(False)
             self.hardware.close()
@@ -342,6 +360,10 @@ class RoasterController:
                 changed = True
                 listeners = list(self._heater_level_listeners)
 
+        if changed:
+            # Recompute PWM edge timing immediately on duty updates.
+            self._pwm_wake_event.set()
+
         if not changed:
             return False
 
@@ -456,7 +478,6 @@ class RoasterController:
 
     def _pwm_loop(self) -> None:
         last_written: bool | None = None
-        tick_s = max(0.01, float(self.config.pwm_tick_s))
 
         while not self._stop_event.is_set():
             start = time.monotonic()
@@ -464,7 +485,7 @@ class RoasterController:
             with self._lock:
                 heater_level = self._heater_level
 
-            heater_on = self._pwm.output(heater_level, now=start)
+            heater_on, delay_s = self._pwm.state_and_delay(heater_level, now=start)
 
             if heater_on != last_written:
                 try:
@@ -475,11 +496,12 @@ class RoasterController:
                     with self._lock:
                         self._fault = str(exc)
 
-            self._set_heater_output(heater_on)
+            # Reflect applied output state (best-effort if hardware writes fail).
+            self._set_heater_output(False if last_written is None else last_written)
 
-            elapsed = time.monotonic() - start
-            sleep_for = tick_s - elapsed
-            if sleep_for > 0 and self._stop_event.wait(sleep_for):
+            if self._pwm_wake_event.wait(timeout=delay_s):
+                self._pwm_wake_event.clear()
+            if self._stop_event.is_set():
                 break
 
     def _timer_loop(self) -> None:
