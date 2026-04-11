@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 # Roastero, released under GPLv3
 
-import os
 import time
 import math
-import datetime
 from multiprocessing import sharedctypes
 
 from PyQt5 import QtCore
@@ -52,6 +50,10 @@ class RoastTab(QtWidgets.QWidget):
         )
         self._min_temp_c = int(getattr(self.roaster, "temperature_min_c", MIN_TEMPERATURE_C))
         self._max_temp_c = int(getattr(self.roaster, "temperature_max_c", MAX_TEMPERATURE_C))
+        self._has_temp_k = hasattr(self.roaster, "current_temp_k")
+        self._has_target_temp_k = hasattr(self.roaster, "target_temp_k")
+        self._has_time_s = hasattr(self.roaster, "time_remaining_s")
+        self._has_total_time_s = hasattr(self.roaster, "total_time_s")
 
         # Create the tab ui.
         self.create_ui()
@@ -124,9 +126,27 @@ class RoastTab(QtWidgets.QWidget):
 
     def graph_get_data(self):
         self.graphWidget.append_x(self._get_roaster_current_temp_c())
+        self.graphWidget.set_time_window_max_seconds(
+            self._get_graph_time_window_max_s(self._get_roaster_total_time_s())
+        )
+
+    def _get_graph_time_window_max_s(self, elapsed_s):
+        """Return section-aligned graph x-limit for current elapsed roast time."""
+        elapsed_s = int(max(0, elapsed_s))
+        if not self.recipes.check_recipe_loaded():
+            return max(1, elapsed_s)
+
+        section_end_s = 0
+        for idx in range(self.recipes.get_num_recipe_sections()):
+            section_end_s += int(self.recipes.get_section_time(idx))
+            # Use strict '<' so we switch window exactly at section boundary.
+            if elapsed_s < section_end_s:
+                return max(1, section_end_s)
+
+        return max(1, elapsed_s)
 
     def _get_roaster_current_temp_c(self):
-        if hasattr(self.roaster, "current_temp_k"):
+        if self._has_temp_k:
             return clamp_temperature_c(
                 kelvin_to_celsius(self.roaster.current_temp_k),
                 low=self._min_temp_c,
@@ -135,7 +155,7 @@ class RoastTab(QtWidgets.QWidget):
         return self._roaster_temp_to_c(self.roaster.current_temp)
 
     def _get_roaster_target_temp_c(self):
-        if hasattr(self.roaster, "target_temp_k"):
+        if self._has_target_temp_k:
             return clamp_temperature_c(
                 kelvin_to_celsius(self.roaster.target_temp_k),
                 low=self._min_temp_c,
@@ -144,7 +164,7 @@ class RoastTab(QtWidgets.QWidget):
         return self._roaster_temp_to_c(self.roaster.target_temp)
 
     def _set_roaster_target_temp_c(self, value_c):
-        if hasattr(self.roaster, "target_temp_k"):
+        if self._has_target_temp_k:
             target_temp_k = celsius_to_kelvin(value_c)
             if self.roaster.target_temp_k != target_temp_k:
                 self.roaster.target_temp_k = target_temp_k
@@ -154,12 +174,12 @@ class RoastTab(QtWidgets.QWidget):
             self.roaster.target_temp = roaster_value
 
     def _get_roaster_time_remaining_s(self):
-        if hasattr(self.roaster, "time_remaining_s"):
+        if self._has_time_s:
             return self.roaster.time_remaining_s
         return self.roaster.time_remaining
 
     def _set_roaster_time_remaining_s(self, value_s):
-        if hasattr(self.roaster, "time_remaining_s"):
+        if self._has_time_s:
             if self.roaster.time_remaining_s != value_s:
                 self.roaster.time_remaining_s = value_s
             return
@@ -167,12 +187,12 @@ class RoastTab(QtWidgets.QWidget):
             self.roaster.time_remaining = value_s
 
     def _get_roaster_total_time_s(self):
-        if hasattr(self.roaster, "total_time_s"):
+        if self._has_total_time_s:
             return self.roaster.total_time_s
         return self.roaster.total_time
 
     def _set_roaster_total_time_s(self, value_s):
-        if hasattr(self.roaster, "total_time_s"):
+        if self._has_total_time_s:
             self.roaster.total_time_s = value_s
             return
         self.roaster.total_time = value_s

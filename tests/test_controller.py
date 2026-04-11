@@ -281,6 +281,43 @@ class ControllerSafetyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ctrl.target_temp_k = config.max_temp_k + 1
 
+    def test_timer_loop_transitions_immediately_when_countdown_hits_zero(self):
+        class _ImmediateStopEvent:
+            def __init__(self):
+                self._is_set = False
+                self.wait_calls = 0
+
+            def is_set(self):
+                return self._is_set
+
+            def wait(self, _timeout):
+                self.wait_calls += 1
+                return self._is_set
+
+            def set(self):
+                self._is_set = True
+
+        ctrl, _, _ = self._make_controller()
+        ctrl._stop_event = _ImmediateStopEvent()
+        transitions = []
+
+        def _on_transition():
+            transitions.append(ctrl.time_remaining_s)
+            ctrl._stop_event.set()
+
+        ctrl.set_state_transition_callback(_on_transition)
+        with ctrl._lock:
+            ctrl._state = RoasterState.ROASTING
+            ctrl._time_remaining_s = 1
+            ctrl._total_time_s = 0
+
+        ctrl._timer_loop()
+
+        self.assertEqual(transitions, [0])
+        self.assertEqual(ctrl.time_remaining_s, 0)
+        self.assertEqual(ctrl.total_time_s, 1)
+        self.assertEqual(ctrl._stop_event.wait_calls, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

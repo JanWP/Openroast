@@ -33,6 +33,7 @@ class RoastGraphWidget():
         self._last_drawn_len = -1
         self._ymax_seen = float(MIN_TEMPERATURE_C)
         self._xmax_seen = None
+        self._x_window_max_s = None
 
         self.widget = self.create_graph()
 
@@ -116,7 +117,15 @@ class RoastGraphWidget():
         self.graphLine.set_data(self.graphXValueList, self.graphYValueList)
         if current_len > 1:
             xmin = self.graphXValueList[0]
-            xmax = self.graphXValueList[-1]
+            elapsed_s = self.counter
+            if self._x_window_max_s is None:
+                x_limit_s = elapsed_s
+            else:
+                # Keep section-based window, but never clip live data.
+                x_limit_s = max(int(self._x_window_max_s), int(elapsed_s))
+            xmax = matplotlib.dates.date2num(
+                datetime.datetime.fromtimestamp(max(1, x_limit_s))
+            )
             if self._xmax_seen != xmax:
                 self.graphAxes.set_xlim(left=xmin, right=xmax)
                 self._xmax_seen = xmax
@@ -137,10 +146,17 @@ class RoastGraphWidget():
         self.counter = 0
         self._ymax_seen = float(MIN_TEMPERATURE_C)
         self._xmax_seen = None
+        self._x_window_max_s = None
         self.graphLine.set_data([], [])
         self._apply_temperature_axis_limits()
         self._last_drawn_len = 0
         self.graphCanvas.draw_idle()
+
+    def set_time_window_max_seconds(self, max_seconds):
+        if max_seconds is None:
+            self._x_window_max_s = None
+        else:
+            self._x_window_max_s = max(1, int(max_seconds))
 
     def save_roast_graph(self):
         try:

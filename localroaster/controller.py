@@ -493,7 +493,7 @@ class RoasterController:
                     self._total_time_s += 1
                     if self._time_remaining_s > 0:
                         self._time_remaining_s -= 1
-                        should_transition = False
+                        should_transition = self._time_remaining_s == 0
                     else:
                         should_transition = True
                 self._emit_telemetry()
