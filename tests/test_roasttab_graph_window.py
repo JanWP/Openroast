@@ -13,8 +13,12 @@ class _FakeRecipes:
     def get_num_recipe_sections(self):
         return len(self._section_times)
 
-    def get_section_time(self, index):
+    def get_section_duration(self, index):
         return self._section_times[index]
+
+    # Backward-compatible alias.
+    def get_section_time(self, index):
+        return self.get_section_duration(index)
 
 
 class RoastTabGraphWindowTests(unittest.TestCase):

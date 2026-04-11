@@ -80,9 +80,9 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         roaster = FakeRoaster("F")
         recipe = Recipe(roaster=roaster, app=FakeApp())
 
-        # Section index > 0 enables roast() when sectionTime > 0 and not cooling.
+        # Section index > 0 enables roast() when section duration > 0 and not cooling.
         recipe.currentRecipeStep.value = 1
-        recipe.set_roaster_settings(target_temp_c=100, fan_speed=7, section_time_s=45, cooling=False)
+        recipe.set_roaster_settings(target_temp_c=100, fan_speed=7, section_duration_s=45, cooling=False)
 
         self.assertEqual(roaster.target_temp, 212)
         self.assertEqual(roaster.fan_speed, 7)
@@ -95,7 +95,7 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         recipe = Recipe(roaster=roaster, app=FakeApp())
 
         recipe.currentRecipeStep.value = 1
-        recipe.set_roaster_settings(target_temp_c=80, fan_speed=9, section_time_s=60, cooling=True)
+        recipe.set_roaster_settings(target_temp_c=80, fan_speed=9, section_duration_s=60, cooling=True)
 
         self.assertEqual(roaster.cool_calls, 1)
         self.assertEqual(roaster.roast_calls, 0)
@@ -169,10 +169,10 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
 
     def test_set_roaster_settings_roast_start_guard_matrix(self):
         cases = [
-            {"cooling": True, "section_time": 30, "step": 1, "expect_roast": 0, "expect_cool": 1},
-            {"cooling": False, "section_time": 0, "step": 1, "expect_roast": 0, "expect_cool": 0},
-            {"cooling": False, "section_time": 30, "step": 0, "expect_roast": 0, "expect_cool": 0},
-            {"cooling": False, "section_time": 30, "step": 1, "expect_roast": 1, "expect_cool": 0},
+            {"cooling": True, "section_duration": 30, "step": 1, "expect_roast": 0, "expect_cool": 1},
+            {"cooling": False, "section_duration": 0, "step": 1, "expect_roast": 0, "expect_cool": 0},
+            {"cooling": False, "section_duration": 30, "step": 0, "expect_roast": 0, "expect_cool": 0},
+            {"cooling": False, "section_duration": 30, "step": 1, "expect_roast": 1, "expect_cool": 0},
         ]
 
         for case in cases:
@@ -184,7 +184,7 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
                 recipe.set_roaster_settings(
                     target_temp_c=100,
                     fan_speed=5,
-                    section_time_s=case["section_time"],
+                    section_duration_s=case["section_duration"],
                     cooling=case["cooling"],
                 )
 

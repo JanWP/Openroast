@@ -232,16 +232,16 @@ class RecipesTab(QtWidgets.QWidget):
         # Steps spreadsheet
         self.stepsTable.setRowCount(len(recipe_object["steps"]))
         self.stepsTable.setColumnCount(3)
-        self.stepsTable.setHorizontalHeaderLabels([f"Temperature ({display_unit})",
-            "Fan Speed", "Section Time"])
+        self.stepsTable.setHorizontalHeaderLabels([f"T ({display_unit})",
+            "FAN", "DURATION"])
 
         for row in range(len(recipe_object["steps"])):
 
-            sectionTimeWidget = QtWidgets.QTableWidgetItem()
+            sectionDurationWidget = QtWidgets.QTableWidgetItem()
             sectionTempWidget = QtWidgets.QTableWidgetItem()
             sectionFanSpeedWidget = QtWidgets.QTableWidgetItem()
 
-            sectionTimeWidget.setText(time.strftime("%M:%S",
+            sectionDurationWidget.setText(time.strftime("%M:%S",
                 time.gmtime(recipe_object["steps"][row]["sectionTime"])))
             sectionFanSpeedWidget.setText(str(recipe_object["steps"][row]["fanSpeed"]))
 
@@ -257,12 +257,12 @@ class RecipesTab(QtWidgets.QWidget):
             # Set widget cell alignment.
             sectionTempWidget.setTextAlignment(QtCore.Qt.AlignCenter)
             sectionFanSpeedWidget.setTextAlignment(QtCore.Qt.AlignCenter)
-            sectionTimeWidget.setTextAlignment(QtCore.Qt.AlignCenter)
+            sectionDurationWidget.setTextAlignment(QtCore.Qt.AlignCenter)
 
             # Add widgets
             self.stepsTable.setItem(row, 0, sectionTempWidget)
             self.stepsTable.setItem(row, 1, sectionFanSpeedWidget)
-            self.stepsTable.setItem(row, 2, sectionTimeWidget)
+            self.stepsTable.setItem(row, 2, sectionDurationWidget)
 
     def load_recipe(self):
         """Loads recipe into Roast tab."""

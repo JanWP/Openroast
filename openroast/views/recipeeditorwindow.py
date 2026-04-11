@@ -580,22 +580,22 @@ class RecipeEditor(QtWidgets.QDialog):
                     sectionTempWidget.currentIndexChanged.connect(self.on_steps_changed)
 
                 if self.compact_ui:
-                    sectionTimeWidget = CompactDurationEdit(
+                    sectionDurationWidget = CompactDurationEdit(
                         functools.partial(self.open_compact_duration_picker, row)
                     )
                 else:
-                    sectionTimeWidget = customqtwidgets.TimeEditNoWheel()
-                sectionTimeWidget.setObjectName("recipeEditTime")
-                sectionTimeWidget.setFixedWidth(
+                    sectionDurationWidget = customqtwidgets.TimeEditNoWheel()
+                sectionDurationWidget.setObjectName("recipeEditTime")
+                sectionDurationWidget.setFixedWidth(
                     self.TIME_EDITOR_WIDTH_COMPACT if self.compact_ui else self.TIME_EDITOR_WIDTH_DEFAULT
                 )
-                sectionTimeWidget.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
-                sectionTimeWidget.setDisplayFormat("mm:ss")
-                sectionTimeStr = time.strftime("%M:%S", time.gmtime(steps[row]["sectionTime"]))
-                sectionTime = QtCore.QTime().fromString(sectionTimeStr, "mm:ss")
-                sectionTimeWidget.setTime(sectionTime)
+                sectionDurationWidget.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
+                sectionDurationWidget.setDisplayFormat("mm:ss")
+                sectionDurationStr = time.strftime("%M:%S", time.gmtime(steps[row]["sectionTime"]))
+                sectionDuration = QtCore.QTime().fromString(sectionDurationStr, "mm:ss")
+                sectionDurationWidget.setTime(sectionDuration)
                 if not self.compact_ui:
-                    sectionTimeWidget.timeChanged.connect(self.on_steps_changed)
+                    sectionDurationWidget.timeChanged.connect(self.on_steps_changed)
 
                 sectionFanSpeedWidget = customqtwidgets.ComboBoxNoWheel()
                 sectionFanSpeedWidget.setObjectName("recipeEditCombo")
@@ -640,7 +640,7 @@ class RecipeEditor(QtWidgets.QDialog):
 
                 recipeStepsTable.setCellWidget(row, 0, sectionTempWidget)
                 recipeStepsTable.setCellWidget(row, 1, sectionFanSpeedWidget)
-                recipeStepsTable.setCellWidget(row, 2, sectionTimeWidget)
+                recipeStepsTable.setCellWidget(row, 2, sectionDurationWidget)
                 recipeStepsTable.setCellWidget(row, 3, modifyRowWidget)
         finally:
             self._updating_steps_table = False

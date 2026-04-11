@@ -154,12 +154,19 @@ class Recipe(object):
     def get_current_target_temp_c(self):
         return self.get_current_target_temp()
 
-    def get_current_section_time(self):
+    def get_current_section_duration(self):
         current_step = self.currentRecipeStep.value
         return self._recipe()["steps"][current_step]["sectionTime"]
 
+    # Backward-compatible alias.
+    def get_current_section_time(self):
+        return self.get_current_section_duration()
+
     def get_current_section_time_s(self):
-        return self.get_current_section_time()
+        return self.get_current_section_duration()
+
+    def get_current_section_duration_s(self):
+        return self.get_current_section_duration()
 
     def restart_current_recipe(self):
         self.currentRecipeStep.value = 0
@@ -180,8 +187,12 @@ class Recipe(object):
         else:
             return False
 
-    def get_section_time(self, index):
+    def get_section_duration(self, index):
         return self._recipe()["steps"][index]["sectionTime"]
+
+    # Backward-compatible alias.
+    def get_section_time(self, index):
+        return self.get_section_duration(index)
 
     def get_section_temp(self, index):
         if(self._recipe()["steps"][index].get("targetTemp")):
@@ -203,29 +214,29 @@ class Recipe(object):
             self._roaster_temperature_unit,
         )))
 
-    def _set_roaster_time_remaining_s(self, section_time_s):
+    def _set_roaster_time_remaining_s(self, section_duration_s):
         if hasattr(self.roaster, "time_remaining_s"):
-            self.roaster.time_remaining_s = section_time_s
+            self.roaster.time_remaining_s = section_duration_s
             return
-        self.roaster.time_remaining = section_time_s
+        self.roaster.time_remaining = section_duration_s
 
-    def set_roaster_settings(self, target_temp_c, fan_speed, section_time_s, cooling):
+    def set_roaster_settings(self, target_temp_c, fan_speed, section_duration_s, cooling):
         if cooling:
             self.roaster.cool()
 
-        # Prevent the roaster from starting when section time = 0 (ex clear)
-        if(not cooling and section_time_s > 0 and
+        # Prevent the roaster from starting when section duration = 0 (e.g. clear)
+        if(not cooling and section_duration_s > 0 and
            self.currentRecipeStep.value > 0):
             self.roaster.roast()
 
         self._set_roaster_target_temp_c(target_temp_c)
         self.roaster.fan_speed = fan_speed
-        self._set_roaster_time_remaining_s(section_time_s)
+        self._set_roaster_time_remaining_s(section_duration_s)
 
     def load_current_section(self):
         self.set_roaster_settings(self.get_current_target_temp(),
                                 self.get_current_fan_speed(),
-                                self.get_current_section_time(),
+                                self.get_current_section_duration(),
                                 self.get_current_cooling_status())
 
     def move_to_next_section(self):

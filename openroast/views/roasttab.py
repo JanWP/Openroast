@@ -26,7 +26,7 @@ class RoastTab(QtWidgets.QWidget):
         super(RoastTab, self).__init__()
 
         # Class variables.
-        self.sectTimeSliderPressed = False
+        self.sectionDurationSliderPressed = False
         self.tempSliderPressed = False
 
         # Use a blinker for connect_state == CS_CONNECTING...
@@ -54,13 +54,13 @@ class RoastTab(QtWidgets.QWidget):
         self._has_target_temp_k = hasattr(self.roaster, "target_temp_k")
         self._has_time_s = hasattr(self.roaster, "time_remaining_s")
         self._has_total_time_s = hasattr(self.roaster, "total_time_s")
-        self._section_time_setpoint_s = 0
+        self._section_duration_setpoint_s = 0
 
         # Create the tab ui.
         self.create_ui()
 
         # Update initial GUI information
-        self.update_section_time()
+        self.update_remaining_section_duration()
         self.update_total_time()
 
         # Create timer to update gui data.
@@ -139,7 +139,7 @@ class RoastTab(QtWidgets.QWidget):
 
         section_end_s = 0
         for idx in range(self.recipes.get_num_recipe_sections()):
-            section_end_s += int(self.recipes.get_section_time(idx))
+            section_end_s += int(self.recipes.get_section_duration(idx))
             # Use strict '<' so we switch window exactly at section boundary.
             if elapsed_s < section_end_s:
                 return max(1, section_end_s)
@@ -212,15 +212,15 @@ class RoastTab(QtWidgets.QWidget):
         )
 
         # Update timers.
-        self.update_section_time()
+        self.update_remaining_section_duration()
         self.update_total_time()
 
         # Update current section progress bar.
         if(self.recipes.check_recipe_loaded()):
-            section_time_s = self.recipes.get_current_section_time()
-            if section_time_s > 0:
-                progress_pct = section_time_s - self._get_roaster_time_remaining_s()
-                progress_pct = round((progress_pct / section_time_s) * 100)
+            section_duration_s = self.recipes.get_current_section_duration()
+            if section_duration_s > 0:
+                progress_pct = section_duration_s - self._get_roaster_time_remaining_s()
+                progress_pct = round((progress_pct / section_duration_s) * 100)
             else:
                 progress_pct = 0
             progress_pct = max(0, min(100, progress_pct))
@@ -303,8 +303,8 @@ class RoastTab(QtWidgets.QWidget):
 
             for i in range(0, self.recipes.get_num_recipe_sections()):
                 # Calculate display time and generate label text.
-                section_time_s = self.recipes.get_section_time(i)
-                minutes, seconds = self.calc_display_time(section_time_s)
+                section_duration_s = self.recipes.get_section_duration(i)
+                minutes, seconds = self.calc_display_time(section_duration_s)
                 labelText = (str(minutes) +  ":" + str(seconds) + "@" +
                     str(self.recipes.get_section_temp(i)) + "C")
 
@@ -331,7 +331,7 @@ class RoastTab(QtWidgets.QWidget):
                 progressBar.addWidget(bar, 0, i)
 
                 # Add stretch factor to column based upon minutes.
-                progressBar.setColumnStretch(i, section_time_s)
+                progressBar.setColumnStretch(i, section_duration_s)
 
                 # Make the counter equal to i.
                 counter = i
@@ -379,9 +379,15 @@ class RoastTab(QtWidgets.QWidget):
         targetTemp = self.create_info_box("TARGET TEMP (C)", "tempGuage", self.targetTempLabel)
         guageWindow.addLayout(targetTemp, 0, 1)
 
-        # Create current time.
-        self.sectionTimeLabel = QtWidgets.QLabel()
-        currentTime = self.create_info_box("REMAINING SECTION TIME", "timeWindow", self.sectionTimeLabel)
+        # Create current duration.
+        self.sectionDurationLabel = QtWidgets.QLabel()
+        # Backward-compatible alias for tests/callers still using the old name.
+        self.sectionTimeLabel = self.sectionDurationLabel
+        currentTime = self.create_info_box(
+            "REMAINING SECTION DURATION",
+            "timeWindow",
+            self.sectionDurationLabel,
+        )
         guageWindow.addLayout(currentTime, 1, 0)
 
         # Create totalTime.
@@ -446,27 +452,31 @@ class RoastTab(QtWidgets.QWidget):
         # Update temperature data.
         self.update_target_temp()
 
-        # Create timer slider label.
-        timeSliderLabel = QtWidgets.QLabel("SECTION TIME")
-        sliderPanel.addWidget(timeSliderLabel, 2, 0)
+        # Create duration slider label.
+        durationSliderLabel = QtWidgets.QLabel("SECTION DURATION")
+        sliderPanel.addWidget(durationSliderLabel, 2, 0)
 
-        # Create timer slider.
-        self.sectTimeSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.sectTimeSlider.setRange(0, 900)
-        self.sectTimeSlider.valueChanged.connect(self.update_sect_time_slider)
-        sliderPanel.addWidget(self.sectTimeSlider, 3, 0)
+        # Create duration slider.
+        self.sectionDurationSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.sectionDurationSlider.setRange(0, 900)
+        self.sectionDurationSlider.valueChanged.connect(self.update_section_duration_slider)
+        sliderPanel.addWidget(self.sectionDurationSlider, 3, 0)
 
-        # Create mini timer spin box.
-        self.sectTimeSpinBox = customqtwidgets.TimeEditNoWheel()
-        self.sectTimeSpinBox.setObjectName("miniSpinBox")
-        self.sectTimeSpinBox.setButtonSymbols(2)      # Remove arrows.
-        self.sectTimeSpinBox.setAlignment(QtCore.Qt.AlignCenter)
-        self.sectTimeSpinBox.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
-        self.sectTimeSpinBox.setDisplayFormat("mm:ss")
-        self.sectTimeSpinBox.timeChanged.connect(self.update_sect_time_spin_box)
-        sliderPanel.addWidget(self.sectTimeSpinBox, 3, 1)
+        # Create mini duration spin box.
+        self.sectionDurationSpinBox = customqtwidgets.TimeEditNoWheel()
+        self.sectionDurationSpinBox.setObjectName("miniSpinBox")
+        self.sectionDurationSpinBox.setButtonSymbols(2)      # Remove arrows.
+        self.sectionDurationSpinBox.setAlignment(QtCore.Qt.AlignCenter)
+        self.sectionDurationSpinBox.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
+        self.sectionDurationSpinBox.setDisplayFormat("mm:ss")
+        self.sectionDurationSpinBox.timeChanged.connect(self.update_section_duration_spin_box)
+        sliderPanel.addWidget(self.sectionDurationSpinBox, 3, 1)
 
-        self.update_section_time_setpoint()
+        # Backward-compatible aliases used by older tests/callers.
+        self.sectTimeSlider = self.sectionDurationSlider
+        self.sectTimeSpinBox = self.sectionDurationSpinBox
+
+        self.update_section_duration_setpoint()
 
         # Create fan speed slider.
         fanSliderLabel = QtWidgets.QLabel("FAN SPEED")
@@ -556,50 +566,78 @@ class RoastTab(QtWidgets.QWidget):
         if self.roaster.fan_speed != fan_speed:
             self.roaster.fan_speed = fan_speed
 
+    def set_section_duration(self):
+        section_duration_s = self.sectionDurationSlider.value()
+        self._set_section_duration_setpoint(section_duration_s)
+        self._set_roaster_time_remaining_from_setpoint(section_duration_s)
+
+    # Backward-compatible alias.
     def set_section_time(self):
-        section_time_s = self.sectTimeSlider.value()
-        self._set_section_time_setpoint(section_time_s)
-        self._set_roaster_time_remaining_from_setpoint(section_time_s)
+        self.set_section_duration()
 
-    def _set_section_time_setpoint(self, section_time_s):
-        self._section_time_setpoint_s = int(max(0, section_time_s))
-        self._set_value_if_changed(self.sectTimeSlider, self._section_time_setpoint_s)
-        hhmmss = time.strftime("%H:%M:%S", time.gmtime(self._section_time_setpoint_s))
+    def _set_section_duration_setpoint(self, section_duration_s):
+        self._section_duration_setpoint_s = int(max(0, section_duration_s))
+        self._set_value_if_changed(self.sectionDurationSlider, self._section_duration_setpoint_s)
+        hhmmss = time.strftime("%H:%M:%S", time.gmtime(self._section_duration_setpoint_s))
         spin_time = QtCore.QTime.fromString(hhmmss)
-        self._set_time_if_changed(self.sectTimeSpinBox, spin_time)
+        self._set_time_if_changed(self.sectionDurationSpinBox, spin_time)
 
-    def sync_section_time_setpoint_from_recipe(self):
+    def sync_section_duration_setpoint_from_recipe(self):
         if self.recipes.check_recipe_loaded():
-            section_time_s = int(self.recipes.get_current_section_time())
+            section_duration_s = int(self.recipes.get_current_section_duration())
         else:
-            section_time_s = 0
-        self._set_section_time_setpoint(section_time_s)
+            section_duration_s = 0
+        self._set_section_duration_setpoint(section_duration_s)
 
+    # Backward-compatible alias.
+    def sync_section_time_setpoint_from_recipe(self):
+        self.sync_section_duration_setpoint_from_recipe()
+
+    def update_section_duration_setpoint(self):
+        self._set_section_duration_setpoint(self._section_duration_setpoint_s)
+
+    # Backward-compatible alias.
     def update_section_time_setpoint(self):
-        self._set_section_time_setpoint(self._section_time_setpoint_s)
+        self.update_section_duration_setpoint()
 
     def _set_roaster_time_remaining_from_setpoint(self, new_setpoint_s):
-        # Preserve elapsed time when user edits section total during a roast.
+        # Preserve elapsed time when user edits section duration during a roast.
         current_remaining_s = int(max(0, self._get_roaster_time_remaining_s()))
-        elapsed_s = max(0, int(self._section_time_setpoint_s) - current_remaining_s)
+        elapsed_s = max(0, int(self._section_duration_setpoint_s) - current_remaining_s)
         new_remaining_s = max(0, int(new_setpoint_s) - elapsed_s)
         self._set_roaster_time_remaining_s(new_remaining_s)
-        self._set_text_if_changed(self.sectionTimeLabel, self._format_mmss(new_remaining_s))
+        self._set_text_if_changed(self.sectionDurationLabel, self._format_mmss(new_remaining_s))
 
+    def update_remaining_section_duration(self):
+        remaining_section_s = self._get_roaster_time_remaining_s()
+        self._set_text_if_changed(self.sectionDurationLabel, self._format_mmss(remaining_section_s))
+
+    # Backward-compatible alias.
+    def update_remaining_section_time(self):
+        self.update_remaining_section_duration()
+
+    # Backward-compatible alias.
     def update_section_time(self):
-        section_time_s = self._get_roaster_time_remaining_s()
-        self._set_text_if_changed(self.sectionTimeLabel, self._format_mmss(section_time_s))
+        self.update_remaining_section_duration()
 
+    def update_section_duration_spin_box(self):
+        section_duration_s = QtCore.QTime(0, 0, 0).secsTo(self.sectionDurationSpinBox.time())
+        self._set_value_if_changed(self.sectionDurationSlider, section_duration_s)
+        self._set_roaster_time_remaining_from_setpoint(section_duration_s)
+        self._set_section_duration_setpoint(section_duration_s)
+
+    # Backward-compatible alias.
     def update_sect_time_spin_box(self):
-        section_time_s = QtCore.QTime(0, 0, 0).secsTo(self.sectTimeSpinBox.time())
-        self._set_value_if_changed(self.sectTimeSlider, section_time_s)
-        self._set_roaster_time_remaining_from_setpoint(section_time_s)
-        self._set_section_time_setpoint(section_time_s)
+        self.update_section_duration_spin_box()
 
+    def update_section_duration_slider(self):
+        section_duration_s = self.sectionDurationSlider.value()
+        self._set_roaster_time_remaining_from_setpoint(section_duration_s)
+        self._set_section_duration_setpoint(section_duration_s)
+
+    # Backward-compatible alias.
     def update_sect_time_slider(self):
-        section_time_s = self.sectTimeSlider.value()
-        self._set_roaster_time_remaining_from_setpoint(section_time_s)
-        self._set_section_time_setpoint(section_time_s)
+        self.update_section_duration_slider()
 
     def update_total_time(self):
         self._set_text_if_changed(self.totalTimeLabel, self._format_mmss(self._get_roaster_total_time_s()))
@@ -635,8 +673,8 @@ class RoastTab(QtWidgets.QWidget):
         self.recreate_progress_bar()
 
         # Clear sliders.
-        self._set_section_time_setpoint(0)
-        self.update_section_time()
+        self._set_section_duration_setpoint(0)
+        self.update_remaining_section_duration()
         self.update_fan_info()
         self.update_target_temp()
 
@@ -650,8 +688,8 @@ class RoastTab(QtWidgets.QWidget):
     def load_recipe_into_roast_tab(self):
         self.recipes.load_current_section()
         self.recreate_progress_bar()
-        self.sync_section_time_setpoint_from_recipe()
-        self.update_section_time()
+        self.sync_section_duration_setpoint_from_recipe()
+        self.update_remaining_section_duration()
         self.update_target_temp()
         self.update_fan_info()
 
@@ -660,8 +698,8 @@ class RoastTab(QtWidgets.QWidget):
         self.update_controllers()
 
     def update_controllers(self):
-        self.sync_section_time_setpoint_from_recipe()
-        self.update_section_time()
+        self.sync_section_duration_setpoint_from_recipe()
+        self.update_remaining_section_duration()
         self.update_target_temp()
         self.update_fan_info()
 
