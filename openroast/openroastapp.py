@@ -22,7 +22,7 @@ try:
 except ImportError as exc:
     raise RuntimeError(
         "PyQt5 is required to run Openroast. On Raspberry Pi install "
-        "python3-pyqt5, python3-matplotlib, and python3-pyqtgraph from apt, "
+        "python3-pyqt5 and python3-pyqtgraph from apt, "
         "or use pip with openroast[gui]."
     ) from exc
 

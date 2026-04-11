@@ -11,9 +11,7 @@ from PyQt5 import QtGui
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.ticker import FuncFormatter
+import pyqtgraph as pg
 
 from openroast import tools
 from openroast import utils as utils
@@ -36,6 +34,16 @@ from openroast.temperature import (
     temperature_to_celsius,
 )
 from openroast.views import customqtwidgets
+
+
+class _TimeAxis(pg.AxisItem):
+    def tickStrings(self, values, scale, spacing):
+        _ = scale, spacing
+        labels = []
+        for value in values:
+            total_s = max(0, int(round(value)))
+            labels.append(time.strftime("%M:%S", time.gmtime(total_s)))
+        return labels
 
 
 class CompactTempPickerCombo(customqtwidgets.ComboBoxNoWheel):
@@ -143,6 +151,9 @@ class RecipeEditor(QtWidgets.QDialog):
     TAB_INDEX_INFO = 0
     TAB_INDEX_PROFILE = 1
 
+    # Match roast window pyqtgraph axis label sizing.
+    PLOT_LABEL_STYLE = {'color': '#ffffff', 'font-size': '11pt'}
+
     def __init__(self, recipe_data=None, recipe_path=None, compact_ui=False, fullscreen=False):
         super(RecipeEditor, self).__init__()
 
@@ -157,6 +168,8 @@ class RecipeEditor(QtWidgets.QDialog):
         self.recipeCurveFigure = None
         self.recipeCurveCanvas = None
         self.recipeCurveAxes = None
+        self.recipeCurvePlotWidget = None
+        self.recipeCurveCurve = None
 
         # Define main window for the application.
         self.setWindowTitle('Openroast')
@@ -249,14 +262,21 @@ class RecipeEditor(QtWidgets.QDialog):
             self.curveLoadingLabel.deleteLater()
             self.curveLoadingLabel = None
 
-        self.recipeCurveFigure = Figure(facecolor='#444952')
-        self.recipeCurveCanvas = FigureCanvas(self.recipeCurveFigure)
+        self.recipeCurveFigure = None
+        self.recipeCurvePlotWidget = pg.PlotWidget(axisItems={"bottom": _TimeAxis(orientation="bottom")})
+        self.recipeCurvePlotWidget.setBackground('#23252a')
+        self.recipeCurvePlotWidget.setLabel('left', 'Temperature (°C)', **self.PLOT_LABEL_STYLE)
+        self.recipeCurvePlotWidget.setLabel('bottom', 'Time', **self.PLOT_LABEL_STYLE)
+        self.recipeCurvePlotWidget.showGrid(x=True, y=True, alpha=0.2)
+        self.recipeCurvePlotWidget.getAxis('left').setTextPen('w')
+        self.recipeCurvePlotWidget.getAxis('bottom').setTextPen('w')
+        self.recipeCurveCurve = self.recipeCurvePlotWidget.plot([], [], pen=pg.mkPen('#8ab71b', width=2))
+
+        self.recipeCurveCanvas = self.recipeCurvePlotWidget
         self.recipeCurveCanvas.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.recipeCurveCanvas.setMinimumHeight(
             self.CURVE_MIN_HEIGHT_COMPACT if self.compact_ui else self.CURVE_MIN_HEIGHT_DEFAULT
         )
-        self.recipeCurveAxes = self.recipeCurveFigure.add_subplot(111)
-        self.recipeCurveFigure.subplots_adjust(left=0.14, right=0.985, top=0.95, bottom=0.12)
         self.curveLayout.addWidget(self.recipeCurveCanvas)
 
     def _create_tab_corner_actions(self):
@@ -905,16 +925,9 @@ class RecipeEditor(QtWidgets.QDialog):
         self._ensure_recipe_curve_canvas()
         steps = self.get_current_table_values()
 
-        self.recipeCurveAxes.clear()
-        self.recipeCurveAxes.set_facecolor('#23252a')
-        self.recipeCurveAxes.get_xaxis().label.set_color('white')
-        self.recipeCurveAxes.get_yaxis().label.set_color('white')
-        self.recipeCurveAxes.tick_params(axis='x', colors='white')
-        self.recipeCurveAxes.tick_params(axis='y', colors='white')
-
         unit_symbol = self._current_unit_display_label()
-        self.recipeCurveAxes.set_xlabel("Time")
-        self.recipeCurveAxes.set_ylabel(f"Temperature ({chr(176)}{unit_symbol})")
+        self.recipeCurvePlotWidget.setLabel('bottom', 'Time', **self.PLOT_LABEL_STYLE)
+        self.recipeCurvePlotWidget.setLabel('left', f"Temperature ({chr(176)}{unit_symbol})", **self.PLOT_LABEL_STYLE)
 
         x_seconds = [0]
         baseline_c = float(MIN_TEMPERATURE_C)
@@ -938,20 +951,16 @@ class RecipeEditor(QtWidgets.QDialog):
             x_seconds.append(1)
             y_values.append(last_temp_display)
 
-        self.recipeCurveAxes.plot(x_seconds, y_values, color='#8ab71b', linewidth=2.0)
+        self.recipeCurveCurve.setData(x_seconds, y_values)
 
         y_min_display = celsius_to_temperature_unit(float(MIN_TEMPERATURE_C), self._display_temp_unit)
         y_max_display = max(y_values) if y_values else y_min_display
         if y_max_display <= y_min_display:
             y_max_display = y_min_display + 1.0
 
-        self.recipeCurveAxes.set_xlim(0, max(1, elapsed_s))
-        self.recipeCurveAxes.set_ylim(y_min_display, y_max_display + 5.0)
-        self.recipeCurveAxes.xaxis.set_major_formatter(FuncFormatter(
-            lambda value, _pos: time.strftime("%M:%S", time.gmtime(max(0, int(value))))
-        ))
-
-        self.recipeCurveCanvas.draw_idle()
+        self.recipeCurvePlotWidget.setXRange(0, max(1, elapsed_s), padding=0)
+        self.recipeCurvePlotWidget.setYRange(y_min_display, y_max_display + 5.0, padding=0)
+        self.recipeCurveCanvas.repaint()
 
     def _convert_steps_for_save(self, steps_c, output_unit_symbol):
         converted_steps = []
