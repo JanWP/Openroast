@@ -38,6 +38,14 @@ class RecipeEditorTests(unittest.TestCase):
             editor.close()
             self._app.processEvents()
 
+    def test_editor_honors_fullscreen_flag(self):
+        editor = RecipeEditor(compact_ui=True, fullscreen=True)
+        try:
+            self.assertTrue(bool(editor.windowState() & QtCore.Qt.WindowFullScreen))
+        finally:
+            editor.close()
+            self._app.processEvents()
+
     def test_save_uses_selected_temperature_unit(self):
         editor = RecipeEditor(compact_ui=False)
         with tempfile.TemporaryDirectory() as temp_dir:

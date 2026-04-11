@@ -283,6 +283,7 @@ class RecipesTab(QtWidgets.QWidget):
             recipe_data=self.currentlySelectedRecipe,
             recipe_path=self.currentlySelectedRecipePath,
             compact_ui=getattr(self.MainWindow, "compact_ui", False),
+            fullscreen=self.MainWindow.isFullScreen(),
         )
         dialog_exec = getattr(self.editorWindow, "exec", self.editorWindow.exec_)
         dialog_exec()
@@ -296,6 +297,7 @@ class RecipesTab(QtWidgets.QWidget):
         self.editorWindow = recipeeditorwindow.RecipeEditor(
             recipe_data=self.recipes_obj.create_default_recipe(),
             compact_ui=getattr(self.MainWindow, "compact_ui", False),
+            fullscreen=self.MainWindow.isFullScreen(),
         )
         dialog_exec = getattr(self.editorWindow, "exec", self.editorWindow.exec_)
         dialog_exec()

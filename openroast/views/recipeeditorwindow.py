@@ -140,10 +140,11 @@ class RecipeEditor(QtWidgets.QDialog):
     TEMP_PICKER_STEP_SMALL = 1
     TEMP_PICKER_STEP_LARGE = 5
 
-    def __init__(self, recipe_data=None, recipe_path=None, compact_ui=False):
+    def __init__(self, recipe_data=None, recipe_path=None, compact_ui=False, fullscreen=False):
         super(RecipeEditor, self).__init__()
 
         self.compact_ui = bool(compact_ui)
+        self.fullscreen = bool(fullscreen)
         self._display_temp_unit = TEMP_UNIT_C
         self._selected_recipe_unit_label = RECIPE_UNIT_CELSIUS
         self._updating_steps_table = False
@@ -156,6 +157,8 @@ class RecipeEditor(QtWidgets.QDialog):
         else:
             self.setMinimumSize(self.WINDOW_MIN_WIDTH, self.WINDOW_MIN_HEIGHT_DEFAULT)
             self.resize(self.WINDOW_RESIZE_WIDTH_DEFAULT, self.WINDOW_RESIZE_HEIGHT_DEFAULT)
+        if self.fullscreen:
+            self.setWindowState(self.windowState() | QtCore.Qt.WindowFullScreen)
         self.setContextMenuPolicy(QtCore.Qt.NoContextMenu)
 
         self.create_ui()
