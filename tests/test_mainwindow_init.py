@@ -88,6 +88,23 @@ class MainWindowInitTests(unittest.TestCase):
 
         self.assertTrue(fake_roaster.disconnect_called)
 
+    def test_heater_level_callback_resyncs_led_from_roaster_output(self):
+        fake_roaster = _FakeRoaster()
+
+        with patch("openroast.views.mainwindow.roasttab.RoastTab", _DummyRoastTab), patch(
+            "openroast.views.mainwindow.recipestab.RecipesTab", _DummyRecipesTab
+        ):
+            window = MainWindow(recipes=object(), roaster=fake_roaster, compact_ui=True)
+            try:
+                fake_roaster.heater_output = False
+                fake_roaster._heater_level_cb(50)
+                self._app.processEvents()
+                self.assertFalse(window._heaterLedOn)
+                self.assertIn("background-color: #2e3138", window.heaterDebugLed.styleSheet())
+            finally:
+                window.close()
+                self._app.processEvents()
+
 
 if __name__ == "__main__":
     unittest.main()

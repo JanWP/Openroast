@@ -21,6 +21,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, recipes, roaster, compact_ui=False, fullscreen=False):
         super(MainWindow, self).__init__()
         self._heaterLedOn = None
+        self._heaterLevel = None
 
         # Define main window for the application.
         self.setWindowTitle('Openroast v%s' % __version__)
@@ -326,6 +327,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_heater_level_changed(self, heater_level):
         self.heaterLevelChanged.emit(int(heater_level))
+        # Keep LED state aligned even if backend only emits level updates.
+        heater_output = getattr(self.roaster, "heater_output", None)
+        if heater_output is not None:
+            self.heaterOutputChanged.emit(bool(heater_output))
 
     def update_heater_debug_indicators(self):
         if not hasattr(self, "heaterDebugLabel") or not hasattr(self, "heaterDebugLed"):
@@ -337,6 +342,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _apply_heater_level_text(self, heater_level):
         heater_level = int(max(0, min(100, int(heater_level))))
+        if self._heaterLevel == heater_level:
+            return
+        self._heaterLevel = heater_level
         self.heaterDebugLabel.setText(f"Heater: {heater_level:3d}%")
 
     def _apply_heater_led_state(self, heater_on):

@@ -196,19 +196,21 @@ class RoastTab(QtWidgets.QWidget):
 
         # Update current section progress bar.
         if(self.recipes.check_recipe_loaded()):
-            progress_pct = (
-                self.recipes.get_current_section_time() -
-                self._get_roaster_time_remaining_s()
-                )
-            progress_pct = progress_pct / self.recipes.get_current_section_time()
-            progress_pct = round(progress_pct * 100)
+            section_time_s = self.recipes.get_current_section_time()
+            if section_time_s > 0:
+                progress_pct = section_time_s - self._get_roaster_time_remaining_s()
+                progress_pct = round((progress_pct / section_time_s) * 100)
+            else:
+                progress_pct = 0
+            progress_pct = max(0, min(100, progress_pct))
 
             bar = self.sectionBars[self.recipes.get_current_step_number()]
             if bar.value() != progress_pct:
                 bar.setValue(progress_pct)
 
         # Check connection status of the openroast.roaster.
-        if self.roaster.connected:
+        roaster_connected = bool(self.roaster.connected)
+        if roaster_connected:
             if not self.connectionStatusLabel.isHidden():
                 self.connectionStatusLabel.setHidden(True)
             if not self.isEnabled():
@@ -481,6 +483,9 @@ class RoastTab(QtWidgets.QWidget):
         if widget.text() != text:
             widget.setText(text)
 
+    def _format_mmss(self, duration_s):
+        return time.strftime("%M:%S", time.gmtime(duration_s))
+
     def _set_value_if_changed(self, widget, value):
         if widget.value() != value:
             blocker = QtCore.QSignalBlocker(widget)
@@ -530,23 +535,22 @@ class RoastTab(QtWidgets.QWidget):
 
     def set_section_time(self):
         section_time_s = self.sectTimeSlider.value()
-        self._set_text_if_changed(self.sectionTimeLabel, time.strftime("%M:%S", time.gmtime(section_time_s)))
+        self._set_text_if_changed(self.sectionTimeLabel, self._format_mmss(section_time_s))
         self._set_roaster_time_remaining_s(section_time_s)
 
     def update_section_time(self):
         section_time_s = self._get_roaster_time_remaining_s()
         self._set_value_if_changed(self.sectTimeSlider, section_time_s)
 
-        spin_time = QtCore.QTime.fromString(str(time.strftime("%H:%M:%S",
-            time.gmtime(section_time_s))))
+        hhmmss = time.strftime("%H:%M:%S", time.gmtime(section_time_s))
+        spin_time = QtCore.QTime.fromString(hhmmss)
         self._set_time_if_changed(self.sectTimeSpinBox, spin_time)
 
-        self._set_text_if_changed(self.sectionTimeLabel, str(time.strftime("%M:%S",
-            time.gmtime(section_time_s))))
+        self._set_text_if_changed(self.sectionTimeLabel, self._format_mmss(section_time_s))
 
     def update_sect_time_spin_box(self):
         section_time_s = QtCore.QTime(0, 0, 0).secsTo(self.sectTimeSpinBox.time())
-        self._set_text_if_changed(self.sectionTimeLabel, str(time.strftime("%M:%S", time.gmtime(section_time_s))))
+        self._set_text_if_changed(self.sectionTimeLabel, self._format_mmss(section_time_s))
 
         self._set_value_if_changed(self.sectTimeSlider, section_time_s)
 
@@ -554,18 +558,16 @@ class RoastTab(QtWidgets.QWidget):
 
     def update_sect_time_slider(self):
         section_time_s = self.sectTimeSlider.value()
-        self._set_text_if_changed(self.sectionTimeLabel, str(time.strftime("%M:%S",
-            time.gmtime(section_time_s))))
+        self._set_text_if_changed(self.sectionTimeLabel, self._format_mmss(section_time_s))
 
-        spin_time = QtCore.QTime.fromString(str(time.strftime("%H:%M:%S",
-            time.gmtime(section_time_s))))
+        hhmmss = time.strftime("%H:%M:%S", time.gmtime(section_time_s))
+        spin_time = QtCore.QTime.fromString(hhmmss)
         self._set_time_if_changed(self.sectTimeSpinBox, spin_time)
 
         self._set_roaster_time_remaining_s(section_time_s)
 
     def update_total_time(self):
-        self._set_text_if_changed(self.totalTimeLabel, str(time.strftime("%M:%S",
-            time.gmtime(self._get_roaster_total_time_s()))))
+        self._set_text_if_changed(self.totalTimeLabel, self._format_mmss(self._get_roaster_total_time_s()))
 
     def clear_roast(self):
         """ This method will clear the openroast.roaster, recipe, and reset the gui back

@@ -29,6 +29,8 @@ class RoastGraphWidget():
         # Check if graph should continue to graph.
         self.animatingMethod = animatingMethod
         self._last_drawn_len = -1
+        self._ymax_seen = float(MIN_TEMPERATURE_C)
+        self._xmax_seen = None
 
         self.widget = self.create_graph()
 
@@ -83,16 +85,8 @@ class RoastGraphWidget():
     def _apply_temperature_axis_limits(self):
         bottom = float(MIN_TEMPERATURE_C)
         min_top = bottom + float(GRAPH_HEADROOM_C)
-        current_top = self.graphAxes.get_ylim()[1]
-
-        data_max = None
-        if self.graphYValueList:
-            data_max = max(float(v) for v in self.graphYValueList)
-
-        # Keep headroom above the larger of baseline top and current data.
-        target_top = max(min_top, current_top)
-        if data_max is not None:
-            target_top = max(target_top, data_max + float(GRAPH_HEADROOM_C))
+        current_top = float(self.graphAxes.get_ylim()[1])
+        target_top = max(min_top, current_top, self._ymax_seen + float(GRAPH_HEADROOM_C))
 
         if target_top <= bottom:
             target_top = bottom + float(GRAPH_HEADROOM_C)
@@ -109,10 +103,18 @@ class RoastGraphWidget():
         if not force and current_len == self._last_drawn_len:
             return
 
+        if current_len:
+            last_y = float(self.graphYValueList[-1])
+            if last_y > self._ymax_seen:
+                self._ymax_seen = last_y
+
         self.graphLine.set_data(self.graphXValueList, self.graphYValueList)
-        if current_len > 0:
-            self.graphAxes.relim()
-            self.graphAxes.autoscale_view()
+        if current_len > 1:
+            xmin = self.graphXValueList[0]
+            xmax = self.graphXValueList[-1]
+            if self._xmax_seen != xmax:
+                self.graphAxes.set_xlim(left=xmin, right=xmax)
+                self._xmax_seen = xmax
         # Keep graph baseline at room temperature (20 C) without flipping axis.
         self._apply_temperature_axis_limits()
         self._last_drawn_len = current_len
@@ -128,9 +130,9 @@ class RoastGraphWidget():
         self.graphXValueList = []
         self.graphYValueList = []
         self.counter = 0
+        self._ymax_seen = float(MIN_TEMPERATURE_C)
+        self._xmax_seen = None
         self.graphLine.set_data([], [])
-        self.graphAxes.relim()
-        self.graphAxes.autoscale_view()
         self._apply_temperature_axis_limits()
         self._last_drawn_len = 0
         self.graphCanvas.draw_idle()

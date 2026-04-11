@@ -46,6 +46,17 @@ class RecipeEditorTests(unittest.TestCase):
             editor.close()
             self._app.processEvents()
 
+    def test_curve_canvas_is_lazy_loaded_when_profile_tab_opens(self):
+        editor = RecipeEditor(compact_ui=True)
+        try:
+            self.assertIsNone(editor.recipeCurveCanvas)
+            editor.editorTabs.setCurrentIndex(editor.TAB_INDEX_PROFILE)
+            self._app.processEvents()
+            self.assertIsNotNone(editor.recipeCurveCanvas)
+        finally:
+            editor.close()
+            self._app.processEvents()
+
     def test_save_uses_selected_temperature_unit(self):
         editor = RecipeEditor(compact_ui=False)
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -140,6 +140,9 @@ class RecipeEditor(QtWidgets.QDialog):
     TEMP_PICKER_STEP_SMALL = 1
     TEMP_PICKER_STEP_LARGE = 5
 
+    TAB_INDEX_INFO = 0
+    TAB_INDEX_PROFILE = 1
+
     def __init__(self, recipe_data=None, recipe_path=None, compact_ui=False, fullscreen=False):
         super(RecipeEditor, self).__init__()
 
@@ -148,6 +151,12 @@ class RecipeEditor(QtWidgets.QDialog):
         self._display_temp_unit = TEMP_UNIT_C
         self._selected_recipe_unit_label = RECIPE_UNIT_CELSIUS
         self._updating_steps_table = False
+        self._curve_update_pending = False
+        self._curve_update_force = False
+        self._row_action_icons = None
+        self.recipeCurveFigure = None
+        self.recipeCurveCanvas = None
+        self.recipeCurveAxes = None
 
         # Define main window for the application.
         self.setWindowTitle('Openroast')
@@ -204,7 +213,51 @@ class RecipeEditor(QtWidgets.QDialog):
         self.editorTabs.setStyleSheet(self._build_tab_stylesheet())
         self.editorTabs.addTab(self.create_recipe_info_tab(), self.TAB_TITLE_INFO)
         self.editorTabs.addTab(self.create_heating_profile_tab(), self.TAB_TITLE_PROFILE)
+        self.editorTabs.currentChanged.connect(self._on_editor_tab_changed)
         self.editorTabs.setCornerWidget(self._create_tab_corner_actions(), QtCore.Qt.TopRightCorner)
+
+    def _is_profile_tab_active(self):
+        return self.editorTabs.currentIndex() == self.TAB_INDEX_PROFILE
+
+    def _on_editor_tab_changed(self, index):
+        if index == self.TAB_INDEX_PROFILE:
+            self.request_update_recipe_curve(force=True)
+
+    def request_update_recipe_curve(self, force=False):
+        if force:
+            self._curve_update_force = True
+        if self._curve_update_pending:
+            return
+        self._curve_update_pending = True
+        QtCore.QTimer.singleShot(0, self._flush_curve_update)
+
+    def _flush_curve_update(self):
+        self._curve_update_pending = False
+        force = self._curve_update_force
+        self._curve_update_force = False
+        if not force and not self._is_profile_tab_active():
+            return
+        self._ensure_recipe_curve_canvas()
+        self.update_recipe_curve()
+
+    def _ensure_recipe_curve_canvas(self):
+        if self.recipeCurveCanvas is not None:
+            return
+
+        if hasattr(self, "curveLoadingLabel") and self.curveLoadingLabel is not None:
+            self.curveLayout.removeWidget(self.curveLoadingLabel)
+            self.curveLoadingLabel.deleteLater()
+            self.curveLoadingLabel = None
+
+        self.recipeCurveFigure = Figure(facecolor='#444952')
+        self.recipeCurveCanvas = FigureCanvas(self.recipeCurveFigure)
+        self.recipeCurveCanvas.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.recipeCurveCanvas.setMinimumHeight(
+            self.CURVE_MIN_HEIGHT_COMPACT if self.compact_ui else self.CURVE_MIN_HEIGHT_DEFAULT
+        )
+        self.recipeCurveAxes = self.recipeCurveFigure.add_subplot(111)
+        self.recipeCurveFigure.subplots_adjust(left=0.14, right=0.985, top=0.95, bottom=0.12)
+        self.curveLayout.addWidget(self.recipeCurveCanvas)
 
     def _create_tab_corner_actions(self):
         container = QtWidgets.QWidget()
@@ -343,19 +396,13 @@ class RecipeEditor(QtWidgets.QDialog):
         self.curveWidget = QtWidgets.QWidget()
         self.curveWidget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         curveLayout = QtWidgets.QVBoxLayout(self.curveWidget)
+        self.curveLayout = curveLayout
         curveLayout.setContentsMargins(0, 0, 0, 0)
         curveLayout.setSpacing(4)
         curveLayout.addWidget(QtWidgets.QLabel("Heating curve:"))
-
-        self.recipeCurveFigure = Figure(facecolor='#444952')
-        self.recipeCurveCanvas = FigureCanvas(self.recipeCurveFigure)
-        self.recipeCurveCanvas.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        self.recipeCurveCanvas.setMinimumHeight(
-            self.CURVE_MIN_HEIGHT_COMPACT if self.compact_ui else self.CURVE_MIN_HEIGHT_DEFAULT
-        )
-        self.recipeCurveAxes = self.recipeCurveFigure.add_subplot(111)
-        self.recipeCurveFigure.subplots_adjust(left=0.14, right=0.985, top=0.95, bottom=0.12)
-        curveLayout.addWidget(self.recipeCurveCanvas)
+        self.curveLoadingLabel = QtWidgets.QLabel("Loading curve...")
+        self.curveLoadingLabel.setAlignment(QtCore.Qt.AlignCenter)
+        curveLayout.addWidget(self.curveLoadingLabel)
 
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
@@ -462,6 +509,13 @@ class RecipeEditor(QtWidgets.QDialog):
         """Populate a recipe steps table from normalized Celsius step values."""
         fanSpeedChoices = [str(x) for x in range(1, 10)]
         targetTempChoices = self._display_temp_choices()
+        if self._row_action_icons is None:
+            self._row_action_icons = {
+                "delete": QtGui.QIcon(utils.get_resource_filename('static/images/delete.png')),
+                "insert": QtGui.QIcon(utils.get_resource_filename('static/images/plus.png')),
+                "up": QtGui.QIcon(utils.get_resource_filename('static/images/upSmall.png')),
+                "down": QtGui.QIcon(utils.get_resource_filename('static/images/downSmall.png')),
+            }
 
         self._updating_steps_table = True
         try:
@@ -524,12 +578,12 @@ class RecipeEditor(QtWidgets.QDialog):
                 sectionFanSpeedWidget.setCurrentIndex(fanSpeedChoices.index(str(steps[row]["fanSpeed"])))
 
                 deleteRow = QtWidgets.QPushButton()
-                deleteRow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/delete.png')))
+                deleteRow.setIcon(self._row_action_icons["delete"])
                 deleteRow.setObjectName("deleteRow")
                 deleteRow.clicked.connect(functools.partial(self.delete_recipe_step, row))
 
                 insertRow = QtWidgets.QPushButton()
-                insertRow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/plus.png')))
+                insertRow.setIcon(self._row_action_icons["insert"])
                 insertRow.setObjectName("insertRow")
                 insertRow.clicked.connect(functools.partial(self.insert_recipe_step, row))
 
@@ -539,12 +593,12 @@ class RecipeEditor(QtWidgets.QDialog):
                 if not self.compact_ui:
                     upArrow = QtWidgets.QPushButton()
                     upArrow.setObjectName("upArrow")
-                    upArrow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/upSmall.png')))
+                    upArrow.setIcon(self._row_action_icons["up"])
                     upArrow.clicked.connect(functools.partial(self.move_recipe_step_up, row))
 
                     downArrow = QtWidgets.QPushButton()
                     downArrow.setObjectName("downArrow")
-                    downArrow.setIcon(QtGui.QIcon(utils.get_resource_filename('static/images/downSmall.png')))
+                    downArrow.setIcon(self._row_action_icons["down"])
                     downArrow.clicked.connect(functools.partial(self.move_recipe_step_down, row))
 
                     modifyRowWidgetLayout.addWidget(upArrow)
@@ -580,7 +634,7 @@ class RecipeEditor(QtWidgets.QDialog):
             self.temperatureUnitSelect.setCurrentIndex(index)
 
         self.preload_recipe_steps(self.recipeSteps)
-        self.update_recipe_curve()
+        self.request_update_recipe_curve()
 
     def on_temperature_unit_changed(self):
         steps_c = self.get_current_table_values()
@@ -589,14 +643,14 @@ class RecipeEditor(QtWidgets.QDialog):
         self._selected_recipe_unit_label = selected_label
         self._update_steps_header_labels(self.recipeSteps)
         if not steps_c:
-            self.update_recipe_curve()
+            self.request_update_recipe_curve()
             return
         self.rebuild_recipe_steps_table(steps_c)
 
     def on_steps_changed(self):
         if self._updating_steps_table:
             return
-        self.update_recipe_curve()
+        self.request_update_recipe_curve()
 
     def open_compact_temp_picker(self, row):
         """Open touch picker for temperature selection in compact mode."""
@@ -845,9 +899,10 @@ class RecipeEditor(QtWidgets.QDialog):
         while self.recipeSteps.rowCount() > 0:
             self.recipeSteps.removeRow(0)
         self.load_recipe_steps(self.recipeSteps, newSteps)
-        self.update_recipe_curve()
+        self.request_update_recipe_curve()
 
     def update_recipe_curve(self):
+        self._ensure_recipe_curve_canvas()
         steps = self.get_current_table_values()
 
         self.recipeCurveAxes.clear()
