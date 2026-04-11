@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5 import QtWidgets
+from PyQt5 import QtCore, QtWidgets
 
 from openroast.views.mainwindow import MainWindow
 
@@ -101,6 +101,19 @@ class MainWindowInitTests(unittest.TestCase):
                 self._app.processEvents()
                 self.assertFalse(window._heaterLedOn)
                 self.assertIn("background-color: #2e3138", window.heaterDebugLed.styleSheet())
+            finally:
+                window.close()
+                self._app.processEvents()
+
+    def test_mainwindow_starts_in_fullscreen_when_requested(self):
+        fake_roaster = _FakeRoaster()
+
+        with patch("openroast.views.mainwindow.roasttab.RoastTab", _DummyRoastTab), patch(
+            "openroast.views.mainwindow.recipestab.RecipesTab", _DummyRecipesTab
+        ):
+            window = MainWindow(recipes=object(), roaster=fake_roaster, compact_ui=True, fullscreen=True)
+            try:
+                self.assertTrue(bool(window.windowState() & QtCore.Qt.WindowFullScreen))
             finally:
                 window.close()
                 self._app.processEvents()

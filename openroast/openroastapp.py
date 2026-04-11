@@ -293,8 +293,13 @@ class OpenroastApp(object):
             self.roaster,
             compact_ui=self._args.compact_ui,
             fullscreen=self._args.fullscreen)
-        self.window.show()
+        # Apply mode after window creation and explicitly request fullscreen
+        # to avoid backend/window-manager differences at startup.
         self.window.apply_window_mode()
+        if self._args.fullscreen:
+            self.window.showFullScreen()
+        else:
+            self.window.show()
         qt_exec = getattr(self.app, "exec", self.app.exec_)
         sys.exit(qt_exec())
 

@@ -19,6 +19,8 @@ from openroast.temperature import GRAPH_HEADROOM_C, MIN_TEMPERATURE_C
 
 
 class RoastGraphWidget():
+    ANIMATION_SAVE_COUNT = 120
+
     def __init__(self, graphXValueList=None, graphYValueList=None,
             animated=False, updateMethod=None, animatingMethod=None):
         self.graphXValueList = graphXValueList or []
@@ -57,7 +59,10 @@ class RoastGraphWidget():
         # Animate the the graph with new data
         if self.animated:
             self.animateGraph = animation.FuncAnimation(self.graphFigure,
-                self.graph_draw, interval=1000, cache_frame_data=False)
+                self.graph_draw,
+                interval=1000,
+                cache_frame_data=False,
+                save_count=self.ANIMATION_SAVE_COUNT)
         else:
             self.graph_draw(force=True)
 
