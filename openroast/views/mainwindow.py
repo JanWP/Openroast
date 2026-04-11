@@ -327,10 +327,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_heater_level_changed(self, heater_level):
         self.heaterLevelChanged.emit(int(heater_level))
-        # Keep LED state aligned even if backend only emits level updates.
-        heater_output = getattr(self.roaster, "heater_output", None)
-        if heater_output is not None:
-            self.heaterOutputChanged.emit(bool(heater_output))
 
     def update_heater_debug_indicators(self):
         if not hasattr(self, "heaterDebugLabel") or not hasattr(self, "heaterDebugLed"):

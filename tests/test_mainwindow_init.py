@@ -88,7 +88,7 @@ class MainWindowInitTests(unittest.TestCase):
 
         self.assertTrue(fake_roaster.disconnect_called)
 
-    def test_heater_level_callback_resyncs_led_from_roaster_output(self):
+    def test_heater_level_callback_does_not_override_led_state(self):
         fake_roaster = _FakeRoaster()
 
         with patch("openroast.views.mainwindow.roasttab.RoastTab", _DummyRoastTab), patch(
@@ -96,8 +96,13 @@ class MainWindowInitTests(unittest.TestCase):
         ):
             window = MainWindow(recipes=object(), roaster=fake_roaster, compact_ui=True)
             try:
-                fake_roaster.heater_output = False
+                # LED state must only follow heater output edge callbacks.
+                self.assertTrue(window._heaterLedOn)
                 fake_roaster._heater_level_cb(50)
+                self._app.processEvents()
+                self.assertTrue(window._heaterLedOn)
+
+                fake_roaster._heater_cb(False)
                 self._app.processEvents()
                 self.assertFalse(window._heaterLedOn)
                 self.assertIn("background-color: #2e3138", window.heaterDebugLed.styleSheet())
