@@ -52,6 +52,7 @@ setup(
         "gui": [
             "PyQt5>=5.15",
             "matplotlib>=3.8",
+            "pyqtgraph>=0.13",
         ],
         "local-hw": [
             "adafruit-blinka>=8.0",

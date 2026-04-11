@@ -49,7 +49,7 @@ Raspberry Pi 2 (Raspbian 13/trixie) recommendation:
 
 1. Install heavy GUI/scientific packages from apt (faster and more reliable on armv7):
 
-   ``sudo apt install python3-pyqt5 python3-matplotlib``
+   ``sudo apt install python3-pyqt5 python3-matplotlib python3-pyqtgraph``
 
 2. Install Openroast in a venv:
 

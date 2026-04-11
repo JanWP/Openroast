@@ -3,24 +3,27 @@
 
 import os
 import json
-import datetime
+import time
 
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 
-import matplotlib
-matplotlib.use('Qt5Agg')
-# import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-import matplotlib.animation as animation
-from matplotlib.dates import DateFormatter
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+import pyqtgraph as pg
+from pyqtgraph.exporters import ImageExporter
 from openroast.temperature import GRAPH_HEADROOM_C, MIN_TEMPERATURE_C
 
 
-class RoastGraphWidget():
-    ANIMATION_SAVE_COUNT = 120
+class _TimeAxis(pg.AxisItem):
+    def tickStrings(self, values, scale, spacing):
+        _ = scale, spacing
+        labels = []
+        for value in values:
+            total_s = max(0, int(round(value)))
+            labels.append(time.strftime("%M:%S", time.gmtime(total_s)))
+        return labels
 
+
+class RoastGraphWidget():
     def __init__(self, graphXValueList=None, graphYValueList=None,
             animated=False, updateMethod=None, animatingMethod=None):
         self.graphXValueList = graphXValueList or []
@@ -32,8 +35,8 @@ class RoastGraphWidget():
         self.animatingMethod = animatingMethod
         self._last_drawn_len = -1
         self._ymax_seen = float(MIN_TEMPERATURE_C)
-        self._xmax_seen = None
         self._x_window_max_s = None
+        self._graph_timer = None
 
         self.widget = self.create_graph()
 
@@ -42,62 +45,44 @@ class RoastGraphWidget():
         graphWidget = QtWidgets.QWidget()
         graphWidget.setObjectName("graph")
 
-        # Style attributes of matplotlib.
-        matplotlib.rcParams['lines.linewidth'] = 3
-        matplotlib.rcParams['lines.color'] = '#2a2a2a'
-        matplotlib.rcParams['font.size'] = 10.
-        self.graphFigure = Figure(facecolor='#444952')
-        self.graphCanvas = FigureCanvas(self.graphFigure)
-        self._init_graph_axes()
+        self.plotWidget = pg.PlotWidget(axisItems={"bottom": _TimeAxis(orientation="bottom")})
+        self.plotWidget.setBackground('#23252a')
+        self.plotWidget.setLabel('left', 'TEMPERATURE (°C)', color='w')
+        self.plotWidget.setLabel('bottom', 'TIME', color='w')
+        self.plotWidget.showGrid(x=True, y=True, alpha=0.2)
+        self.plotWidget.getAxis('left').setTextPen('w')
+        self.plotWidget.getAxis('bottom').setTextPen('w')
+        self.graphLine = self.plotWidget.plot([], [], pen=pg.mkPen('#8ab71b', width=3))
+        self._apply_temperature_axis_limits()
 
         # Add graph widgets to layout for graph.
         graphVerticalBox = QtWidgets.QVBoxLayout()
         graphVerticalBox.setContentsMargins(0, 0, 0, 0)
         graphVerticalBox.setSpacing(0)
-        graphVerticalBox.addWidget(self.graphCanvas)
+        graphVerticalBox.addWidget(self.plotWidget)
         graphWidget.setLayout(graphVerticalBox)
 
         # Animate the the graph with new data
         if self.animated:
-            self.animateGraph = animation.FuncAnimation(self.graphFigure,
-                self.graph_draw,
-                interval=1000,
-                cache_frame_data=False,
-                save_count=self.ANIMATION_SAVE_COUNT)
+            self._graph_timer = QtCore.QTimer()
+            self._graph_timer.setInterval(1000)
+            self._graph_timer.timeout.connect(self.graph_draw)
+            self._graph_timer.start()
         else:
             self.graph_draw(force=True)
 
         return graphWidget
 
-    def _init_graph_axes(self):
-        self.graphFigure.clear()
-        self.graphAxes = self.graphFigure.add_subplot(111)
-        # Add formatting to the graphs.
-        self.graphAxes.set_ylabel('TEMPERATURE (°C)')
-        self.graphAxes.set_xlabel('TIME')
-        # Leave extra left margin so y-axis label and tick text are fully visible.
-        self.graphFigure.subplots_adjust(left=0.16, right=0.985, top=0.965, bottom=0.16)
-        self.graphAxes.get_xaxis().set_major_formatter(DateFormatter('%M:%S'))
-        self.graphAxes.set_facecolor('#23252a')
-
-        # adding more visible text color
-        self.graphAxes.get_xaxis().label.set_color('white')
-        self.graphAxes.get_yaxis().label.set_color('white')
-        self.graphAxes.tick_params(axis='x', colors='white')
-        self.graphAxes.tick_params(axis='y', colors='white')
-        self.graphLine, = self.graphAxes.plot_date([], [], '#8ab71b')
-        self._apply_temperature_axis_limits()
-
     def _apply_temperature_axis_limits(self):
         bottom = float(MIN_TEMPERATURE_C)
         min_top = bottom + float(GRAPH_HEADROOM_C)
-        current_top = float(self.graphAxes.get_ylim()[1])
+        current_top = float(self.plotWidget.viewRange()[1][1])
         target_top = max(min_top, current_top, self._ymax_seen + float(GRAPH_HEADROOM_C))
 
         if target_top <= bottom:
             target_top = bottom + float(GRAPH_HEADROOM_C)
 
-        self.graphAxes.set_ylim(bottom=bottom, top=target_top)
+        self.plotWidget.setYRange(bottom, target_top, padding=0)
 
     def graph_draw(self, *args, force=False, **kwargs):
         # Start graphing the roast if the roast has started.
@@ -114,7 +99,7 @@ class RoastGraphWidget():
             if last_y > self._ymax_seen:
                 self._ymax_seen = last_y
 
-        self.graphLine.set_data(self.graphXValueList, self.graphYValueList)
+        self.graphLine.setData(self.graphXValueList, self.graphYValueList)
         if current_len > 1:
             xmin = self.graphXValueList[0]
             elapsed_s = self.counter
@@ -123,21 +108,15 @@ class RoastGraphWidget():
             else:
                 # Keep section-based window, but never clip live data.
                 x_limit_s = max(int(self._x_window_max_s), int(elapsed_s))
-            xmax = matplotlib.dates.date2num(
-                datetime.datetime.fromtimestamp(max(1, x_limit_s))
-            )
-            if self._xmax_seen != xmax:
-                self.graphAxes.set_xlim(left=xmin, right=xmax)
-                self._xmax_seen = xmax
+            self.plotWidget.setXRange(xmin, max(1, x_limit_s), padding=0)
         # Keep graph baseline at room temperature (20 C) without flipping axis.
         self._apply_temperature_axis_limits()
         self._last_drawn_len = current_len
-        self.graphCanvas.draw_idle()
+        self.plotWidget.repaint()
 
     def append_x(self, temp_c):
         self.counter += 1
-        current_time = datetime.datetime.fromtimestamp(self.counter)
-        self.graphXValueList.append(matplotlib.dates.date2num(current_time))
+        self.graphXValueList.append(self.counter)
         self.graphYValueList.append(temp_c)
 
     def clear_graph(self):
@@ -145,12 +124,12 @@ class RoastGraphWidget():
         self.graphYValueList = []
         self.counter = 0
         self._ymax_seen = float(MIN_TEMPERATURE_C)
-        self._xmax_seen = None
         self._x_window_max_s = None
-        self.graphLine.set_data([], [])
+        self.graphLine.setData([], [])
         self._apply_temperature_axis_limits()
+        self.plotWidget.setXRange(0, 1, padding=0)
         self._last_drawn_len = 0
-        self.graphCanvas.draw_idle()
+        self.plotWidget.repaint()
 
     def set_time_window_max_seconds(self, max_seconds):
         if max_seconds is None:
@@ -165,11 +144,9 @@ class RoastGraphWidget():
                 'Save Roast Graph',
                 os.path.expanduser('~/'),
                 'Graph (*.png);;All Files (*)')
-            self.graphFigure.savefig(
-                file_name[0],
-                bbox_inches='tight',
-                facecolor='#23252a',
-                edgecolor='black')
+            if file_name[0]:
+                exporter = ImageExporter(self.plotWidget.plotItem)
+                exporter.export(file_name[0])
         except FileNotFoundError:
             # Occurs if file browser is canceled
             pass
@@ -187,10 +164,9 @@ class RoastGraphWidget():
                 outfile.write("Seconds,Temperature\n")
                 if not self.graphXValueList:
                     return
-                init_time = matplotlib.dates.num2date(self.graphXValueList[0])
+                init_s = int(self.graphXValueList[0])
                 for x_val, temp_c in zip(self.graphXValueList, self.graphYValueList):
-                    x_time = matplotlib.dates.num2date(x_val)
-                    elapsed_seconds = (x_time - init_time).seconds
+                    elapsed_seconds = int(x_val) - init_s
                     outfile.write("{0},{1}\n".format(elapsed_seconds, temp_c))
         except FileNotFoundError:
             # Occurs if file browser is canceled
