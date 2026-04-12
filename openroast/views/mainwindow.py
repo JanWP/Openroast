@@ -24,6 +24,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super(MainWindow, self).__init__()
         self._heaterLedOn = None
         self._heaterLevel = None
+        self._disconnect_called = False
 
         # Define main window for the application.
         self.setWindowTitle('Openroast v%s' % __version__)
@@ -393,4 +394,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_heater_debug_indicators()
 
     def closeEvent(self, event):
-        self.roaster.disconnect()
+        if not self._disconnect_called:
+            self._disconnect_called = True
+            try:
+                self.roaster.disconnect()
+            except Exception:
+                # Best-effort shutdown; continue closing even if backend cleanup fails.
+                pass
+        super(MainWindow, self).closeEvent(event)
