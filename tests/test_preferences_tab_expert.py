@@ -69,6 +69,7 @@ class PreferencesTabExpertTests(unittest.TestCase):
             self.assertEqual(widget.refreshIntervalMs.value(), app_config.DEFAULT_CONFIG["ui"]["refreshIntervalMs"])
             self.assertAlmostEqual(widget.pidKp.value(), 0.5, places=4)
 
+            widget.expertModeEnabled.setChecked(True)
             widget._expert_warning_ack = True
             with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
                 widget.tabs.setCurrentIndex(1)
@@ -79,6 +80,47 @@ class PreferencesTabExpertTests(unittest.TestCase):
                 app_config.DEFAULT_CONFIG["control"]["pid"]["kp"],
                 places=4,
             )
+        finally:
+            widget.close()
+            self._app.processEvents()
+
+    def test_revert_changes_applies_only_current_tab(self):
+        widget = self._build_widget()
+        try:
+            widget.expertModeEnabled.setChecked(True)
+            widget.refreshIntervalMs.setValue(1300)
+            widget.pidKp.setValue(0.5)
+
+            with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
+                widget.tabs.setCurrentIndex(0)
+                widget._on_revert_changes_clicked()
+
+            self.assertEqual(widget.refreshIntervalMs.value(), app_config.DEFAULT_CONFIG["ui"]["refreshIntervalMs"])
+            self.assertAlmostEqual(widget.pidKp.value(), 0.5, places=4)
+
+            widget.expertModeEnabled.setChecked(True)
+            widget._expert_warning_ack = True
+            with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
+                widget.tabs.setCurrentIndex(1)
+                widget._on_revert_changes_clicked()
+
+            self.assertAlmostEqual(
+                widget.pidKp.value(),
+                app_config.DEFAULT_CONFIG["control"]["pid"]["kp"],
+                places=4,
+            )
+        finally:
+            widget.close()
+            self._app.processEvents()
+
+    def test_revert_changes_cancel_keeps_modified_values(self):
+        widget = self._build_widget()
+        try:
+            widget.refreshIntervalMs.setValue(1300)
+            with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.No):
+                widget.tabs.setCurrentIndex(0)
+                widget._on_revert_changes_clicked()
+            self.assertEqual(widget.refreshIntervalMs.value(), 1300)
         finally:
             widget.close()
             self._app.processEvents()
