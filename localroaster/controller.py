@@ -1,4 +1,5 @@
 import atexit
+import math
 import logging
 import os
 import signal
@@ -290,6 +291,125 @@ class RoasterController:
                     self._target_temp_k = max_temp_k
             if heater_cutoff_enabled is not None:
                 self.config.heater_cutoff_enabled = bool(heater_cutoff_enabled)
+
+    def autotune_pid(
+        self,
+        *,
+        step_percent: int = 67,
+        settle_s: float = 3.0,
+        test_duration_s: float = 45.0,
+        min_rise_c: float = 3.0,
+    ) -> dict:
+        """Run a conservative step-response autotune and return PID values.
+
+        This method is intended for local/local-mock expert use. It blocks until
+        the tuning run completes.
+        """
+        if not self.connected:
+            raise RuntimeError("Autotune requires a connected backend")
+        if self.state != RoasterState.IDLE:
+            raise RuntimeError("Autotune requires the roaster to be idle")
+
+        with self._lock:
+            original_thermostat = bool(self.config.thermostat)
+            original_fan = int(self._fan_speed)
+            original_heat_setting = int(self._heat_setting)
+            original_target_temp_k = float(self._target_temp_k)
+            original_time_remaining_s = int(self._time_remaining_s)
+            original_state_transition_callback = self._state_transition_callback
+
+        heat_setting = max(1, min(3, int(round(float(step_percent) * 3.0 / 100.0))))
+        actual_step_percent = (heat_setting * 100.0) / 3.0
+        sample_dt = max(0.02, float(self.config.sample_period_s))
+
+        start_time = time.monotonic()
+        baseline_samples_c: list[float] = []
+        response_samples: list[tuple[float, float]] = []
+
+        try:
+            with self._lock:
+                self.config.thermostat = False
+                # Keep timer transitions from invoking recipe callbacks during autotune.
+                self._state_transition_callback = None
+                self._time_remaining_s = int(max(1.0, float(settle_s) + float(test_duration_s) + 5.0))
+
+            self.fan_speed = max(1, original_fan)
+            self.heat_setting = 0
+            self.roast()
+
+            settle_deadline = time.monotonic() + max(0.2, float(settle_s))
+            while time.monotonic() < settle_deadline:
+                baseline_samples_c.append(self._kelvin_to_celsius(self.current_temp_k))
+                if self._stop_event.wait(sample_dt):
+                    break
+
+            if not baseline_samples_c:
+                raise RuntimeError("Autotune baseline sampling failed")
+            baseline_c = sum(baseline_samples_c) / len(baseline_samples_c)
+
+            self.heat_setting = heat_setting
+            test_deadline = time.monotonic() + max(5.0, float(test_duration_s))
+            while time.monotonic() < test_deadline:
+                now = time.monotonic()
+                temp_c = self._kelvin_to_celsius(self.current_temp_k)
+                response_samples.append((now - start_time, temp_c))
+                if self._stop_event.wait(sample_dt):
+                    break
+
+            if not response_samples:
+                raise RuntimeError("Autotune response sampling failed")
+
+            peak_c = max(temp_c for _, temp_c in response_samples)
+            delta_c = peak_c - baseline_c
+            if delta_c < float(min_rise_c):
+                raise RuntimeError(
+                    f"Autotune rise too small ({delta_c:.2f} C); increase test duration"
+                )
+
+            rise_threshold_c = baseline_c + 0.5
+            dead_time_s = next((t for t, temp_c in response_samples if temp_c >= rise_threshold_c), None)
+            if dead_time_s is None:
+                dead_time_s = 0.5
+
+            tau_target_c = baseline_c + 0.632 * delta_c
+            tau_time_s = next((t for t, temp_c in response_samples if temp_c >= tau_target_c), None)
+            if tau_time_s is None:
+                raise RuntimeError("Autotune failed to estimate time constant")
+
+            process_gain = delta_c / max(1e-3, actual_step_percent)
+            dead_time_s = max(0.2, float(dead_time_s))
+            tau_s = max(0.2, float(tau_time_s - dead_time_s))
+
+            # Ziegler-Nichols reaction-curve tuning in percent-duty domain.
+            kp = 1.2 * tau_s / (process_gain * dead_time_s)
+            ti_s = 2.0 * dead_time_s
+            td_s = 0.5 * dead_time_s
+            ki = kp / max(1e-3, ti_s)
+            kd = kp * td_s
+
+            if not all(math.isfinite(v) and v > 0.0 for v in (kp, ki, kd)):
+                raise RuntimeError("Autotune produced non-finite PID values")
+
+            return {
+                "kp": float(kp),
+                "ki": float(ki),
+                "kd": float(kd),
+                "baseline_c": float(baseline_c),
+                "peak_c": float(peak_c),
+                "delta_c": float(delta_c),
+                "dead_time_s": float(dead_time_s),
+                "tau_s": float(tau_s),
+                "step_percent": float(actual_step_percent),
+            }
+        finally:
+            self.idle()
+            with self._lock:
+                self.config.thermostat = original_thermostat
+                self._target_temp_k = original_target_temp_k
+                self._time_remaining_s = original_time_remaining_s
+                self._state_transition_callback = original_state_transition_callback
+            self.fan_speed = original_fan
+            self.heat_setting = original_heat_setting
 
     def add_telemetry_listener(self, callback: Callable[[Telemetry], None]) -> None:
         self._telemetry_listeners.append(callback)

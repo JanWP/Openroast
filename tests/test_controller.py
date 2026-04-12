@@ -141,6 +141,27 @@ class RecordingDriver(HardwareDriver):
         self.closed = True
 
 
+class _AutotuneDriver(HardwareDriver):
+    def __init__(self, ambient_k: float = 295.0):
+        self._ambient_k = ambient_k
+        self._temp_k = ambient_k
+        self._heater_level = 0.0
+
+    def read_temperature_k(self) -> float:
+        target_k = self._ambient_k + (self._heater_level / 100.0) * 180.0
+        self._temp_k = self._temp_k + 0.08 * (target_k - self._temp_k)
+        return self._temp_k
+
+    def set_heater(self, on: bool) -> None:
+        self._heater_level = 100.0 if on else 0.0
+
+    def set_heater_level(self, level_percent: int) -> None:
+        self._heater_level = max(0.0, min(100.0, float(level_percent)))
+
+    def set_fan_speed(self, speed: int) -> None:
+        _ = speed
+
+
 class ControllerSafetyTests(unittest.TestCase):
     def _make_controller(self, thermostat=True, temp_k=400.0, **config_kwargs):
         config = ControllerConfig(
@@ -313,6 +334,48 @@ class ControllerSafetyTests(unittest.TestCase):
         self.assertAlmostEqual(ctrl.config.sample_period_s, 0.25, places=4)
         self.assertAlmostEqual(ctrl.config.max_temp_k, 500.0, places=4)
         self.assertFalse(ctrl.config.heater_cutoff_enabled)
+
+    def test_autotune_pid_returns_positive_coefficients(self):
+        cfg = ControllerConfig(
+            thermostat=True,
+            sample_period_s=0.05,
+            pwm_cycle_s=0.2,
+            pwm_tick_s=0.05,
+            max_temp_k=560.0,
+            min_display_temp_k=293.15,
+        )
+        driver = _AutotuneDriver(ambient_k=295.0)
+        ctrl = RoasterController(driver, config=cfg)
+        ctrl.connect()
+
+        tuned = ctrl.autotune_pid(settle_s=0.5, test_duration_s=6.0, min_rise_c=2.0)
+
+        self.assertGreater(tuned["kp"], 0.0)
+        self.assertGreater(tuned["ki"], 0.0)
+        self.assertGreater(tuned["kd"], 0.0)
+        self.assertEqual(ctrl.state, RoasterState.IDLE)
+        self.assertTrue(ctrl.config.thermostat)
+        ctrl.shutdown()
+
+    def test_autotune_pid_suppresses_state_transition_callback(self):
+        cfg = ControllerConfig(
+            thermostat=True,
+            sample_period_s=0.05,
+            pwm_cycle_s=0.2,
+            pwm_tick_s=0.05,
+            max_temp_k=560.0,
+            min_display_temp_k=293.15,
+        )
+        driver = _AutotuneDriver(ambient_k=295.0)
+        ctrl = RoasterController(driver, config=cfg)
+        transitions = []
+        ctrl.set_state_transition_callback(lambda: transitions.append("transition"))
+        ctrl.connect()
+
+        ctrl.autotune_pid(settle_s=0.2, test_duration_s=1.2, min_rise_c=1.0)
+
+        self.assertEqual(transitions, [])
+        ctrl.shutdown()
 
     def test_pid_resets_on_roast_from_idle(self):
         ctrl, driver, _ = self._make_controller(thermostat=True)

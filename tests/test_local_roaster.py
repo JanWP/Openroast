@@ -36,6 +36,7 @@ class FakeController:
         self.sleep_calls = 0
         self.reset_simulation_calls = 0
         self.runtime_config_calls = []
+        self.autotune_calls = 0
 
     def add_telemetry_listener(self, func):
         self.add_telemetry_listener_calls += 1
@@ -78,6 +79,11 @@ class FakeController:
 
     def apply_runtime_config(self, **kwargs):
         self.runtime_config_calls.append(kwargs)
+
+    def autotune_pid(self, **kwargs):
+        self.autotune_calls += 1
+        self.autotune_kwargs = kwargs
+        return {"kp": 0.2, "ki": 0.03, "kd": 0.04}
 
 
 class LocalRoasterAdapterTests(unittest.TestCase):
@@ -364,6 +370,20 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertAlmostEqual(call["pwm_cycle_s"], 1.5, places=4)
         self.assertAlmostEqual(call["sample_period_s"], 0.2, places=4)
         self.assertTrue(call["heater_cutoff_enabled"])
+
+    def test_autotune_pid_forwards_to_controller(self):
+        fake_controller = FakeController()
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster()
+
+        result = roaster.autotune_pid()
+        self.assertEqual(fake_controller.autotune_calls, 1)
+        self.assertAlmostEqual(result["kp"], 0.2, places=4)
+
+        roaster.autotune_pid(settle_s=1.0, test_duration_s=10.0)
+        self.assertEqual(fake_controller.autotune_calls, 2)
+        self.assertAlmostEqual(fake_controller.autotune_kwargs["settle_s"], 1.0, places=4)
 
 
 if __name__ == "__main__":

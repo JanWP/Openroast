@@ -328,3 +328,9 @@ class LocalRoaster:
         )
         return True
 
+    def autotune_pid(self, **kwargs):
+        run_autotune = getattr(self._controller, "autotune_pid", None)
+        if not callable(run_autotune):
+            raise RuntimeError("Autotune is not supported by this backend")
+        return run_autotune(**kwargs)
+
