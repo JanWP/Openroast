@@ -15,6 +15,7 @@ from openroast.temperature import (
     celsius_to_kelvin,
     kelvin_to_celsius,
 )
+from openroast import app_config
 
 
 class LocalRoaster:
@@ -309,4 +310,21 @@ class LocalRoaster:
             reset_sim()
             return True
         return False
+
+    def apply_runtime_preferences(self, config_data):
+        config = app_config.normalize_config(config_data)
+        apply_runtime_config = getattr(self._controller, "apply_runtime_config", None)
+        if not callable(apply_runtime_config):
+            return False
+
+        apply_runtime_config(
+            kp=float(config["control"]["pid"]["kp"]),
+            ki=float(config["control"]["pid"]["ki"]),
+            kd=float(config["control"]["pid"]["kd"]),
+            pwm_cycle_s=float(config["control"]["pwmCycleSeconds"]),
+            sample_period_s=float(config["control"]["samplePeriodSeconds"]),
+            max_temp_k=celsius_to_kelvin(app_config.get_safety_max_temp_c(config)),
+            heater_cutoff_enabled=bool(config["safety"]["heaterCutoffEnabled"]),
+        )
+        return True
 

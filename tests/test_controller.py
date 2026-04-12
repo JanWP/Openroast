@@ -293,6 +293,27 @@ class ControllerSafetyTests(unittest.TestCase):
         self.assertTrue(driver.heater_level_calls)
         self.assertTrue(any(0 < level < 100 for level in driver.heater_level_calls))
 
+    def test_apply_runtime_config_updates_pid_and_limits(self):
+        ctrl, _driver, _config = self._make_controller(thermostat=True)
+
+        ctrl.apply_runtime_config(
+            kp=0.2,
+            ki=0.03,
+            kd=0.04,
+            pwm_cycle_s=1.5,
+            sample_period_s=0.25,
+            max_temp_k=500.0,
+            heater_cutoff_enabled=False,
+        )
+
+        self.assertAlmostEqual(ctrl.config.kp, 0.2, places=4)
+        self.assertAlmostEqual(ctrl.config.ki, 0.03, places=4)
+        self.assertAlmostEqual(ctrl.config.kd, 0.04, places=4)
+        self.assertAlmostEqual(ctrl.config.pwm_cycle_s, 1.5, places=4)
+        self.assertAlmostEqual(ctrl.config.sample_period_s, 0.25, places=4)
+        self.assertAlmostEqual(ctrl.config.max_temp_k, 500.0, places=4)
+        self.assertFalse(ctrl.config.heater_cutoff_enabled)
+
     def test_pid_resets_on_roast_from_idle(self):
         ctrl, driver, _ = self._make_controller(thermostat=True)
         ctrl.connect()

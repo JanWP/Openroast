@@ -35,6 +35,7 @@ class FakeController:
         self.cool_calls = 0
         self.sleep_calls = 0
         self.reset_simulation_calls = 0
+        self.runtime_config_calls = []
 
     def add_telemetry_listener(self, func):
         self.add_telemetry_listener_calls += 1
@@ -74,6 +75,9 @@ class FakeController:
 
     def reset_simulation_state(self):
         self.reset_simulation_calls += 1
+
+    def apply_runtime_config(self, **kwargs):
+        self.runtime_config_calls.append(kwargs)
 
 
 class LocalRoasterAdapterTests(unittest.TestCase):
@@ -331,6 +335,35 @@ class LocalRoasterAdapterTests(unittest.TestCase):
 
         self.assertTrue(roaster.reset_simulation_state())
         self.assertEqual(fake_controller.reset_simulation_calls, 1)
+
+    def test_apply_runtime_preferences_forwards_pid_and_safety_settings(self):
+        fake_controller = FakeController()
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster()
+
+        config = {
+            "display": {"temperatureUnitDefault": "F"},
+            "control": {
+                "pid": {"kp": 0.2, "ki": 0.03, "kd": 0.04},
+                "pwmCycleSeconds": 1.5,
+                "samplePeriodSeconds": 0.2,
+            },
+            "safety": {
+                "maxTemp": {"value": 430.0, "unit": "F"},
+                "heaterCutoffEnabled": True,
+            },
+        }
+
+        self.assertTrue(roaster.apply_runtime_preferences(config))
+        self.assertEqual(len(fake_controller.runtime_config_calls), 1)
+        call = fake_controller.runtime_config_calls[0]
+        self.assertAlmostEqual(call["kp"], 0.2, places=4)
+        self.assertAlmostEqual(call["ki"], 0.03, places=4)
+        self.assertAlmostEqual(call["kd"], 0.04, places=4)
+        self.assertAlmostEqual(call["pwm_cycle_s"], 1.5, places=4)
+        self.assertAlmostEqual(call["sample_period_s"], 0.2, places=4)
+        self.assertTrue(call["heater_cutoff_enabled"])
 
 
 if __name__ == "__main__":

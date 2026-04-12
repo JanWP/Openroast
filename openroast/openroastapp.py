@@ -349,6 +349,11 @@ class OpenroastApp(object):
         self._default_display_temperature_unit = self._config["display"]["temperatureUnitDefault"]
         set_default_display_temperature_unit(self._default_display_temperature_unit)
 
+        # Apply local backend tuning/safety changes immediately when supported.
+        apply_runtime_prefs = getattr(self.roaster, "apply_runtime_preferences", None)
+        if callable(apply_runtime_prefs):
+            apply_runtime_prefs(self._config)
+
         # Apply roast tab preferences immediately; startup defaults still apply on next start.
         if hasattr(self, "window"):
             apply_prefs = getattr(self.window.roast, "apply_preferences", None)

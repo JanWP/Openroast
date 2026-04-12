@@ -255,6 +255,42 @@ class RoasterController:
                     self._fault = None
                 self._emit_telemetry()
 
+    def apply_runtime_config(
+        self,
+        *,
+        kp: float | None = None,
+        ki: float | None = None,
+        kd: float | None = None,
+        pwm_cycle_s: float | None = None,
+        sample_period_s: float | None = None,
+        max_temp_k: float | None = None,
+        heater_cutoff_enabled: bool | None = None,
+    ) -> None:
+        """Apply controller tuning/safety changes while running."""
+        with self._lock:
+            if kp is not None:
+                self.config.kp = float(kp)
+                self._pid.kp = float(kp)
+            if ki is not None:
+                self.config.ki = float(ki)
+                self._pid.ki = float(ki)
+            if kd is not None:
+                self.config.kd = float(kd)
+                self._pid.kd = float(kd)
+            if pwm_cycle_s is not None:
+                cycle_s = max(0.1, float(pwm_cycle_s))
+                self.config.pwm_cycle_s = cycle_s
+                self._pwm.cycle_s = cycle_s
+            if sample_period_s is not None:
+                self.config.sample_period_s = max(0.01, float(sample_period_s))
+            if max_temp_k is not None:
+                max_temp_k = float(max_temp_k)
+                self.config.max_temp_k = max_temp_k
+                if self._target_temp_k > max_temp_k:
+                    self._target_temp_k = max_temp_k
+            if heater_cutoff_enabled is not None:
+                self.config.heater_cutoff_enabled = bool(heater_cutoff_enabled)
+
     def add_telemetry_listener(self, callback: Callable[[Telemetry], None]) -> None:
         self._telemetry_listeners.append(callback)
 
