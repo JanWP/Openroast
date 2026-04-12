@@ -302,3 +302,11 @@ class LocalRoaster:
         self._update_event.set()
         self._state_transition_event.set()
         self._controller.shutdown()
+
+    def reset_simulation_state(self):
+        reset_sim = getattr(self._controller, "reset_simulation_state", None)
+        if callable(reset_sim):
+            reset_sim()
+            return True
+        return False
+

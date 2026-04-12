@@ -121,6 +121,7 @@ class RecordingDriver(HardwareDriver):
     def __init__(self, temperature_k: float = 300.0):
         self._temp_k = temperature_k
         self.heater_calls: list[bool] = []
+        self.heater_level_calls: list[int] = []
         self.fan_calls: list[int] = []
         self.closed = False
 
@@ -132,6 +133,9 @@ class RecordingDriver(HardwareDriver):
 
     def set_fan_speed(self, speed: int) -> None:
         self.fan_calls.append(speed)
+
+    def set_heater_level(self, level_percent: int) -> None:
+        self.heater_level_calls.append(int(level_percent))
 
     def close(self) -> None:
         self.closed = True
@@ -277,6 +281,17 @@ class ControllerSafetyTests(unittest.TestCase):
 
                 self.assertGreater(ctrl.heater_level, 0)
                 ctrl.shutdown()
+
+    def test_control_loop_calls_continuous_heater_level_hook(self):
+        ctrl, driver, _ = self._make_controller(thermostat=False, temp_k=350.0)
+        ctrl.connect()
+        ctrl.heat_setting = 1
+        ctrl.roast()
+        time.sleep(0.2)
+        ctrl.shutdown()
+
+        self.assertTrue(driver.heater_level_calls)
+        self.assertTrue(any(0 < level < 100 for level in driver.heater_level_calls))
 
     def test_pid_resets_on_roast_from_idle(self):
         ctrl, driver, _ = self._make_controller(thermostat=True)

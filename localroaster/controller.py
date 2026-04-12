@@ -29,6 +29,17 @@ class HardwareDriver(ABC):
     def set_fan_speed(self, speed: int) -> None:
         raise NotImplementedError
 
+    def set_heater_level(self, level_percent: int) -> None:
+        """Optional hook for drivers that can consume continuous heater duty.
+
+        Real GPIO/SSR drivers typically ignore this and use set_heater(on/off)
+        from the PWM loop. Simulated drivers can use this for smoother thermal
+        integration than edge-only on/off state.
+        """
+
+    def reset_simulation(self) -> None:
+        """Optional hook for simulated drivers to restore initial state."""
+
     def close(self) -> None:
         """Optional shutdown hook for hardware cleanup."""
 
@@ -215,6 +226,34 @@ class RoasterController:
         except Exception as exc:  # pragma: no cover - defensive cleanup
             logging.warning("localroaster: hardware shutdown failed: %s", exc)
         self._emit_telemetry()
+
+    def reset_simulation_state(self) -> None:
+        """Best-effort reset for simulation backends.
+
+        Real hardware drivers may not implement this hook; in that case this is
+        a no-op.
+        """
+        reset_sim = getattr(self.hardware, "reset_simulation", None)
+        if callable(reset_sim):
+            try:
+                reset_sim()
+            except Exception as exc:  # pragma: no cover - defensive handling
+                logging.warning("localroaster: reset_simulation failed: %s", exc)
+                with self._lock:
+                    self._fault = str(exc)
+                return
+
+            try:
+                current_temp_k = self.hardware.read_temperature_k()
+            except Exception as exc:  # pragma: no cover - defensive handling
+                logging.warning("localroaster: read_temperature_k failed after reset: %s", exc)
+                with self._lock:
+                    self._fault = str(exc)
+            else:
+                with self._lock:
+                    self._current_temp_k = current_temp_k
+                    self._fault = None
+                self._emit_telemetry()
 
     def add_telemetry_listener(self, callback: Callable[[Telemetry], None]) -> None:
         self._telemetry_listeners.append(callback)
@@ -466,6 +505,15 @@ class RoasterController:
                 heater_should_off = new_heater_level <= 0
 
             self._set_heater_level(new_heater_level)
+
+            set_heater_level = getattr(self.hardware, "set_heater_level", None)
+            if callable(set_heater_level):
+                try:
+                    set_heater_level(new_heater_level)
+                except Exception as exc:
+                    logging.warning("localroaster: set_heater_level failed: %s", exc)
+                    with self._lock:
+                        self._fault = str(exc)
 
             try:
                 self.hardware.set_fan_speed(fan_speed)

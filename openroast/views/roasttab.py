@@ -744,6 +744,12 @@ class RoastTab(QtWidgets.QWidget):
             self.recipes.restart_current_recipe()
             self.recreate_progress_bar()
 
+        # Optional simulation reset for backends that support restarting
+        # thermal state (used by local-mock).
+        reset_simulation = getattr(self.roaster, "reset_simulation_state", None)
+        if callable(reset_simulation):
+            reset_simulation()
+
         # Clear roast tab gui.
         self.clear_roast_tab_gui()
 

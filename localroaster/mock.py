@@ -13,6 +13,8 @@ class MockHardwareDriver(HardwareDriver):
         self._lock = threading.Lock()
         self._temp_k = self.config.ambient_temp_k
         self._heater_on = False
+        self._heater_level = 0.0
+        self._use_level_control = False
         self._tau = 30.0
         self._a = math.exp(-self.config.sample_period_s / self._tau)
         self._b = 1.0 - self._a
@@ -22,13 +24,32 @@ class MockHardwareDriver(HardwareDriver):
         with self._lock:
             fan_cooling = (self._fan_speed - 1) * 2.0
             hot_target_k = max(self.config.max_temp_k - fan_cooling, self.config.ambient_temp_k)
-            target_k = hot_target_k if self._heater_on else self.config.ambient_temp_k
+            if self._use_level_control:
+                duty = max(0.0, min(100.0, float(self._heater_level))) / 100.0
+            else:
+                duty = 1.0 if self._heater_on else 0.0
+            target_k = self.config.ambient_temp_k + duty * (hot_target_k - self.config.ambient_temp_k)
             self._temp_k = self._a * self._temp_k + self._b * target_k
             return self._temp_k
 
     def set_heater(self, on: bool) -> None:
         with self._lock:
             self._heater_on = bool(on)
+            if not self._use_level_control:
+                self._heater_level = 100.0 if self._heater_on else 0.0
+
+    def set_heater_level(self, level_percent: int) -> None:
+        with self._lock:
+            self._use_level_control = True
+            self._heater_level = max(0.0, min(100.0, float(level_percent)))
+
+    def reset_simulation(self) -> None:
+        with self._lock:
+            self._temp_k = self.config.ambient_temp_k
+            self._heater_on = False
+            self._heater_level = 0.0
+            self._use_level_control = False
+            self._fan_speed = 1
 
     def set_fan_speed(self, speed: int) -> None:
         with self._lock:

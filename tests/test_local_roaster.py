@@ -34,6 +34,7 @@ class FakeController:
         self.roast_calls = 0
         self.cool_calls = 0
         self.sleep_calls = 0
+        self.reset_simulation_calls = 0
 
     def add_telemetry_listener(self, func):
         self.add_telemetry_listener_calls += 1
@@ -70,6 +71,9 @@ class FakeController:
 
     def sleep(self):
         self.sleep_calls += 1
+
+    def reset_simulation_state(self):
+        self.reset_simulation_calls += 1
 
 
 class LocalRoasterAdapterTests(unittest.TestCase):
@@ -318,6 +322,15 @@ class LocalRoasterAdapterTests(unittest.TestCase):
 
         self.assertEqual(roaster._heater_level_state, 67)
         self.assertIn(67, seen)
+
+    def test_reset_simulation_state_forwards_to_controller(self):
+        fake_controller = FakeController()
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster()
+
+        self.assertTrue(roaster.reset_simulation_state())
+        self.assertEqual(fake_controller.reset_simulation_calls, 1)
 
 
 if __name__ == "__main__":
