@@ -11,6 +11,7 @@ from PyQt5 import QtWidgets
 
 from openroast.views import roasttab
 from openroast.views import recipestab
+from openroast.views import preferencestab
 from openroast.views import aboutwindow
 from openroast.version import __version__
 
@@ -18,7 +19,8 @@ class MainWindow(QtWidgets.QMainWindow):
     heaterOutputChanged = QtCore.pyqtSignal(bool)
     heaterLevelChanged = QtCore.pyqtSignal(int)
 
-    def __init__(self, recipes, roaster, compact_ui=False, fullscreen=False):
+    def __init__(self, recipes, roaster, compact_ui=False, fullscreen=False, app_config_data=None,
+                 on_preferences_saved=None):
         super(MainWindow, self).__init__()
         self._heaterLedOn = None
         self._heaterLevel = None
@@ -29,6 +31,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setContextMenuPolicy(QtCore.Qt.NoContextMenu)
         self.compact_ui = compact_ui
         self.fullscreen = fullscreen
+        self.app_config_data = app_config_data or {}
+        self._on_preferences_saved = on_preferences_saved
 
         # keep a copy of roaster & recipes, needed here
         self.roaster = roaster
@@ -182,6 +186,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.recipesTabButton.clicked.connect(self.select_recipes_tab)
         self.mainToolBar.addWidget(self.recipesTabButton)
 
+        # Add preferences tab button.
+        self.preferencesTabButton = QtWidgets.QPushButton("PREFERENCES", self)
+        self.preferencesTabButton.setObjectName("toolbar")
+        self.preferencesTabButton.clicked.connect(self.select_preferences_tab)
+        self.mainToolBar.addWidget(self.preferencesTabButton)
+
         # Add spacer to set login button on the right.
         self.spacer = QtWidgets.QWidget()
         self.spacer.setSizePolicy(
@@ -215,7 +225,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Add buttons to array to be disabled on selection.
         self.tabButtons = [self.roastTabButton,
-                           self.recipesTabButton]
+                           self.recipesTabButton,
+                           self.preferencesTabButton]
 
         self.update_toolbar_utility_buttons()
 
@@ -229,10 +240,15 @@ class MainWindow(QtWidgets.QMainWindow):
             roastTabObject=self.roast,
             MainWindowObject=self,
             recipes_object=self.recipes)
+        self.preferences = preferencestab.PreferencesTab(
+            config=self.app_config_data,
+            on_save=self.on_preferences_saved,
+        )
 
         # Add widgets to tabs.
         self.tabs.insertWidget(0, self.roast)
         self.tabs.insertWidget(1, self.recipes)
+        self.tabs.insertWidget(2, self.preferences)
 
         # Set the tabs as the central widget.
         self.setCentralWidget(self.tabs)
@@ -247,6 +263,15 @@ class MainWindow(QtWidgets.QMainWindow):
     def select_recipes_tab(self):
         self.tabs.setCurrentIndex(1)
         self.change_blocked_button(1)
+
+    def select_preferences_tab(self):
+        self.tabs.setCurrentIndex(2)
+        self.change_blocked_button(2)
+
+    def on_preferences_saved(self, config_data):
+        self.app_config_data = config_data
+        if callable(self._on_preferences_saved):
+            self._on_preferences_saved(config_data)
 
     def change_blocked_button(self, index):
         # Set all buttons enabled.

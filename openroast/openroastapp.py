@@ -27,6 +27,7 @@ except ImportError as exc:
     ) from exc
 
 from openroast.controllers import recipe
+from openroast import app_config
 from openroast.temperature import TEMP_UNIT_C, set_default_display_temperature_unit
 from openroast.views import mainwindow
 from openroast import utils as utils
@@ -41,9 +42,9 @@ def _parse_args():
     parser.add_argument(
         "--backend",
         choices=["usb", "usb-mock", "local", "local-mock"],
-        default="usb",
+        default=None,
         help=(
-            "Hardware backend to use.  "
+            "Hardware backend to use (overrides config).  "
             "'usb'       – FreshRoast SR700 via USB (default).  "
             "'usb-mock'  – Simulated USB roaster (no hardware).  "
             "'local'     – Home-built roaster via the local backend package.  "
@@ -52,15 +53,17 @@ def _parse_args():
     )
     parser.add_argument(
         "--compact-ui",
-        action="store_true",
-        default=False,
-        help="Use a denser layout tuned for 800x480 touchscreen displays.",
+        action="store_const",
+        const=True,
+        default=None,
+        help="Use a denser layout tuned for 800x480 touchscreen displays (overrides config).",
     )
     parser.add_argument(
         "--fullscreen",
-        action="store_true",
-        default=False,
-        help="Start in fullscreen mode.",
+        action="store_const",
+        const=True,
+        default=None,
+        help="Start in fullscreen mode (overrides config).",
     )
     known, _remaining = parser.parse_known_args()
     return known
@@ -200,11 +203,29 @@ class OpenroastApp(object):
         if args is None:
             args = _parse_args()
         self._args = args
+        self._config = app_config.load_config()
+
+        # Effective startup values: CLI explicit > config > built-in defaults.
+        self._effective_backend = (
+            self._args.backend
+            if self._args.backend is not None
+            else self._config["app"]["backendDefault"]
+        )
+        self._effective_compact_ui = (
+            bool(self._args.compact_ui)
+            if self._args.compact_ui is not None
+            else bool(self._config["ui"]["compactModeDefault"])
+        )
+        self._effective_fullscreen = (
+            bool(self._args.fullscreen)
+            if self._args.fullscreen is not None
+            else bool(self._config["ui"]["fullscreenOnStart"])
+        )
 
         # app
         self.app = QtWidgets.QApplication(sys.argv)
-        if not self._args.compact_ui and _screen_is_small(self.app):
-            self._args.compact_ui = True
+        if not self._effective_compact_ui and _screen_is_small(self.app):
+            self._effective_compact_ui = True
             logging.info("openroastapp: auto-enabled compact UI for small display")
         # fonts
         # QtGui.QFontDatabase.addApplicationFont(
@@ -253,7 +274,7 @@ class OpenroastApp(object):
             pathlib.Path(
                 utils.get_resource_filename('static/images/upArrow.png')
                 ).as_posix())
-        if self._args.compact_ui:
+        if self._effective_compact_ui:
             style += "\n" + _compact_style_overrides()
         QtWidgets.QApplication.setStyleSheet(self.app, style)
 
@@ -262,10 +283,10 @@ class OpenroastApp(object):
         self.check_user_folder()
 
         # initialize roaster backend and recipe object
-        self.roaster = _create_roaster(self._args)
-        # Centralize default display temperature unit once at startup.
-        # This can later be wired to a user preference.
-        self._default_display_temperature_unit = TEMP_UNIT_C
+        roaster_args = argparse.Namespace(backend=self._effective_backend)
+        self.roaster = _create_roaster(roaster_args)
+        self._default_display_temperature_unit = self._config["display"].get(
+            "temperatureUnitDefault", TEMP_UNIT_C)
         set_default_display_temperature_unit(self._default_display_temperature_unit)
         self.recipes = recipe.Recipe(self.roaster, self)
         if(not self.roaster.set_state_transition_func(
@@ -293,21 +314,36 @@ class OpenroastApp(object):
 
     def run(self):
         """Turn everything on."""
-        self.roaster.auto_connect()
+        if self._config["app"].get("autoConnectOnStart", True):
+            self.roaster.auto_connect()
         self.window = mainwindow.MainWindow(
             self.recipes,
             self.roaster,
-            compact_ui=self._args.compact_ui,
-            fullscreen=self._args.fullscreen)
+            compact_ui=self._effective_compact_ui,
+            fullscreen=self._effective_fullscreen,
+            app_config_data=self._config,
+            on_preferences_saved=self.on_preferences_saved,
+        )
         # Apply mode after window creation and explicitly request fullscreen
         # to avoid backend/window-manager differences at startup.
         self.window.apply_window_mode()
-        if self._args.fullscreen:
+        if self._effective_fullscreen:
             self.window.showFullScreen()
         else:
             self.window.show()
         qt_exec = getattr(self.app, "exec", self.app.exec_)
         sys.exit(qt_exec())
+
+    def on_preferences_saved(self, config_data):
+        self._config = app_config.normalize_config(config_data)
+        self._default_display_temperature_unit = self._config["display"]["temperatureUnitDefault"]
+        set_default_display_temperature_unit(self._default_display_temperature_unit)
+
+        # Apply display-only effects immediately; other defaults apply on next start.
+        if hasattr(self, "window"):
+            self.window.roast.recreate_progress_bar()
+            self.window.roast.update_target_temp()
+            self.window.roast.update_data()
 
 
 # def get_script_dir(follow_symlinks=True):
