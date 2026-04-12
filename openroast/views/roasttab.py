@@ -13,7 +13,9 @@ from openroast.temperature import (
     MIN_TEMPERATURE_C,
     TEMP_UNIT_F,
     celsius_to_kelvin,
+    celsius_to_formatted_display,
     celsius_to_temperature_unit,
+    get_default_display_temperature_unit,
     clamp_temperature_c,
     kelvin_to_celsius,
     normalize_temperature_unit,
@@ -125,6 +127,13 @@ class RoastTab(QtWidgets.QWidget):
 
     def _c_to_roaster_temp(self, value):
         return int(round(celsius_to_temperature_unit(value, self._roaster_temperature_unit)))
+
+    def _get_display_temperature_unit(self):
+        return get_default_display_temperature_unit()
+
+    def _format_display_temperature(self, temp_c):
+        display_unit = self._get_display_temperature_unit()
+        return celsius_to_formatted_display(temp_c, display_unit)
 
     def graph_get_data(self):
         current_temp_c = self._get_roaster_current_temp_c()
@@ -238,7 +247,7 @@ class RoastTab(QtWidgets.QWidget):
         # Update temperature widgets.
         self._set_text_if_changed(
             self.currentTempLabel,
-            str(self._get_roaster_current_temp_c()),
+            self._format_display_temperature(self._get_roaster_current_temp_c()),
         )
 
         # Update timers.
@@ -330,13 +339,15 @@ class RoastTab(QtWidgets.QWidget):
 
         if(self.recipes.check_recipe_loaded()):
             counter = 0
+            display_unit = self._get_display_temperature_unit()
 
             for i in range(0, self.recipes.get_num_recipe_sections()):
                 # Calculate display time and generate label text.
                 section_duration_s = self.recipes.get_section_duration(i)
-                minutes, seconds = self.calc_display_time(section_duration_s)
-                labelText = (str(minutes) +  ":" + str(seconds) + "@" +
-                    str(self.recipes.get_section_temp(i)) + "C")
+                labelText = celsius_to_formatted_display(
+                    self.recipes.get_section_temp(i),
+                    display_unit,
+                )
 
                # Create label for section.
                 label = QtWidgets.QLabel(labelText)
@@ -399,14 +410,14 @@ class RoastTab(QtWidgets.QWidget):
             guageWindow.setVerticalSpacing(4)
 
         # Create current temp gauge.
-        self.currentTempLabel = QtWidgets.QLabel(str(self._min_temp_c))
-        currentTemp = self.create_info_box("CURRENT TEMP (C)", "tempGuage",
+        self.currentTempLabel = QtWidgets.QLabel(self._format_display_temperature(self._min_temp_c))
+        currentTemp = self.create_info_box("CURRENT TEMP", "tempGauge",
             self.currentTempLabel)
         guageWindow.addLayout(currentTemp, 0, 0)
 
         # Create target temp gauge.
         self.targetTempLabel = QtWidgets.QLabel()
-        targetTemp = self.create_info_box("TARGET TEMP (C)", "tempGuage", self.targetTempLabel)
+        targetTemp = self.create_info_box("TARGET TEMP", "tempGauge", self.targetTempLabel)
         guageWindow.addLayout(targetTemp, 0, 1)
 
         # Create current duration.
@@ -563,19 +574,22 @@ class RoastTab(QtWidgets.QWidget):
 
     def update_target_temp(self):
         target_temp_c = self._get_roaster_target_temp_c()
-        self._set_text_if_changed(self.targetTempLabel, str(target_temp_c))
+        self._set_text_if_changed(
+            self.targetTempLabel,
+            self._format_display_temperature(target_temp_c),
+        )
         self._set_value_if_changed(self.tempSlider, target_temp_c)
         self._set_value_if_changed(self.tempSpinBox, target_temp_c)
 
     def update_target_temp_spin_box(self):
         value_c = self.tempSpinBox.value()
-        self._set_text_if_changed(self.targetTempLabel, str(value_c))
+        self._set_text_if_changed(self.targetTempLabel, self._format_display_temperature(value_c))
         self._set_value_if_changed(self.tempSlider, value_c)
         self._set_roaster_target_temp_c(value_c)
 
     def update_target_temp_slider(self):
         value_c = self.tempSlider.value()
-        self._set_text_if_changed(self.targetTempLabel, str(value_c))
+        self._set_text_if_changed(self.targetTempLabel, self._format_display_temperature(value_c))
         self._set_value_if_changed(self.tempSpinBox, value_c)
         self._set_roaster_target_temp_c(value_c)
 

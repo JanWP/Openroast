@@ -27,6 +27,7 @@ except ImportError as exc:
     ) from exc
 
 from openroast.controllers import recipe
+from openroast.temperature import TEMP_UNIT_C, set_default_display_temperature_unit
 from openroast.views import mainwindow
 from openroast import utils as utils
 
@@ -155,7 +156,7 @@ QLabel#label {
     padding: 6px;
 }
 
-QLabel#tempGuage {
+QLabel#tempGauge {
     font-size: 30px;
     padding: 4px;
 }
@@ -262,6 +263,10 @@ class OpenroastApp(object):
 
         # initialize roaster backend and recipe object
         self.roaster = _create_roaster(self._args)
+        # Centralize default display temperature unit once at startup.
+        # This can later be wired to a user preference.
+        self._default_display_temperature_unit = TEMP_UNIT_C
+        set_default_display_temperature_unit(self._default_display_temperature_unit)
         self.recipes = recipe.Recipe(self.roaster, self)
         if(not self.roaster.set_state_transition_func(
             self.recipes.move_to_next_section)):

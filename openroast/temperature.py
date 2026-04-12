@@ -5,6 +5,8 @@ TEMP_UNIT_C = "C"
 TEMP_UNIT_F = "F"
 TEMP_UNIT_K = "K"
 
+DEGREE_SYMBOL = chr(176)
+
 RECIPE_UNIT_CELSIUS = "Celsius"
 RECIPE_UNIT_FAHRENHEIT = "Fahrenheit"
 RECIPE_UNIT_KELVIN = "Kelvin"
@@ -16,6 +18,19 @@ MAX_TEMPERATURE_C = 290
 TEMPERATURE_STEP_C = 5
 DEFAULT_TARGET_TEMPERATURE_C = 65
 GRAPH_HEADROOM_C = 5
+
+# App-wide default display unit. Set once at startup, can later be user-configurable.
+_DEFAULT_DISPLAY_TEMPERATURE_UNIT = TEMP_UNIT_C
+
+
+def set_default_display_temperature_unit(unit: Any) -> str:
+    global _DEFAULT_DISPLAY_TEMPERATURE_UNIT
+    _DEFAULT_DISPLAY_TEMPERATURE_UNIT = normalize_temperature_unit(unit, default=TEMP_UNIT_C)
+    return _DEFAULT_DISPLAY_TEMPERATURE_UNIT
+
+
+def get_default_display_temperature_unit() -> str:
+    return _DEFAULT_DISPLAY_TEMPERATURE_UNIT
 
 
 def normalize_temperature_unit(unit: Any, default: str = TEMP_UNIT_C) -> str:
@@ -82,6 +97,20 @@ def temperature_unit_symbol_to_label(unit: Any) -> str:
     if normalized_unit == TEMP_UNIT_K:
         return RECIPE_UNIT_KELVIN
     return RECIPE_UNIT_CELSIUS
+
+
+def temperature_unit_symbol_to_display(unit: Any) -> str:
+    normalized_unit = normalize_temperature_unit(unit, default=TEMP_UNIT_C)
+    return f"{DEGREE_SYMBOL}{normalized_unit}"
+
+
+def format_temperature_display(value: float, unit: Any) -> str:
+    return f"{int(round(float(value)))} {temperature_unit_symbol_to_display(unit)}"
+
+
+def celsius_to_formatted_display(value_c: float, unit: Any) -> str:
+    """Convert Celsius value to target unit and return formatted display text."""
+    return format_temperature_display(celsius_to_temperature_unit(value_c, unit), unit)
 
 
 def clamp_temperature_c(value_c: float, *, low: int = MIN_TEMPERATURE_C, high: int = MAX_TEMPERATURE_C) -> int:

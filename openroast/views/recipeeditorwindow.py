@@ -29,6 +29,7 @@ from openroast.temperature import (
     TEMP_UNIT_K,
     TEMPERATURE_STEP_C,
     celsius_to_temperature_unit,
+            get_default_display_temperature_unit,
     clamp_temperature_c,
     normalize_temperature_unit,
     temperature_to_celsius,
@@ -159,7 +160,7 @@ class RecipeEditor(QtWidgets.QDialog):
 
         self.compact_ui = bool(compact_ui)
         self.fullscreen = bool(fullscreen)
-        self._display_temp_unit = TEMP_UNIT_C
+        self._display_temp_unit = get_default_display_temperature_unit()
         self._selected_recipe_unit_label = RECIPE_UNIT_CELSIUS
         self._updating_steps_table = False
         self._curve_update_pending = False
@@ -187,7 +188,9 @@ class RecipeEditor(QtWidgets.QDialog):
 
         self.recipe = {}
         self.load_recipe_data(
-            recipe_data if recipe_data is not None else build_default_recipe(default_display_unit=TEMP_UNIT_C),
+            recipe_data if recipe_data is not None else build_default_recipe(
+                default_display_unit=get_default_display_temperature_unit()
+            ),
             recipe_path=recipe_path,
         )
         self.preload_recipe_information()
@@ -196,11 +199,11 @@ class RecipeEditor(QtWidgets.QDialog):
         """Load recipe dictionary into editor state without reading files."""
         self.recipe = normalize_recipe_for_runtime(
             recipe_data,
-            default_source_unit=TEMP_UNIT_C,
+            default_source_unit=get_default_display_temperature_unit(),
         )
         self._display_temp_unit = normalize_temperature_unit(
             self.recipe.get("displayTemperatureUnit", self.recipe.get("temperatureUnit")),
-            default=TEMP_UNIT_C,
+            default=get_default_display_temperature_unit(),
         )
         self._selected_recipe_unit_label = {
             TEMP_UNIT_C: RECIPE_UNIT_CELSIUS,
@@ -502,7 +505,10 @@ class RecipeEditor(QtWidgets.QDialog):
             self.recipeSteps.verticalHeader().setDefaultSectionSize(self.TABLE_ROW_HEIGHT_COMPACT)
 
     def _current_unit_symbol(self):
-        return normalize_temperature_unit(self._display_temp_unit, default=TEMP_UNIT_C)
+        return normalize_temperature_unit(
+            self._display_temp_unit,
+            default=get_default_display_temperature_unit(),
+        )
 
     def _current_unit_display_label(self):
         return self._current_unit_symbol()
@@ -667,7 +673,10 @@ class RecipeEditor(QtWidgets.QDialog):
     def on_temperature_unit_changed(self):
         steps_c = self.get_current_table_values()
         selected_label = self.temperatureUnitSelect.currentText()
-        self._display_temp_unit = normalize_temperature_unit(selected_label, default=TEMP_UNIT_C)
+        self._display_temp_unit = normalize_temperature_unit(
+            selected_label,
+            default=get_default_display_temperature_unit(),
+        )
         self._selected_recipe_unit_label = selected_label
         self._update_steps_header_labels(self.recipeSteps)
         if not steps_c:
@@ -1025,7 +1034,10 @@ class RecipeEditor(QtWidgets.QDialog):
 
         steps_c = self.get_current_table_values()
         selected_unit_label = self.temperatureUnitSelect.currentText()
-        output_unit_symbol = normalize_temperature_unit(selected_unit_label, default=TEMP_UNIT_C)
+        output_unit_symbol = normalize_temperature_unit(
+            selected_unit_label,
+            default=get_default_display_temperature_unit(),
+        )
 
         self.newRecipe = {}
         self.newRecipe["roastName"] = self.recipeName.text()

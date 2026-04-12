@@ -10,8 +10,10 @@ from PyQt5 import QtWidgets
 
 from openroast.temperature import (
     TEMP_UNIT_C,
-    celsius_to_temperature_unit,
+    celsius_to_formatted_display,
+    get_default_display_temperature_unit,
     normalize_temperature_unit,
+    temperature_unit_symbol_to_display,
 )
 from openroast.views import customqtwidgets
 from openroast.views import recipeeditorwindow
@@ -211,7 +213,9 @@ class RecipesTab(QtWidgets.QWidget):
         """Loads recipe information the into the right hand column fields.
         This method also populates the recipe steps table."""
         display_unit = normalize_temperature_unit(
-            recipe_object.get("displayTemperatureUnit"), default=TEMP_UNIT_C)
+            recipe_object.get("displayTemperatureUnit"),
+            default=get_default_display_temperature_unit(),
+        )
         self.nameLabel.setText(recipe_object["roastName"])
         self.creatorLabel.setText("Created by " +
             recipe_object["creator"])
@@ -232,7 +236,7 @@ class RecipesTab(QtWidgets.QWidget):
         # Steps spreadsheet
         self.stepsTable.setRowCount(len(recipe_object["steps"]))
         self.stepsTable.setColumnCount(3)
-        self.stepsTable.setHorizontalHeaderLabels([f"T ({display_unit})",
+        self.stepsTable.setHorizontalHeaderLabels([f"T ({temperature_unit_symbol_to_display(display_unit)})",
             "FAN", "DURATION"])
 
         for row in range(len(recipe_object["steps"])):
@@ -246,11 +250,10 @@ class RecipesTab(QtWidgets.QWidget):
             sectionFanSpeedWidget.setText(str(recipe_object["steps"][row]["fanSpeed"]))
 
             if 'targetTemp' in recipe_object["steps"][row]:
-                display_temp = int(round(celsius_to_temperature_unit(
+                sectionTempWidget.setText(celsius_to_formatted_display(
                     recipe_object['steps'][row]['targetTemp'],
                     display_unit,
-                )))
-                sectionTempWidget.setText(f"{display_temp} {display_unit}")
+                ))
             else:
                 sectionTempWidget.setText("Cooling")
 

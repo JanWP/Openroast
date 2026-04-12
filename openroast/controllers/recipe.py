@@ -6,6 +6,7 @@ from multiprocessing import sharedctypes, Array
 import ctypes
 
 from openroast.temperature import (
+            get_default_display_temperature_unit,
     DEFAULT_TARGET_TEMPERATURE_C,
     RECIPE_FORMAT_VERSION,
     RECIPE_UNIT_CELSIUS,
@@ -28,8 +29,11 @@ def normalize_recipe_for_runtime(recipe_json, *, default_source_unit=TEMP_UNIT_F
     return normalized_recipe
 
 
-def build_default_recipe(*, default_display_unit=TEMP_UNIT_C):
-    display_unit = normalize_temperature_unit(default_display_unit, default=TEMP_UNIT_C)
+def build_default_recipe(*, default_display_unit=None):
+    resolved_default = default_display_unit
+    if resolved_default is None:
+        resolved_default = get_default_display_temperature_unit()
+    display_unit = normalize_temperature_unit(resolved_default, default=TEMP_UNIT_C)
     return {
         "roastName": "",
         "creator": "",
@@ -96,7 +100,7 @@ class Recipe(object):
         )
 
     def create_default_recipe(self):
-        return build_default_recipe(default_display_unit=TEMP_UNIT_C)
+        return build_default_recipe(default_display_unit=get_default_display_temperature_unit())
 
     def _recipe(self):
         # retrieve the recipe as a JSON string in shared memory.
@@ -199,6 +203,12 @@ class Recipe(object):
             return self._recipe()["steps"][index]["targetTemp"]
         else:
             return self._default_target_temp_c
+
+    def get_display_temperature_unit(self):
+        if not self.check_recipe_loaded():
+            return get_default_display_temperature_unit()
+        recipe_unit = self._recipe().get("displayTemperatureUnit")
+        return normalize_temperature_unit(recipe_unit, default=get_default_display_temperature_unit())
 
     def reset_roaster_settings(self):
         self._set_roaster_target_temp_c(self._default_target_temp_c)

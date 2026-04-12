@@ -453,7 +453,7 @@ QLabel#label {
     padding: 12px;
 }
 
-QLabel#tempGuage {
+QLabel#tempGauge {
     border-bottom-right-radius: 5px;
     border-bottom-left-radius: 5px;
     background-color: #23252b;
@@ -464,7 +464,7 @@ QLabel#tempGuage {
     padding: 10px;
 }
 
-QLabel#tempGuage:disabled {
+QLabel#tempGauge:disabled {
     color: #444953;
 }
 
