@@ -14,9 +14,14 @@ class RoasterState(StrEnum):
 @dataclass(slots=True)
 class ControllerConfig:
     thermostat: bool = True
-    kp: float = 0.06
-    ki: float = 0.0075
-    kd: float = 0.01
+    # kp: float = 0.06
+    # ki: float = 0.0075
+    # kd: float = 0.01
+    # Defaults migrated from Fahrenheit-tuned values to Celsius-domain PID.
+    # Scale factor is 9/5 because error_F = error_C * 9/5.
+    kp: float = 0.108
+    ki: float = 0.0135
+    kd: float = 0.018
     sample_period_s: float = 0.5
     pwm_cycle_s: float = 1.0
     pwm_tick_s: float = 0.05

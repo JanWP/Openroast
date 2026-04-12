@@ -405,6 +405,10 @@ class RoasterController:
             except Exception as exc:  # pragma: no cover - listener safety
                 logging.warning("localroaster: telemetry listener failed: %s", exc)
 
+    @staticmethod
+    def _kelvin_to_celsius(temp_k: float) -> float:
+        return float(temp_k) - 273.15
+
     def _control_loop(self) -> None:
         while not self._stop_event.is_set():
             start = time.monotonic()
@@ -442,7 +446,9 @@ class RoasterController:
                     )
                 elif thermostat:
                     if state == RoasterState.ROASTING:
-                        pid_percent = self._pid.update(self._current_temp_k, target_temp_k)
+                        current_temp_c = self._kelvin_to_celsius(self._current_temp_k)
+                        target_temp_c = self._kelvin_to_celsius(target_temp_k)
+                        pid_percent = self._pid.update(current_temp_c, target_temp_c)
                         new_heater_level = int(round(pid_percent))
                         self._heat_setting = 3
                     else:
