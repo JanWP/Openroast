@@ -7,6 +7,31 @@ from openroast.temperature import TEMP_UNIT_C, TEMP_UNIT_F, TEMP_UNIT_K, normali
 
 VALID_BACKENDS = ("usb", "usb-mock", "local", "local-mock")
 
+MIN_REFRESH_INTERVAL_MS = 100
+MAX_REFRESH_INTERVAL_MS = 5000
+MIN_Y_AXIS_HEADROOM_C = 1.0
+MAX_Y_AXIS_HEADROOM_C = 100.0
+MIN_Y_AXIS_STEP_C = 1.0
+MAX_Y_AXIS_STEP_C = 25.0
+MIN_PLOT_LINE_WIDTH = 1.0
+MAX_PLOT_LINE_WIDTH = 8.0
+
+
+def _clamp_int(value, low, high, default):
+    try:
+        ivalue = int(value)
+    except (TypeError, ValueError):
+        ivalue = int(default)
+    return max(int(low), min(int(high), ivalue))
+
+
+def _clamp_float(value, low, high, default):
+    try:
+        fvalue = float(value)
+    except (TypeError, ValueError):
+        fvalue = float(default)
+    return max(float(low), min(float(high), fvalue))
+
 DEFAULT_CONFIG = {
     "configVersion": 1,
     "display": {
@@ -15,10 +40,20 @@ DEFAULT_CONFIG = {
     "ui": {
         "compactModeDefault": False,
         "fullscreenOnStart": False,
+        "refreshIntervalMs": 1000,
+    },
+    "plot": {
+        "yAxisHeadroomC": 5.0,
+        "yAxisStepC": 5.0,
+        "showGrid": True,
+        "lineWidth": 3.0,
     },
     "app": {
         "backendDefault": "usb",
-        "autoConnectOnStart": True,
+    },
+    "roast": {
+        "confirmOnStop": False,
+        "confirmOnClear": False,
     },
 }
 
@@ -42,7 +77,7 @@ def _merge_defaults(raw_cfg):
     if not isinstance(raw_cfg, dict):
         return cfg
 
-    for section in ("display", "ui", "app"):
+    for section in ("display", "ui", "plot", "app", "roast"):
         incoming = raw_cfg.get(section)
         if isinstance(incoming, dict):
             cfg[section].update(incoming)
@@ -62,12 +97,42 @@ def normalize_config(raw_cfg):
 
     cfg["ui"]["compactModeDefault"] = bool(cfg["ui"].get("compactModeDefault", False))
     cfg["ui"]["fullscreenOnStart"] = bool(cfg["ui"].get("fullscreenOnStart", False))
+    cfg["ui"]["refreshIntervalMs"] = _clamp_int(
+        cfg["ui"].get("refreshIntervalMs", 1000),
+        MIN_REFRESH_INTERVAL_MS,
+        MAX_REFRESH_INTERVAL_MS,
+        1000,
+    )
+
+    cfg["plot"]["yAxisHeadroomC"] = _clamp_float(
+        cfg["plot"].get("yAxisHeadroomC", 5.0),
+        MIN_Y_AXIS_HEADROOM_C,
+        MAX_Y_AXIS_HEADROOM_C,
+        5.0,
+    )
+    cfg["plot"]["yAxisStepC"] = _clamp_float(
+        cfg["plot"].get("yAxisStepC", 5.0),
+        MIN_Y_AXIS_STEP_C,
+        MAX_Y_AXIS_STEP_C,
+        5.0,
+    )
+    cfg["plot"]["showGrid"] = bool(cfg["plot"].get("showGrid", True))
+    cfg["plot"]["lineWidth"] = _clamp_float(
+        cfg["plot"].get("lineWidth", 3.0),
+        MIN_PLOT_LINE_WIDTH,
+        MAX_PLOT_LINE_WIDTH,
+        3.0,
+    )
 
     backend = cfg["app"].get("backendDefault", "usb")
     if backend not in VALID_BACKENDS:
         backend = "usb"
     cfg["app"]["backendDefault"] = backend
-    cfg["app"]["autoConnectOnStart"] = bool(cfg["app"].get("autoConnectOnStart", True))
+    # V1 autoConnectOnStart is deprecated: app always auto-connects at startup.
+    cfg["app"].pop("autoConnectOnStart", None)
+
+    cfg["roast"]["confirmOnStop"] = bool(cfg["roast"].get("confirmOnStop", False))
+    cfg["roast"]["confirmOnClear"] = bool(cfg["roast"].get("confirmOnClear", False))
 
     cfg["configVersion"] = int(cfg.get("configVersion", 1))
     return cfg
@@ -97,7 +162,9 @@ def save_config(config):
 
 
 def update_config(config, *, display_unit=None, compact_mode=None, fullscreen=None,
-                  backend=None, auto_connect=None):
+                  backend=None, refresh_interval_ms=None,
+                  y_axis_headroom_c=None, y_axis_step_c=None, plot_show_grid=None,
+                  plot_line_width=None, confirm_on_stop=None, confirm_on_clear=None):
     next_cfg = normalize_config(config)
 
     if display_unit is not None:
@@ -111,8 +178,40 @@ def update_config(config, *, display_unit=None, compact_mode=None, fullscreen=No
         next_cfg["ui"]["fullscreenOnStart"] = bool(fullscreen)
     if backend is not None and backend in VALID_BACKENDS:
         next_cfg["app"]["backendDefault"] = backend
-    if auto_connect is not None:
-        next_cfg["app"]["autoConnectOnStart"] = bool(auto_connect)
+    if refresh_interval_ms is not None:
+        next_cfg["ui"]["refreshIntervalMs"] = _clamp_int(
+            refresh_interval_ms,
+            MIN_REFRESH_INTERVAL_MS,
+            MAX_REFRESH_INTERVAL_MS,
+            next_cfg["ui"].get("refreshIntervalMs", 1000),
+        )
+    if y_axis_headroom_c is not None:
+        next_cfg["plot"]["yAxisHeadroomC"] = _clamp_float(
+            y_axis_headroom_c,
+            MIN_Y_AXIS_HEADROOM_C,
+            MAX_Y_AXIS_HEADROOM_C,
+            next_cfg["plot"].get("yAxisHeadroomC", 5.0),
+        )
+    if y_axis_step_c is not None:
+        next_cfg["plot"]["yAxisStepC"] = _clamp_float(
+            y_axis_step_c,
+            MIN_Y_AXIS_STEP_C,
+            MAX_Y_AXIS_STEP_C,
+            next_cfg["plot"].get("yAxisStepC", 5.0),
+        )
+    if plot_show_grid is not None:
+        next_cfg["plot"]["showGrid"] = bool(plot_show_grid)
+    if plot_line_width is not None:
+        next_cfg["plot"]["lineWidth"] = _clamp_float(
+            plot_line_width,
+            MIN_PLOT_LINE_WIDTH,
+            MAX_PLOT_LINE_WIDTH,
+            next_cfg["plot"].get("lineWidth", 3.0),
+        )
+    if confirm_on_stop is not None:
+        next_cfg["roast"]["confirmOnStop"] = bool(confirm_on_stop)
+    if confirm_on_clear is not None:
+        next_cfg["roast"]["confirmOnClear"] = bool(confirm_on_clear)
 
     return next_cfg
 

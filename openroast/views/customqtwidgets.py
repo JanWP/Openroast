@@ -40,6 +40,11 @@ class RoastGraphWidget():
         self._ymax_seen = float(MIN_TEMPERATURE_C)
         self._y_reference_c = float(MIN_TEMPERATURE_C)
         self._y_axis_top = None
+        self._y_axis_headroom_c = float(GRAPH_HEADROOM_C)
+        self._y_axis_step_c = float(self.Y_AXIS_STEP_C)
+        self._plot_show_grid = True
+        self._line_width = 3.0
+        self._refresh_interval_ms = 1000
         self._x_window_max_s = None
         self._graph_timer = None
 
@@ -54,10 +59,10 @@ class RoastGraphWidget():
         self.plotWidget.setBackground('#23252a')
         self.plotWidget.setLabel('left', 'TEMPERATURE (°C)', color='w')
         self.plotWidget.setLabel('bottom', 'TIME', color='w')
-        self.plotWidget.showGrid(x=True, y=True, alpha=0.2)
+        self.plotWidget.showGrid(x=self._plot_show_grid, y=self._plot_show_grid, alpha=0.2 if self._plot_show_grid else 0.0)
         self.plotWidget.getAxis('left').setTextPen('w')
         self.plotWidget.getAxis('bottom').setTextPen('w')
-        self.graphLine = self.plotWidget.plot([], [], pen=pg.mkPen('#8ab71b', width=3))
+        self.graphLine = self.plotWidget.plot([], [], pen=pg.mkPen('#8ab71b', width=self._line_width))
         self._apply_temperature_axis_limits()
 
         # Add graph widgets to layout for graph.
@@ -70,7 +75,7 @@ class RoastGraphWidget():
         # Animate the the graph with new data
         if self.animated:
             self._graph_timer = QtCore.QTimer()
-            self._graph_timer.setInterval(1000)
+            self._graph_timer.setInterval(self._refresh_interval_ms)
             self._graph_timer.timeout.connect(self.graph_draw)
             self._graph_timer.start()
         else:
@@ -80,13 +85,14 @@ class RoastGraphWidget():
 
     def _apply_temperature_axis_limits(self):
         bottom = float(MIN_TEMPERATURE_C)
-        min_top = bottom + float(GRAPH_HEADROOM_C)
+        min_top = bottom + float(self._y_axis_headroom_c)
         raw_top = max(
             min_top,
-            self._ymax_seen + float(GRAPH_HEADROOM_C),
-            self._y_reference_c + float(GRAPH_HEADROOM_C),
+            self._ymax_seen + float(self._y_axis_headroom_c),
+            self._y_reference_c + float(self._y_axis_headroom_c),
         )
-        target_top = math.ceil(raw_top / self.Y_AXIS_STEP_C) * self.Y_AXIS_STEP_C
+        step_c = max(0.1, float(self._y_axis_step_c))
+        target_top = math.ceil(raw_top / step_c) * step_c
 
         if target_top <= bottom:
             target_top = bottom + float(GRAPH_HEADROOM_C)
@@ -95,6 +101,31 @@ class RoastGraphWidget():
         if self._y_axis_top is None or target_top > self._y_axis_top:
             self._y_axis_top = target_top
             self.plotWidget.setYRange(bottom, target_top, padding=0)
+
+    def set_refresh_interval_ms(self, refresh_interval_ms):
+        self._refresh_interval_ms = int(max(1, refresh_interval_ms))
+        if self._graph_timer is not None:
+            self._graph_timer.setInterval(self._refresh_interval_ms)
+
+    def apply_plot_preferences(self, *, y_axis_headroom_c=None, y_axis_step_c=None,
+                               show_grid=None, line_width=None):
+        if y_axis_headroom_c is not None:
+            self._y_axis_headroom_c = max(0.1, float(y_axis_headroom_c))
+        if y_axis_step_c is not None:
+            self._y_axis_step_c = max(0.1, float(y_axis_step_c))
+        if show_grid is not None:
+            self._plot_show_grid = bool(show_grid)
+            self.plotWidget.showGrid(
+                x=self._plot_show_grid,
+                y=self._plot_show_grid,
+                alpha=0.2 if self._plot_show_grid else 0.0,
+            )
+        if line_width is not None:
+            self._line_width = max(1.0, float(line_width))
+            self.graphLine.setPen(pg.mkPen('#8ab71b', width=self._line_width))
+
+        self._y_axis_top = None
+        self._apply_temperature_axis_limits()
 
     def set_temperature_axis_reference_c(self, reference_c):
         if reference_c is None:

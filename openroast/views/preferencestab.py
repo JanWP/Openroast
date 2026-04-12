@@ -15,6 +15,7 @@ from openroast.temperature import (
 
 class PreferencesTab(QtWidgets.QWidget):
     LEFT_COLUMN_MAX_WIDTH = 520
+    RIGHT_COLUMN_MAX_WIDTH = 420
     TAB_BG_COLOR = "#444952"
     TAB_BORDER_COLOR = "#23252a"
     TAB_TEXT_COLOR = "#cfd6e0"
@@ -89,9 +90,17 @@ class PreferencesTab(QtWidgets.QWidget):
         left_column.setMaximumWidth(self.LEFT_COLUMN_MAX_WIDTH)
         left_layout = QtWidgets.QVBoxLayout(left_column)
 
+        right_column = QtWidgets.QWidget()
+        right_column.setMaximumWidth(self.RIGHT_COLUMN_MAX_WIDTH)
+        right_layout = QtWidgets.QVBoxLayout(right_column)
+
         form = QtWidgets.QFormLayout()
         form.setLabelAlignment(QtCore.Qt.AlignLeft)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
+
+        form_right = QtWidgets.QFormLayout()
+        form_right.setLabelAlignment(QtCore.Qt.AlignLeft)
+        form_right.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
 
         self.temperatureUnitSelect = QtWidgets.QComboBox()
         self.temperatureUnitSelect.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
@@ -105,18 +114,62 @@ class PreferencesTab(QtWidgets.QWidget):
 
         self.compactUiDefault = QtWidgets.QCheckBox()
         self.fullscreenDefault = QtWidgets.QCheckBox()
-        self.autoConnectDefault = QtWidgets.QCheckBox()
+
+        self.refreshIntervalMs = QtWidgets.QSpinBox()
+        self.refreshIntervalMs.setRange(
+            app_config.MIN_REFRESH_INTERVAL_MS,
+            app_config.MAX_REFRESH_INTERVAL_MS,
+        )
+        self.refreshIntervalMs.setSuffix(" ms")
+
+        self.plotYAxisHeadroomC = QtWidgets.QDoubleSpinBox()
+        self.plotYAxisHeadroomC.setRange(
+            app_config.MIN_Y_AXIS_HEADROOM_C,
+            app_config.MAX_Y_AXIS_HEADROOM_C,
+        )
+        self.plotYAxisHeadroomC.setSingleStep(0.5)
+        self.plotYAxisHeadroomC.setSuffix(" C")
+
+        self.plotYAxisStepC = QtWidgets.QDoubleSpinBox()
+        self.plotYAxisStepC.setRange(
+            app_config.MIN_Y_AXIS_STEP_C,
+            app_config.MAX_Y_AXIS_STEP_C,
+        )
+        self.plotYAxisStepC.setSingleStep(0.5)
+        self.plotYAxisStepC.setSuffix(" C")
+
+        self.plotShowGrid = QtWidgets.QCheckBox()
+
+        self.plotLineWidth = QtWidgets.QDoubleSpinBox()
+        self.plotLineWidth.setRange(
+            app_config.MIN_PLOT_LINE_WIDTH,
+            app_config.MAX_PLOT_LINE_WIDTH,
+        )
+        self.plotLineWidth.setSingleStep(0.5)
+
+        self.confirmOnStop = QtWidgets.QCheckBox()
+        self.confirmOnClear = QtWidgets.QCheckBox()
 
         form.addRow("Display temperature unit:", self.temperatureUnitSelect)
         form.addRow("Default backend:", self.backendSelect)
         form.addRow("Enable compact UI by default:", self.compactUiDefault)
         form.addRow("Start in fullscreen:", self.fullscreenDefault)
-        form.addRow("Auto-connect roaster on startup:", self.autoConnectDefault)
+        form.addRow("UI refresh interval:", self.refreshIntervalMs)
+
+        form_right.addRow("Plot y-axis headroom:", self.plotYAxisHeadroomC)
+        form_right.addRow("Plot y-axis step:", self.plotYAxisStepC)
+        form_right.addRow("Show plot grid:", self.plotShowGrid)
+        form_right.addRow("Plot line width:", self.plotLineWidth)
+        form_right.addRow("Confirm on STOP:", self.confirmOnStop)
+        form_right.addRow("Confirm on CLEAR:", self.confirmOnClear)
 
         left_layout.addLayout(form)
         left_layout.addStretch(1)
+        right_layout.addLayout(form_right)
+        right_layout.addStretch(1)
 
         page_layout.addWidget(left_column, 0)
+        page_layout.addWidget(right_column, 0)
         page_layout.addStretch(1)
         return page
 
@@ -134,14 +187,28 @@ class PreferencesTab(QtWidgets.QWidget):
 
         self.compactUiDefault.setChecked(bool(config["ui"].get("compactModeDefault", False)))
         self.fullscreenDefault.setChecked(bool(config["ui"].get("fullscreenOnStart", False)))
-        self.autoConnectDefault.setChecked(bool(config["app"].get("autoConnectOnStart", True)))
+        self.refreshIntervalMs.setValue(int(config["ui"].get("refreshIntervalMs", 1000)))
+
+        self.plotYAxisHeadroomC.setValue(float(config["plot"].get("yAxisHeadroomC", 5.0)))
+        self.plotYAxisStepC.setValue(float(config["plot"].get("yAxisStepC", 5.0)))
+        self.plotShowGrid.setChecked(bool(config["plot"].get("showGrid", True)))
+        self.plotLineWidth.setValue(float(config["plot"].get("lineWidth", 3.0)))
+
+        self.confirmOnStop.setChecked(bool(config["roast"].get("confirmOnStop", False)))
+        self.confirmOnClear.setChecked(bool(config["roast"].get("confirmOnClear", False)))
 
     def _wire_change_signals(self):
         self.temperatureUnitSelect.currentIndexChanged.connect(self._on_form_modified)
         self.backendSelect.currentIndexChanged.connect(self._on_form_modified)
         self.compactUiDefault.toggled.connect(self._on_form_modified)
         self.fullscreenDefault.toggled.connect(self._on_form_modified)
-        self.autoConnectDefault.toggled.connect(self._on_form_modified)
+        self.refreshIntervalMs.valueChanged.connect(self._on_form_modified)
+        self.plotYAxisHeadroomC.valueChanged.connect(self._on_form_modified)
+        self.plotYAxisStepC.valueChanged.connect(self._on_form_modified)
+        self.plotShowGrid.toggled.connect(self._on_form_modified)
+        self.plotLineWidth.valueChanged.connect(self._on_form_modified)
+        self.confirmOnStop.toggled.connect(self._on_form_modified)
+        self.confirmOnClear.toggled.connect(self._on_form_modified)
 
     def _current_form_state(self):
         return {
@@ -149,7 +216,13 @@ class PreferencesTab(QtWidgets.QWidget):
             "backend": self.backendSelect.currentText(),
             "compact": self.compactUiDefault.isChecked(),
             "fullscreen": self.fullscreenDefault.isChecked(),
-            "auto_connect": self.autoConnectDefault.isChecked(),
+            "refresh_ms": self.refreshIntervalMs.value(),
+            "y_headroom": float(self.plotYAxisHeadroomC.value()),
+            "y_step": float(self.plotYAxisStepC.value()),
+            "show_grid": self.plotShowGrid.isChecked(),
+            "line_width": float(self.plotLineWidth.value()),
+            "confirm_stop": self.confirmOnStop.isChecked(),
+            "confirm_clear": self.confirmOnClear.isChecked(),
         }
 
     def _mark_saved_state(self):
@@ -173,7 +246,13 @@ class PreferencesTab(QtWidgets.QWidget):
             compact_mode=self.compactUiDefault.isChecked(),
             fullscreen=self.fullscreenDefault.isChecked(),
             backend=selected_backend,
-            auto_connect=self.autoConnectDefault.isChecked(),
+            refresh_interval_ms=self.refreshIntervalMs.value(),
+            y_axis_headroom_c=self.plotYAxisHeadroomC.value(),
+            y_axis_step_c=self.plotYAxisStepC.value(),
+            plot_show_grid=self.plotShowGrid.isChecked(),
+            plot_line_width=self.plotLineWidth.value(),
+            confirm_on_stop=self.confirmOnStop.isChecked(),
+            confirm_on_clear=self.confirmOnClear.isChecked(),
         )
         saved = app_config.save_config(updated)
         self._config = saved

@@ -314,8 +314,7 @@ class OpenroastApp(object):
 
     def run(self):
         """Turn everything on."""
-        if self._config["app"].get("autoConnectOnStart", True):
-            self.roaster.auto_connect()
+        self.roaster.auto_connect()
         self.window = mainwindow.MainWindow(
             self.recipes,
             self.roaster,
@@ -339,8 +338,11 @@ class OpenroastApp(object):
         self._default_display_temperature_unit = self._config["display"]["temperatureUnitDefault"]
         set_default_display_temperature_unit(self._default_display_temperature_unit)
 
-        # Apply display-only effects immediately; other defaults apply on next start.
+        # Apply roast tab preferences immediately; startup defaults still apply on next start.
         if hasattr(self, "window"):
+            apply_prefs = getattr(self.window.roast, "apply_preferences", None)
+            if callable(apply_prefs):
+                apply_prefs(self._config)
             self.window.roast.recreate_progress_bar()
             self.window.roast.update_target_temp()
             self.window.roast.update_data()

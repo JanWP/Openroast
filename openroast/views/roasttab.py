@@ -22,6 +22,7 @@ from openroast.temperature import (
     temperature_to_celsius,
 )
 from openroast.views import customqtwidgets
+from openroast import app_config
 
 class RoastTab(QtWidgets.QWidget):
     def __init__(self, roaster, recipes, compact_ui=False):
@@ -57,6 +58,8 @@ class RoastTab(QtWidgets.QWidget):
         self._has_time_s = hasattr(self.roaster, "time_remaining_s")
         self._has_total_time_s = hasattr(self.roaster, "total_time_s")
         self._section_duration_setpoint_s = 0
+        self._confirm_on_stop = False
+        self._confirm_on_clear = False
         self._reset_graph_axis_tracking()
 
         # Create the tab ui.
@@ -71,6 +74,9 @@ class RoastTab(QtWidgets.QWidget):
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self.update_data)
         self.timer.start()
+
+        # Apply app-level preferences once widgets/timers exist.
+        self.apply_preferences({})
 
         # Set the roast tab diabled when starting.
         self.setEnabled(False)
@@ -457,7 +463,7 @@ class RoastTab(QtWidgets.QWidget):
 
         # Create stop roast button.
         self.stopButton = QtWidgets.QPushButton("STOP")
-        self.stopButton.clicked.connect(self.roaster.idle)
+        self.stopButton.clicked.connect(self.on_stop_clicked)
         buttonPanel.addWidget(self.stopButton, 0, 2)
 
         return buttonPanel
@@ -690,6 +696,17 @@ class RoastTab(QtWidgets.QWidget):
         """ This method will clear the openroast.roaster, recipe, and reset the gui back
         to their original state. """
 
+        if self._confirm_on_clear:
+            answer = QtWidgets.QMessageBox.question(
+                self,
+                "Clear roast",
+                "Clear the current roast and recipe state?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No,
+            )
+            if answer != QtWidgets.QMessageBox.Yes:
+                return
+
         # Reset openroast.roaster.
         self.recipes.reset_roaster_settings()
 
@@ -754,3 +771,34 @@ class RoastTab(QtWidgets.QWidget):
 
     def get_recipe_object(self):
         return self.recipes
+
+    def on_stop_clicked(self):
+        if self._confirm_on_stop:
+            answer = QtWidgets.QMessageBox.question(
+                self,
+                "Stop roast",
+                "Stop the current roast now?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No,
+            )
+            if answer != QtWidgets.QMessageBox.Yes:
+                return
+        self.roaster.idle()
+
+    def apply_preferences(self, config_data):
+        config = app_config.normalize_config(config_data)
+
+        refresh_ms = config["ui"]["refreshIntervalMs"]
+        self.timer.setInterval(refresh_ms)
+        self.graphWidget.set_refresh_interval_ms(refresh_ms)
+
+        self.graphWidget.apply_plot_preferences(
+            y_axis_headroom_c=config["plot"]["yAxisHeadroomC"],
+            y_axis_step_c=config["plot"]["yAxisStepC"],
+            show_grid=config["plot"]["showGrid"],
+            line_width=config["plot"]["lineWidth"],
+        )
+
+        self._confirm_on_stop = bool(config["roast"]["confirmOnStop"])
+        self._confirm_on_clear = bool(config["roast"]["confirmOnClear"])
+

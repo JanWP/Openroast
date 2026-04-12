@@ -245,6 +245,9 @@ class MainWindow(QtWidgets.QMainWindow):
             config=self.app_config_data,
             on_save=self.on_preferences_saved,
         )
+        apply_prefs = getattr(self.roast, "apply_preferences", None)
+        if callable(apply_prefs):
+            apply_prefs(self.app_config_data)
 
         # Add widgets to tabs.
         self.tabs.insertWidget(0, self.roast)
