@@ -4,6 +4,7 @@
 import os
 import json
 import time
+import math
 
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
@@ -24,6 +25,8 @@ class _TimeAxis(pg.AxisItem):
 
 
 class RoastGraphWidget():
+    Y_AXIS_STEP_C = 5.0
+
     def __init__(self, graphXValueList=None, graphYValueList=None,
             animated=False, updateMethod=None, animatingMethod=None):
         self.graphXValueList = graphXValueList or []
@@ -35,6 +38,8 @@ class RoastGraphWidget():
         self.animatingMethod = animatingMethod
         self._last_drawn_len = -1
         self._ymax_seen = float(MIN_TEMPERATURE_C)
+        self._y_reference_c = float(MIN_TEMPERATURE_C)
+        self._y_axis_top = None
         self._x_window_max_s = None
         self._graph_timer = None
 
@@ -76,13 +81,27 @@ class RoastGraphWidget():
     def _apply_temperature_axis_limits(self):
         bottom = float(MIN_TEMPERATURE_C)
         min_top = bottom + float(GRAPH_HEADROOM_C)
-        current_top = float(self.plotWidget.viewRange()[1][1])
-        target_top = max(min_top, current_top, self._ymax_seen + float(GRAPH_HEADROOM_C))
+        raw_top = max(
+            min_top,
+            self._ymax_seen + float(GRAPH_HEADROOM_C),
+            self._y_reference_c + float(GRAPH_HEADROOM_C),
+        )
+        target_top = math.ceil(raw_top / self.Y_AXIS_STEP_C) * self.Y_AXIS_STEP_C
 
         if target_top <= bottom:
             target_top = bottom + float(GRAPH_HEADROOM_C)
 
-        self.plotWidget.setYRange(bottom, target_top, padding=0)
+        # Only grow the axis when needed to avoid expensive redraw churn.
+        if self._y_axis_top is None or target_top > self._y_axis_top:
+            self._y_axis_top = target_top
+            self.plotWidget.setYRange(bottom, target_top, padding=0)
+
+    def set_temperature_axis_reference_c(self, reference_c):
+        if reference_c is None:
+            return
+        reference_c = float(reference_c)
+        if reference_c > self._y_reference_c:
+            self._y_reference_c = reference_c
 
     def graph_draw(self, *args, force=False, **kwargs):
         # Start graphing the roast if the roast has started.
@@ -124,6 +143,8 @@ class RoastGraphWidget():
         self.graphYValueList = []
         self.counter = 0
         self._ymax_seen = float(MIN_TEMPERATURE_C)
+        self._y_reference_c = float(MIN_TEMPERATURE_C)
+        self._y_axis_top = None
         self._x_window_max_s = None
         self.graphLine.setData([], [])
         self._apply_temperature_axis_limits()

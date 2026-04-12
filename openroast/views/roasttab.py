@@ -55,6 +55,7 @@ class RoastTab(QtWidgets.QWidget):
         self._has_time_s = hasattr(self.roaster, "time_remaining_s")
         self._has_total_time_s = hasattr(self.roaster, "total_time_s")
         self._section_duration_setpoint_s = 0
+        self._reset_graph_axis_tracking()
 
         # Create the tab ui.
         self.create_ui()
@@ -126,10 +127,39 @@ class RoastTab(QtWidgets.QWidget):
         return int(round(celsius_to_temperature_unit(value, self._roaster_temperature_unit)))
 
     def graph_get_data(self):
-        self.graphWidget.append_x(self._get_roaster_current_temp_c())
+        current_temp_c = self._get_roaster_current_temp_c()
+        self.graphWidget.append_x(current_temp_c)
+        self._update_graph_temperature_axis_reference(current_temp_c)
         self.graphWidget.set_time_window_max_seconds(
             self._get_graph_time_window_max_s(self._get_roaster_total_time_s())
         )
+
+    def _reset_graph_axis_tracking(self):
+        self._graph_measured_peak_c = float(self._min_temp_c)
+        self._graph_target_peak_c = float(self._min_temp_c)
+        self._graph_last_scanned_target_step = -1
+
+    def _update_graph_temperature_axis_reference(self, current_temp_c):
+        self._graph_measured_peak_c = max(self._graph_measured_peak_c, float(current_temp_c))
+        self._graph_target_peak_c = max(self._graph_target_peak_c, float(self._get_roaster_target_temp_c()))
+
+        if self.recipes.check_recipe_loaded():
+            current_step = max(0, int(self.recipes.get_current_step_number()))
+            if current_step > self._graph_last_scanned_target_step:
+                for idx in range(self._graph_last_scanned_target_step + 1, current_step + 1):
+                    self._graph_target_peak_c = max(
+                        self._graph_target_peak_c,
+                        float(self.recipes.get_section_temp(idx)),
+                    )
+                self._graph_last_scanned_target_step = current_step
+
+        axis_reference_c = max(
+            float(self._min_temp_c),
+            self._graph_measured_peak_c,
+            self._graph_target_peak_c,
+        )
+        self.graphWidget.set_temperature_axis_reference_c(axis_reference_c)
+        return axis_reference_c
 
     def _get_graph_time_window_max_s(self, elapsed_s):
         """Return section-aligned graph x-limit for current elapsed roast time."""
@@ -683,6 +713,7 @@ class RoastTab(QtWidgets.QWidget):
         self.update_total_time()
 
         # Clear roast graph.
+        self._reset_graph_axis_tracking()
         self.graphWidget.clear_graph()
 
     def load_recipe_into_roast_tab(self):
