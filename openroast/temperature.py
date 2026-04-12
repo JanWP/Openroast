@@ -90,6 +90,22 @@ def celsius_to_temperature_unit(value_c: float, unit: Any) -> float:
     return float(value_c)
 
 
+def temperature_delta_to_celsius(value: float, unit: Any) -> float:
+    normalized_unit = normalize_temperature_unit(unit, default=TEMP_UNIT_C)
+    if normalized_unit == TEMP_UNIT_F:
+        return float(value) * 5.0 / 9.0
+    # Delta in K has same scale as C.
+    return float(value)
+
+
+def celsius_to_temperature_delta_unit(value_c: float, unit: Any) -> float:
+    normalized_unit = normalize_temperature_unit(unit, default=TEMP_UNIT_C)
+    if normalized_unit == TEMP_UNIT_F:
+        return float(value_c) * 9.0 / 5.0
+    # Delta in K has same scale as C.
+    return float(value_c)
+
+
 def temperature_unit_symbol_to_label(unit: Any) -> str:
     normalized_unit = normalize_temperature_unit(unit, default=TEMP_UNIT_C)
     if normalized_unit == TEMP_UNIT_F:

@@ -3,7 +3,14 @@ import json
 import os
 import platform
 
-from openroast.temperature import TEMP_UNIT_C, normalize_temperature_unit
+from openroast.temperature import (
+    TEMP_UNIT_C,
+    celsius_to_temperature_delta_unit,
+    celsius_to_temperature_unit,
+    normalize_temperature_unit,
+    temperature_delta_to_celsius,
+    temperature_to_celsius,
+)
 
 VALID_BACKENDS = ("usb", "usb-mock", "local", "local-mock")
 
@@ -57,8 +64,8 @@ DEFAULT_CONFIG = {
         "expertModeEnabled": False,
     },
     "plot": {
-        "yAxisHeadroomC": 5.0,
-        "yAxisStepC": 5.0,
+        "yAxisHeadroom": {"value": 5.0, "unit": TEMP_UNIT_C},
+        "yAxisStep": {"value": 5.0, "unit": TEMP_UNIT_C},
         "showGrid": True,
         "lineWidth": 3.0,
     },
@@ -79,10 +86,86 @@ DEFAULT_CONFIG = {
         "samplePeriodSeconds": 0.5,
     },
     "safety": {
-        "maxTempC": 287.78,
+        "maxTemp": {"value": 287.78, "unit": TEMP_UNIT_C},
         "heaterCutoffEnabled": True,
     },
 }
+
+
+def _quantity_to_celsius(value, *, default_c, default_unit=TEMP_UNIT_C, delta=False):
+    if isinstance(value, dict):
+        unit = normalize_temperature_unit(value.get("unit"), default=default_unit)
+        numeric_value = value.get("value", default_c)
+    else:
+        unit = normalize_temperature_unit(default_unit, default=TEMP_UNIT_C)
+        numeric_value = value if value is not None else default_c
+
+    if delta:
+        return temperature_delta_to_celsius(numeric_value, unit)
+    return temperature_to_celsius(numeric_value, unit)
+
+
+def _celsius_to_quantity(value_c, *, unit, delta=False):
+    normalized_unit = normalize_temperature_unit(unit, default=TEMP_UNIT_C)
+    if delta:
+        value = celsius_to_temperature_delta_unit(value_c, normalized_unit)
+    else:
+        value = celsius_to_temperature_unit(value_c, normalized_unit)
+    return {"value": float(value), "unit": normalized_unit}
+
+
+def _normalize_plot_and_safety_temperatures(cfg):
+    display_unit = normalize_temperature_unit(
+        cfg["display"].get("temperatureUnitDefault"),
+        default=TEMP_UNIT_C,
+    )
+
+    legacy_headroom_c = cfg["plot"].get("yAxisHeadroomC")
+    legacy_step_c = cfg["plot"].get("yAxisStepC")
+    legacy_max_temp_c = cfg["safety"].get("maxTempC")
+
+    headroom_source = cfg["plot"].get("yAxisHeadroom")
+    if legacy_headroom_c is not None and headroom_source == DEFAULT_CONFIG["plot"]["yAxisHeadroom"]:
+        headroom_source = legacy_headroom_c
+
+    step_source = cfg["plot"].get("yAxisStep")
+    if legacy_step_c is not None and step_source == DEFAULT_CONFIG["plot"]["yAxisStep"]:
+        step_source = legacy_step_c
+
+    max_temp_source = cfg["safety"].get("maxTemp")
+    if legacy_max_temp_c is not None and max_temp_source == DEFAULT_CONFIG["safety"]["maxTemp"]:
+        max_temp_source = legacy_max_temp_c
+
+    headroom_c = _quantity_to_celsius(
+        headroom_source,
+        default_c=5.0,
+        default_unit=TEMP_UNIT_C,
+        delta=True,
+    )
+    step_c = _quantity_to_celsius(
+        step_source,
+        default_c=5.0,
+        default_unit=TEMP_UNIT_C,
+        delta=True,
+    )
+    max_temp_c = _quantity_to_celsius(
+        max_temp_source,
+        default_c=287.78,
+        default_unit=TEMP_UNIT_C,
+        delta=False,
+    )
+
+    headroom_c = _clamp_float(headroom_c, MIN_Y_AXIS_HEADROOM_C, MAX_Y_AXIS_HEADROOM_C, 5.0)
+    step_c = _clamp_float(step_c, MIN_Y_AXIS_STEP_C, MAX_Y_AXIS_STEP_C, 5.0)
+    max_temp_c = _clamp_float(max_temp_c, MIN_SAFETY_MAX_TEMP_C, MAX_SAFETY_MAX_TEMP_C, 287.78)
+
+    cfg["plot"]["yAxisHeadroom"] = _celsius_to_quantity(headroom_c, unit=display_unit, delta=True)
+    cfg["plot"]["yAxisStep"] = _celsius_to_quantity(step_c, unit=display_unit, delta=True)
+    cfg["safety"]["maxTemp"] = _celsius_to_quantity(max_temp_c, unit=display_unit, delta=False)
+
+    cfg["plot"].pop("yAxisHeadroomC", None)
+    cfg["plot"].pop("yAxisStepC", None)
+    cfg["safety"].pop("maxTempC", None)
 
 
 def get_config_dir():
@@ -141,18 +224,7 @@ def normalize_config(raw_cfg):
         1000,
     )
 
-    cfg["plot"]["yAxisHeadroomC"] = _clamp_float(
-        cfg["plot"].get("yAxisHeadroomC", 5.0),
-        MIN_Y_AXIS_HEADROOM_C,
-        MAX_Y_AXIS_HEADROOM_C,
-        5.0,
-    )
-    cfg["plot"]["yAxisStepC"] = _clamp_float(
-        cfg["plot"].get("yAxisStepC", 5.0),
-        MIN_Y_AXIS_STEP_C,
-        MAX_Y_AXIS_STEP_C,
-        5.0,
-    )
+    _normalize_plot_and_safety_temperatures(cfg)
     cfg["plot"]["showGrid"] = bool(cfg["plot"].get("showGrid", True))
     cfg["plot"]["lineWidth"] = _clamp_float(
         cfg["plot"].get("lineWidth", 3.0),
@@ -202,12 +274,6 @@ def normalize_config(raw_cfg):
         0.5,
     )
 
-    cfg["safety"]["maxTempC"] = _clamp_float(
-        cfg["safety"].get("maxTempC", 287.78),
-        MIN_SAFETY_MAX_TEMP_C,
-        MAX_SAFETY_MAX_TEMP_C,
-        287.78,
-    )
     cfg["safety"]["heaterCutoffEnabled"] = bool(cfg["safety"].get("heaterCutoffEnabled", True))
 
     cfg["configVersion"] = int(cfg.get("configVersion", 1))
@@ -266,19 +332,23 @@ def update_config(config, *, display_unit=None, compact_mode=None, fullscreen=No
             MAX_REFRESH_INTERVAL_MS,
             next_cfg["ui"].get("refreshIntervalMs", 1000),
         )
+    current_headroom_c = get_plot_y_axis_headroom_c(next_cfg)
+    current_step_c = get_plot_y_axis_step_c(next_cfg)
+    current_max_temp_c = get_safety_max_temp_c(next_cfg)
+
     if y_axis_headroom_c is not None:
-        next_cfg["plot"]["yAxisHeadroomC"] = _clamp_float(
+        current_headroom_c = _clamp_float(
             y_axis_headroom_c,
             MIN_Y_AXIS_HEADROOM_C,
             MAX_Y_AXIS_HEADROOM_C,
-            next_cfg["plot"].get("yAxisHeadroomC", 5.0),
+            current_headroom_c,
         )
     if y_axis_step_c is not None:
-        next_cfg["plot"]["yAxisStepC"] = _clamp_float(
+        current_step_c = _clamp_float(
             y_axis_step_c,
             MIN_Y_AXIS_STEP_C,
             MAX_Y_AXIS_STEP_C,
-            next_cfg["plot"].get("yAxisStepC", 5.0),
+            current_step_c,
         )
     if plot_show_grid is not None:
         next_cfg["plot"]["showGrid"] = bool(plot_show_grid)
@@ -330,14 +400,50 @@ def update_config(config, *, display_unit=None, compact_mode=None, fullscreen=No
             next_cfg["control"].get("samplePeriodSeconds", 0.5),
         )
     if safety_max_temp_c is not None:
-        next_cfg["safety"]["maxTempC"] = _clamp_float(
+        current_max_temp_c = _clamp_float(
             safety_max_temp_c,
             MIN_SAFETY_MAX_TEMP_C,
             MAX_SAFETY_MAX_TEMP_C,
-            next_cfg["safety"].get("maxTempC", 287.78),
+            current_max_temp_c,
         )
     if heater_cutoff_enabled is not None:
         next_cfg["safety"]["heaterCutoffEnabled"] = bool(heater_cutoff_enabled)
 
+    effective_unit = next_cfg["display"]["temperatureUnitDefault"]
+    next_cfg["plot"]["yAxisHeadroom"] = _celsius_to_quantity(
+        current_headroom_c,
+        unit=effective_unit,
+        delta=True,
+    )
+    next_cfg["plot"]["yAxisStep"] = _celsius_to_quantity(
+        current_step_c,
+        unit=effective_unit,
+        delta=True,
+    )
+    next_cfg["safety"]["maxTemp"] = _celsius_to_quantity(
+        current_max_temp_c,
+        unit=effective_unit,
+        delta=False,
+    )
+    next_cfg["plot"].pop("yAxisHeadroomC", None)
+    next_cfg["plot"].pop("yAxisStepC", None)
+    next_cfg["safety"].pop("maxTempC", None)
+
     return next_cfg
+
+
+def get_plot_y_axis_headroom_c(config):
+    cfg = normalize_config(config)
+    return _quantity_to_celsius(cfg["plot"].get("yAxisHeadroom"), default_c=5.0, delta=True)
+
+
+def get_plot_y_axis_step_c(config):
+    cfg = normalize_config(config)
+    return _quantity_to_celsius(cfg["plot"].get("yAxisStep"), default_c=5.0, delta=True)
+
+
+def get_safety_max_temp_c(config):
+    cfg = normalize_config(config)
+    return _quantity_to_celsius(cfg["safety"].get("maxTemp"), default_c=287.78, delta=False)
+
 

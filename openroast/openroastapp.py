@@ -82,7 +82,7 @@ def _create_roaster(args, config_data=None):
                 kd=float(config["control"]["pid"]["kd"]),
                 pwm_cycle_s=float(config["control"]["pwmCycleSeconds"]),
                 sample_period_s=float(config["control"]["samplePeriodSeconds"]),
-                max_temp_c=float(config["safety"]["maxTempC"]),
+                max_temp_c=float(app_config.get_safety_max_temp_c(config)),
                 heater_cutoff_enabled=bool(config["safety"]["heaterCutoffEnabled"]),
             )
             if args.backend == "local-mock":

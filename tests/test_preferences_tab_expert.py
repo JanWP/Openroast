@@ -7,6 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt5 import QtWidgets
 
 from openroast import app_config
+from openroast.temperature import TEMP_UNIT_F
 from openroast.views.preferencestab import PreferencesTab
 
 
@@ -121,6 +122,21 @@ class PreferencesTabExpertTests(unittest.TestCase):
                 widget.tabs.setCurrentIndex(0)
                 widget._on_revert_changes_clicked()
             self.assertEqual(widget.refreshIntervalMs.value(), 1300)
+        finally:
+            widget.close()
+            self._app.processEvents()
+
+    def test_display_unit_switch_updates_temperature_fields(self):
+        widget = self._build_widget()
+        try:
+            widget.plotYAxisHeadroomC.setValue(10.0)
+            idx_f = widget.temperatureUnitSelect.findData(TEMP_UNIT_F)
+            widget.temperatureUnitSelect.setCurrentIndex(idx_f)
+            self._app.processEvents()
+
+            self.assertIn("\N{DEGREE SIGN}F", widget.plotYAxisHeadroomC.suffix())
+            # 10 C delta -> 18 F delta
+            self.assertAlmostEqual(widget.plotYAxisHeadroomC.value(), 18.0, places=1)
         finally:
             widget.close()
             self._app.processEvents()

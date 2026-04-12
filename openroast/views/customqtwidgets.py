@@ -7,11 +7,19 @@ import time
 import math
 
 from PyQt5 import QtCore
+from PyQt5 import QtGui
 from PyQt5 import QtWidgets
 
 import pyqtgraph as pg
 from pyqtgraph.exporters import ImageExporter
-from openroast.temperature import GRAPH_HEADROOM_C, MIN_TEMPERATURE_C
+from openroast.temperature import (
+    GRAPH_HEADROOM_C,
+    MIN_TEMPERATURE_C,
+    TEMP_UNIT_C,
+    celsius_to_temperature_unit,
+    normalize_temperature_unit,
+    temperature_unit_symbol_to_display,
+)
 
 
 class _TimeAxis(pg.AxisItem):
@@ -21,6 +29,22 @@ class _TimeAxis(pg.AxisItem):
         for value in values:
             total_s = max(0, int(round(value)))
             labels.append(time.strftime("%M:%S", time.gmtime(total_s)))
+        return labels
+
+
+class _TemperatureAxis(pg.AxisItem):
+    def __init__(self, orientation="left"):
+        super().__init__(orientation=orientation)
+        self._unit = TEMP_UNIT_C
+
+    def set_display_unit(self, unit):
+        self._unit = normalize_temperature_unit(unit, default=TEMP_UNIT_C)
+
+    def tickStrings(self, values, scale, spacing):
+        _ = scale, spacing
+        labels = []
+        for value_c in values:
+            labels.append(str(int(round(celsius_to_temperature_unit(value_c, self._unit)))))
         return labels
 
 
@@ -47,6 +71,7 @@ class RoastGraphWidget():
         self._refresh_interval_ms = 1000
         self._x_window_max_s = None
         self._graph_timer = None
+        self._display_temp_unit = TEMP_UNIT_C
 
         self.widget = self.create_graph()
 
@@ -55,9 +80,15 @@ class RoastGraphWidget():
         graphWidget = QtWidgets.QWidget()
         graphWidget.setObjectName("graph")
 
-        self.plotWidget = pg.PlotWidget(axisItems={"bottom": _TimeAxis(orientation="bottom")})
+        self._temp_axis = _TemperatureAxis(orientation="left")
+        self.plotWidget = pg.PlotWidget(
+            axisItems={
+                "bottom": _TimeAxis(orientation="bottom"),
+                "left": self._temp_axis,
+            }
+        )
         self.plotWidget.setBackground('#23252a')
-        self.plotWidget.setLabel('left', 'TEMPERATURE (°C)', color='w')
+        self.set_display_temperature_unit(self._display_temp_unit)
         self.plotWidget.setLabel('bottom', 'TIME', color='w')
         self.plotWidget.showGrid(x=self._plot_show_grid, y=self._plot_show_grid, alpha=0.2 if self._plot_show_grid else 0.0)
         self.plotWidget.getAxis('left').setTextPen('w')
@@ -82,6 +113,17 @@ class RoastGraphWidget():
             self.graph_draw(force=True)
 
         return graphWidget
+
+    def set_display_temperature_unit(self, unit):
+        self._display_temp_unit = normalize_temperature_unit(unit, default=TEMP_UNIT_C)
+        self._temp_axis.set_display_unit(self._display_temp_unit)
+        left_axis = self.plotWidget.getAxis('left')
+        left_axis.setLabel(
+            text=f"TEMPERATURE ({temperature_unit_symbol_to_display(self._display_temp_unit)})",
+            color="#ffffff",
+        )
+        if hasattr(left_axis, "label") and hasattr(left_axis.label, "setDefaultTextColor"):
+            left_axis.label.setDefaultTextColor(QtGui.QColor("#ffffff"))
 
     def _apply_temperature_axis_limits(self):
         bottom = float(MIN_TEMPERATURE_C)

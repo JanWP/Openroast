@@ -9,7 +9,12 @@ from openroast.temperature import (
     TEMP_UNIT_C,
     TEMP_UNIT_F,
     TEMP_UNIT_K,
+    celsius_to_temperature_delta_unit,
+    celsius_to_temperature_unit,
     normalize_temperature_unit,
+    temperature_delta_to_celsius,
+    temperature_to_celsius,
+    temperature_unit_symbol_to_display,
 )
 
 
@@ -29,6 +34,7 @@ class PreferencesTab(QtWidgets.QWidget):
         self._expert_warning_ack = False
         self._tab_change_guard = False
         self._suppress_heater_cutoff_prompt = False
+        self._active_display_unit = TEMP_UNIT_C
         self._unit_options = [
             (RECIPE_UNIT_CELSIUS, TEMP_UNIT_C),
             (RECIPE_UNIT_FAHRENHEIT, TEMP_UNIT_F),
@@ -300,8 +306,13 @@ class PreferencesTab(QtWidgets.QWidget):
         self.expertModeEnabled.setChecked(bool(config["ui"].get("expertModeEnabled", False)))
         self.refreshIntervalMs.setValue(int(config["ui"].get("refreshIntervalMs", 1000)))
 
-        self.plotYAxisHeadroomC.setValue(float(config["plot"].get("yAxisHeadroomC", 5.0)))
-        self.plotYAxisStepC.setValue(float(config["plot"].get("yAxisStepC", 5.0)))
+        self._set_temperature_field_unit(unit, convert_existing=False)
+        self.plotYAxisHeadroomC.setValue(
+            celsius_to_temperature_delta_unit(app_config.get_plot_y_axis_headroom_c(config), unit)
+        )
+        self.plotYAxisStepC.setValue(
+            celsius_to_temperature_delta_unit(app_config.get_plot_y_axis_step_c(config), unit)
+        )
         self.plotShowGrid.setChecked(bool(config["plot"].get("showGrid", True)))
         self.plotLineWidth.setValue(float(config["plot"].get("lineWidth", 3.0)))
 
@@ -309,19 +320,24 @@ class PreferencesTab(QtWidgets.QWidget):
         self.confirmOnClear.setChecked(bool(config["roast"].get("confirmOnClear", False)))
 
     def _load_expert_tab_from_config(self, config):
+        unit = normalize_temperature_unit(
+            config["display"].get("temperatureUnitDefault"),
+            default=TEMP_UNIT_C,
+        )
 
         self.pidKp.setValue(float(config["control"]["pid"].get("kp", 0.108)))
         self.pidKi.setValue(float(config["control"]["pid"].get("ki", 0.0135)))
         self.pidKd.setValue(float(config["control"]["pid"].get("kd", 0.018)))
         self.pwmCycleSeconds.setValue(float(config["control"].get("pwmCycleSeconds", 1.0)))
         self.samplePeriodSeconds.setValue(float(config["control"].get("samplePeriodSeconds", 0.5)))
-        self.safetyMaxTempC.setValue(float(config["safety"].get("maxTempC", 287.78)))
+        self.safetyMaxTempC.setValue(celsius_to_temperature_unit(app_config.get_safety_max_temp_c(config), unit))
         self._suppress_heater_cutoff_prompt = True
         self.heaterCutoffEnabled.setChecked(bool(config["safety"].get("heaterCutoffEnabled", True)))
         self._suppress_heater_cutoff_prompt = False
         self._set_expert_tab_visible(self.expertModeEnabled.isChecked())
 
     def _wire_change_signals(self):
+        self.temperatureUnitSelect.currentIndexChanged.connect(self._on_display_unit_changed)
         self.temperatureUnitSelect.currentIndexChanged.connect(self._on_form_modified)
         self.backendSelect.currentIndexChanged.connect(self._on_form_modified)
         self.compactUiDefault.toggled.connect(self._on_form_modified)
@@ -343,6 +359,45 @@ class PreferencesTab(QtWidgets.QWidget):
         self.heaterCutoffEnabled.toggled.connect(self._on_heater_cutoff_toggled)
         self.heaterCutoffEnabled.toggled.connect(self._on_form_modified)
         self.tabs.currentChanged.connect(self._on_tab_changed)
+
+    def _set_temperature_field_unit(self, unit, *, convert_existing):
+        unit = normalize_temperature_unit(unit, default=TEMP_UNIT_C)
+        previous_unit = self._active_display_unit
+
+        if convert_existing:
+            headroom_c = temperature_delta_to_celsius(self.plotYAxisHeadroomC.value(), previous_unit)
+            step_c = temperature_delta_to_celsius(self.plotYAxisStepC.value(), previous_unit)
+            max_temp_c = temperature_to_celsius(self.safetyMaxTempC.value(), previous_unit)
+
+        degree_unit = temperature_unit_symbol_to_display(unit)
+
+        self.plotYAxisHeadroomC.setSuffix(f" {degree_unit}")
+        self.plotYAxisHeadroomC.setRange(
+            celsius_to_temperature_delta_unit(app_config.MIN_Y_AXIS_HEADROOM_C, unit),
+            celsius_to_temperature_delta_unit(app_config.MAX_Y_AXIS_HEADROOM_C, unit),
+        )
+
+        self.plotYAxisStepC.setSuffix(f" {degree_unit}")
+        self.plotYAxisStepC.setRange(
+            celsius_to_temperature_delta_unit(app_config.MIN_Y_AXIS_STEP_C, unit),
+            celsius_to_temperature_delta_unit(app_config.MAX_Y_AXIS_STEP_C, unit),
+        )
+
+        self.safetyMaxTempC.setSuffix(f" {degree_unit}")
+        self.safetyMaxTempC.setRange(
+            celsius_to_temperature_unit(app_config.MIN_SAFETY_MAX_TEMP_C, unit),
+            celsius_to_temperature_unit(app_config.MAX_SAFETY_MAX_TEMP_C, unit),
+        )
+
+        if convert_existing:
+            self.plotYAxisHeadroomC.setValue(celsius_to_temperature_delta_unit(headroom_c, unit))
+            self.plotYAxisStepC.setValue(celsius_to_temperature_delta_unit(step_c, unit))
+            self.safetyMaxTempC.setValue(celsius_to_temperature_unit(max_temp_c, unit))
+
+        self._active_display_unit = unit
+
+    def _on_display_unit_changed(self, _index):
+        self._set_temperature_field_unit(self.temperatureUnitSelect.currentData(), convert_existing=True)
 
     def _on_expert_mode_toggled(self, enabled):
         self._set_expert_tab_visible(bool(enabled))
@@ -462,8 +517,19 @@ class PreferencesTab(QtWidgets.QWidget):
         self.expertModeEnabled.setChecked(bool(defaults["ui"].get("expertModeEnabled", False)))
         self.refreshIntervalMs.setValue(int(defaults["ui"].get("refreshIntervalMs", 1000)))
 
-        self.plotYAxisHeadroomC.setValue(float(defaults["plot"].get("yAxisHeadroomC", 5.0)))
-        self.plotYAxisStepC.setValue(float(defaults["plot"].get("yAxisStepC", 5.0)))
+        normalized_defaults = app_config.normalize_config(defaults)
+        self.plotYAxisHeadroomC.setValue(
+            celsius_to_temperature_delta_unit(
+                app_config.get_plot_y_axis_headroom_c(normalized_defaults),
+                unit,
+            )
+        )
+        self.plotYAxisStepC.setValue(
+            celsius_to_temperature_delta_unit(
+                app_config.get_plot_y_axis_step_c(normalized_defaults),
+                unit,
+            )
+        )
         self.plotShowGrid.setChecked(bool(defaults["plot"].get("showGrid", True)))
         self.plotLineWidth.setValue(float(defaults["plot"].get("lineWidth", 3.0)))
 
@@ -471,12 +537,19 @@ class PreferencesTab(QtWidgets.QWidget):
         self.confirmOnClear.setChecked(bool(defaults["roast"].get("confirmOnClear", False)))
 
     def _restore_expert_defaults(self, defaults):
+        unit = normalize_temperature_unit(self.temperatureUnitSelect.currentData(), default=TEMP_UNIT_C)
+        normalized_defaults = app_config.normalize_config(defaults)
         self.pidKp.setValue(float(defaults["control"]["pid"].get("kp", 0.108)))
         self.pidKi.setValue(float(defaults["control"]["pid"].get("ki", 0.0135)))
         self.pidKd.setValue(float(defaults["control"]["pid"].get("kd", 0.018)))
         self.pwmCycleSeconds.setValue(float(defaults["control"].get("pwmCycleSeconds", 1.0)))
         self.samplePeriodSeconds.setValue(float(defaults["control"].get("samplePeriodSeconds", 0.5)))
-        self.safetyMaxTempC.setValue(float(defaults["safety"].get("maxTempC", 287.78)))
+        self.safetyMaxTempC.setValue(
+            celsius_to_temperature_unit(
+                app_config.get_safety_max_temp_c(normalized_defaults),
+                unit,
+            )
+        )
         self.heaterCutoffEnabled.setChecked(bool(defaults["safety"].get("heaterCutoffEnabled", True)))
 
     def _current_form_state(self):
@@ -517,6 +590,10 @@ class PreferencesTab(QtWidgets.QWidget):
         selected_unit = self.temperatureUnitSelect.currentData()
         selected_backend = self.backendSelect.currentText()
 
+        y_axis_headroom_c = temperature_delta_to_celsius(self.plotYAxisHeadroomC.value(), selected_unit)
+        y_axis_step_c = temperature_delta_to_celsius(self.plotYAxisStepC.value(), selected_unit)
+        safety_max_temp_c = temperature_to_celsius(self.safetyMaxTempC.value(), selected_unit)
+
         updated = app_config.update_config(
             self._config,
             display_unit=selected_unit,
@@ -525,8 +602,8 @@ class PreferencesTab(QtWidgets.QWidget):
             expert_mode_enabled=self.expertModeEnabled.isChecked(),
             backend=selected_backend,
             refresh_interval_ms=self.refreshIntervalMs.value(),
-            y_axis_headroom_c=self.plotYAxisHeadroomC.value(),
-            y_axis_step_c=self.plotYAxisStepC.value(),
+            y_axis_headroom_c=y_axis_headroom_c,
+            y_axis_step_c=y_axis_step_c,
             plot_show_grid=self.plotShowGrid.isChecked(),
             plot_line_width=self.plotLineWidth.value(),
             confirm_on_stop=self.confirmOnStop.isChecked(),
@@ -536,7 +613,7 @@ class PreferencesTab(QtWidgets.QWidget):
             pid_kd=self.pidKd.value(),
             pwm_cycle_seconds=self.pwmCycleSeconds.value(),
             sample_period_seconds=self.samplePeriodSeconds.value(),
-            safety_max_temp_c=self.safetyMaxTempC.value(),
+            safety_max_temp_c=safety_max_temp_c,
             heater_cutoff_enabled=self.heaterCutoffEnabled.isChecked(),
         )
         saved = app_config.save_config(updated)

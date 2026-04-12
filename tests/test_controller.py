@@ -5,6 +5,8 @@ import threading
 import time
 import unittest
 
+from openroast import app_config
+from openroast.temperature import celsius_to_kelvin
 from localroaster.api import ControllerConfig, RoasterState
 from localroaster.controller import DutyCyclePWM, PID, RoasterController, HardwareDriver
 
@@ -203,6 +205,78 @@ class ControllerSafetyTests(unittest.TestCase):
         # In expert mode, disabled cutoff keeps manual heat command active.
         self.assertGreater(ctrl.heater_level, 0)
         ctrl.shutdown()
+
+    def test_over_temperature_cutoff_respected_for_all_config_units(self):
+        # Custom (non-default) limits in each unit; all should map to a valid C cutoff.
+        unit_cases = [
+            ("C", 230.0),
+            ("F", 430.0),
+            ("K", 510.0),
+        ]
+
+        for unit_symbol, cutoff_value in unit_cases:
+            with self.subTest(unit=unit_symbol, cutoff_value=cutoff_value):
+                cfg = app_config.normalize_config(
+                    {
+                        "display": {"temperatureUnitDefault": unit_symbol},
+                        "safety": {
+                            "maxTemp": {"value": cutoff_value, "unit": unit_symbol},
+                            "heaterCutoffEnabled": True,
+                        },
+                    }
+                )
+                cutoff_c = app_config.get_safety_max_temp_c(cfg)
+
+                # Simulate hardware reading above the configured cutoff.
+                ctrl, _driver, _config = self._make_controller(
+                    thermostat=False,
+                    temp_k=celsius_to_kelvin(cutoff_c + 10.0),
+                    max_temp_k=celsius_to_kelvin(cutoff_c),
+                    heater_cutoff_enabled=bool(cfg["safety"]["heaterCutoffEnabled"]),
+                )
+                ctrl.connect()
+                ctrl.heat_setting = 3
+                ctrl.roast()
+                time.sleep(0.2)
+
+                self.assertEqual(ctrl.heater_level, 0)
+                self.assertEqual(ctrl.heat_setting, 0)
+                self.assertIn("cutoff", (ctrl.telemetry().fault or "").lower())
+                ctrl.shutdown()
+
+    def test_over_temperature_cutoff_disabled_for_all_config_units(self):
+        unit_cases = [
+            ("C", 230.0),
+            ("F", 430.0),
+            ("K", 510.0),
+        ]
+
+        for unit_symbol, cutoff_value in unit_cases:
+            with self.subTest(unit=unit_symbol, cutoff_value=cutoff_value):
+                cfg = app_config.normalize_config(
+                    {
+                        "display": {"temperatureUnitDefault": unit_symbol},
+                        "safety": {
+                            "maxTemp": {"value": cutoff_value, "unit": unit_symbol},
+                            "heaterCutoffEnabled": False,
+                        },
+                    }
+                )
+                cutoff_c = app_config.get_safety_max_temp_c(cfg)
+
+                ctrl, _driver, _config = self._make_controller(
+                    thermostat=False,
+                    temp_k=celsius_to_kelvin(cutoff_c + 10.0),
+                    max_temp_k=celsius_to_kelvin(cutoff_c),
+                    heater_cutoff_enabled=bool(cfg["safety"]["heaterCutoffEnabled"]),
+                )
+                ctrl.connect()
+                ctrl.heat_setting = 3
+                ctrl.roast()
+                time.sleep(0.2)
+
+                self.assertGreater(ctrl.heater_level, 0)
+                ctrl.shutdown()
 
     def test_pid_resets_on_roast_from_idle(self):
         ctrl, driver, _ = self._make_controller(thermostat=True)

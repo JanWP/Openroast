@@ -7,6 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5 import QtWidgets
 
+from openroast.temperature import TEMP_UNIT_F
 from openroast.views.customqtwidgets import RoastGraphWidget
 
 
@@ -51,6 +52,12 @@ class RoastGraphWidgetTests(unittest.TestCase):
             self.assertEqual(rows[3], "2,30")
         finally:
             os.remove(path)
+
+    def test_display_unit_updates_axis_label(self):
+        widget = RoastGraphWidget(animated=False)
+        widget.set_display_temperature_unit(TEMP_UNIT_F)
+        axis_label = widget.plotWidget.getAxis("left").labelText
+        self.assertIn("\N{DEGREE SIGN}F", axis_label)
 
 
 if __name__ == "__main__":

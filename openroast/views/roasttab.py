@@ -807,14 +807,16 @@ class RoastTab(QtWidgets.QWidget):
 
     def apply_preferences(self, config_data):
         config = app_config.normalize_config(config_data)
+        display_unit = config["display"]["temperatureUnitDefault"]
 
         refresh_ms = config["ui"]["refreshIntervalMs"]
         self.timer.setInterval(refresh_ms)
         self.graphWidget.set_refresh_interval_ms(refresh_ms)
+        self.graphWidget.set_display_temperature_unit(display_unit)
 
         self.graphWidget.apply_plot_preferences(
-            y_axis_headroom_c=config["plot"]["yAxisHeadroomC"],
-            y_axis_step_c=config["plot"]["yAxisStepC"],
+            y_axis_headroom_c=app_config.get_plot_y_axis_headroom_c(config),
+            y_axis_step_c=app_config.get_plot_y_axis_step_c(config),
             show_grid=config["plot"]["showGrid"],
             line_width=config["plot"]["lineWidth"],
         )

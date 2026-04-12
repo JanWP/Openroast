@@ -1,6 +1,7 @@
 import unittest
 
 from openroast import app_config
+from openroast.temperature import TEMP_UNIT_C
 
 
 class AppConfigExpertTests(unittest.TestCase):
@@ -20,7 +21,21 @@ class AppConfigExpertTests(unittest.TestCase):
         )
         self.assertEqual(cfg["control"]["pid"]["kp"], app_config.MAX_PID_KP)
         self.assertEqual(cfg["control"]["samplePeriodSeconds"], app_config.MIN_SAMPLE_PERIOD_SECONDS)
-        self.assertEqual(cfg["safety"]["maxTempC"], app_config.MAX_SAFETY_MAX_TEMP_C)
+        self.assertEqual(cfg["safety"]["maxTemp"]["unit"], TEMP_UNIT_C)
+        self.assertEqual(cfg["safety"]["maxTemp"]["value"], app_config.MAX_SAFETY_MAX_TEMP_C)
+
+    def test_normalize_migrates_legacy_celsius_plot_keys(self):
+        cfg = app_config.normalize_config(
+            {
+                "plot": {
+                    "yAxisHeadroomC": 7.0,
+                    "yAxisStepC": 6.0,
+                }
+            }
+        )
+
+        self.assertEqual(app_config.get_plot_y_axis_headroom_c(cfg), 7.0)
+        self.assertEqual(app_config.get_plot_y_axis_step_c(cfg), 6.0)
 
 
 if __name__ == "__main__":
