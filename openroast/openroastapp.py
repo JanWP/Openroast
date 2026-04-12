@@ -235,6 +235,8 @@ class OpenroastApp(object):
 
         # app
         self.app = QtWidgets.QApplication(sys.argv)
+        self._shutdown_started = False
+        self.app.aboutToQuit.connect(self._shutdown_backends)
         if not self._effective_compact_ui and _screen_is_small(self.app):
             self._effective_compact_ui = True
             logging.info("openroastapp: auto-enabled compact UI for small display")
@@ -307,6 +309,26 @@ class OpenroastApp(object):
                 "OpenroastApp.__init__ failed to set state transition "
                 "callback.  This won't work."
                 )
+
+    def _shutdown_backends(self):
+        if self._shutdown_started:
+            return
+        self._shutdown_started = True
+
+        preferences = getattr(getattr(self, "window", None), "preferences", None)
+        prepare_shutdown = getattr(preferences, "prepare_shutdown", None)
+        if callable(prepare_shutdown):
+            try:
+                prepare_shutdown()
+            except Exception as exc:
+                logging.warning("openroastapp: preferences shutdown failed: %s", exc)
+
+        disconnect = getattr(getattr(self, "roaster", None), "disconnect", None)
+        if callable(disconnect):
+            try:
+                disconnect()
+            except Exception as exc:
+                logging.warning("openroastapp: backend shutdown failed: %s", exc)
 
     def check_user_folder(self):
         """Checks copies user folder if no user folder exists."""

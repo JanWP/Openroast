@@ -244,6 +244,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.preferences = preferencestab.PreferencesTab(
             config=self.app_config_data,
             on_save=self.on_preferences_saved,
+            roaster=roaster,
         )
         apply_prefs = getattr(self.roast, "apply_preferences", None)
         if callable(apply_prefs):

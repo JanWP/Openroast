@@ -2,6 +2,7 @@ from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 
 from openroast import app_config
+from openroast.controllers.autotune import autotune_pid_for_backend
 from openroast.temperature import (
     RECIPE_UNIT_CELSIUS,
     RECIPE_UNIT_FAHRENHEIT,
@@ -26,15 +27,32 @@ class PreferencesTab(QtWidgets.QWidget):
     TAB_TEXT_COLOR = "#cfd6e0"
     TAB_SELECTED_TEXT_COLOR = "#ffffff"
 
-    def __init__(self, config, on_save=None):
+    class _AutotuneWorker(QtCore.QThread):
+        resultReady = QtCore.pyqtSignal(object, object)
+
+        def __init__(self, autotune_callable, parent=None):
+            super().__init__(parent)
+            self._autotune_callable = autotune_callable
+
+        def run(self):
+            try:
+                result = self._autotune_callable()
+            except Exception as exc:  # pragma: no cover - worker failure path
+                self.resultReady.emit(None, str(exc))
+            else:
+                self.resultReady.emit(result, None)
+
+    def __init__(self, config, on_save=None, roaster=None):
         super().__init__()
         self._on_save = on_save
+        self._roaster = roaster
         self._config = app_config.normalize_config(config)
         self._saved_form_state = None
         self._expert_warning_ack = False
         self._tab_change_guard = False
         self._suppress_heater_cutoff_prompt = False
         self._active_display_unit = TEMP_UNIT_C
+        self._autotune_worker = None
         self._unit_options = [
             (RECIPE_UNIT_CELSIUS, TEMP_UNIT_C),
             (RECIPE_UNIT_FAHRENHEIT, TEMP_UNIT_F),
@@ -269,6 +287,9 @@ class PreferencesTab(QtWidgets.QWidget):
         control_form.addRow("PID Kp:", self.pidKp)
         control_form.addRow("PID Ki:", self.pidKi)
         control_form.addRow("PID Kd:", self.pidKd)
+        self.autotuneButton = QtWidgets.QPushButton("AUTOTUNE")
+        self.autotuneButton.setObjectName("smallButtonAlt")
+        control_form.addRow("", self.autotuneButton)
         control_form.addRow("PWM cycle period:", self.pwmCycleSeconds)
         control_form.addRow("Control sample period:", self.samplePeriodSeconds)
 
@@ -355,6 +376,7 @@ class PreferencesTab(QtWidgets.QWidget):
         self.pidKd.valueChanged.connect(self._on_form_modified)
         self.pwmCycleSeconds.valueChanged.connect(self._on_form_modified)
         self.samplePeriodSeconds.valueChanged.connect(self._on_form_modified)
+        self.autotuneButton.clicked.connect(self._on_autotune_clicked)
         self.safetyMaxTempC.valueChanged.connect(self._on_form_modified)
         self.heaterCutoffEnabled.toggled.connect(self._on_heater_cutoff_toggled)
         self.heaterCutoffEnabled.toggled.connect(self._on_form_modified)
@@ -402,6 +424,73 @@ class PreferencesTab(QtWidgets.QWidget):
     def _on_expert_mode_toggled(self, enabled):
         self._set_expert_tab_visible(bool(enabled))
         self._on_form_modified()
+
+    def _on_autotune_clicked(self):
+        if self._autotune_worker is not None:
+            return
+        if self._roaster is None:
+            self.statusLabel.setText("Autotune unavailable: no backend handle")
+            return
+
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "Run PID autotune",
+            "Autotune applies a heating step test and may take up to about a minute. Continue?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No,
+        )
+        if answer != QtWidgets.QMessageBox.Yes:
+            return
+
+        self.autotuneButton.setEnabled(False)
+        self.saveButton.setEnabled(False)
+        self.statusLabel.setText("Running autotune...")
+
+        self._autotune_worker = self._AutotuneWorker(
+            lambda: autotune_pid_for_backend(self._roaster),
+            parent=self,
+        )
+        self._autotune_worker.resultReady.connect(self._on_autotune_finished)
+        self._autotune_worker.finished.connect(self._on_autotune_worker_finished)
+        self._autotune_worker.start()
+
+    def _on_autotune_finished(self, result, error_text):
+        self.autotuneButton.setEnabled(True)
+        self.saveButton.setEnabled(True)
+
+        if error_text:
+            self.statusLabel.setText(f"Autotune failed: {error_text}")
+            return
+
+        self.pidKp.setValue(float(result["kp"]))
+        self.pidKi.setValue(float(result["ki"]))
+        self.pidKd.setValue(float(result["kd"]))
+        self.save_preferences()
+        self.statusLabel.setText("Autotune complete and saved")
+
+    def _on_autotune_worker_finished(self):
+        worker = self._autotune_worker
+        if worker is None:
+            return
+        worker.deleteLater()
+        self._autotune_worker = None
+
+    def _cleanup_autotune_worker(self, wait_ms=2000):
+        worker = self._autotune_worker
+        if worker is None:
+            return
+        if worker.isRunning():
+            worker.wait(int(wait_ms))
+        worker.deleteLater()
+        self._autotune_worker = None
+
+    def prepare_shutdown(self):
+        """Best-effort cleanup used by app shutdown hooks."""
+        self._cleanup_autotune_worker(wait_ms=2000)
+
+    def closeEvent(self, event):
+        self._cleanup_autotune_worker(wait_ms=2000)
+        super().closeEvent(event)
 
     def _on_heater_cutoff_toggled(self, enabled):
         if self._suppress_heater_cutoff_prompt:
