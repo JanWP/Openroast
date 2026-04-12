@@ -161,7 +161,7 @@ class PreferencesTab(QtWidgets.QWidget):
         form_right.addRow("Show plot grid:", self.plotShowGrid)
         form_right.addRow("Plot line width:", self.plotLineWidth)
         form_right.addRow("Confirm on STOP:", self.confirmOnStop)
-        form_right.addRow("Confirm on CLEAR:", self.confirmOnClear)
+        form_right.addRow("Confirm on RESET:", self.confirmOnClear)
 
         left_layout.addLayout(form)
         left_layout.addStretch(1)

@@ -561,6 +561,14 @@ QPushButton#nextButton:disabled {
     background-color: #444953;
 }
 
+QPushButton#roastControlButton {
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
+    height: 34px;
+    margin: 2px;
+}
+
 QLabel#timeWindow {
     border-bottom-right-radius: 5px;
     border-bottom-left-radius: 5px;

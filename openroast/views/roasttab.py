@@ -453,18 +453,27 @@ class RoastTab(QtWidgets.QWidget):
 
         # Create start roast button.
         self.startButton = QtWidgets.QPushButton("ROAST")
+        self.startButton.setObjectName("roastControlButton")
         self.startButton.clicked.connect(self.roaster.roast)
         buttonPanel.addWidget(self.startButton, 0, 0)
 
         # Create cool button.
         self.coolButton = QtWidgets.QPushButton("COOL")
+        self.coolButton.setObjectName("roastControlButton")
         self.coolButton.clicked.connect(self.roaster.cool)
         buttonPanel.addWidget(self.coolButton, 0, 1)
 
         # Create stop roast button.
         self.stopButton = QtWidgets.QPushButton("STOP")
+        self.stopButton.setObjectName("roastControlButton")
         self.stopButton.clicked.connect(self.on_stop_clicked)
         buttonPanel.addWidget(self.stopButton, 0, 2)
+
+        # Create reset roast button.
+        self.resetButton = QtWidgets.QPushButton("RESET")
+        self.resetButton.setObjectName("roastControlButton")
+        self.resetButton.clicked.connect(self.reset_current_roast)
+        buttonPanel.addWidget(self.resetButton, 0, 3)
 
         return buttonPanel
 
@@ -699,8 +708,8 @@ class RoastTab(QtWidgets.QWidget):
         if self._confirm_on_clear:
             answer = QtWidgets.QMessageBox.question(
                 self,
-                "Clear roast",
-                "Clear the current roast and recipe state?",
+                "Reset roast",
+                "Reset the current roast and recipe state?",
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
                 QtWidgets.QMessageBox.No,
             )
@@ -718,6 +727,17 @@ class RoastTab(QtWidgets.QWidget):
 
     def reset_current_roast(self):
         """ Used to reset the current loaded recipe """
+
+        if self._confirm_on_clear:
+            answer = QtWidgets.QMessageBox.question(
+                self,
+                "Reset roast",
+                "Reset the current roast to the beginning?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No,
+            )
+            if answer != QtWidgets.QMessageBox.Yes:
+                return
 
         # Verify that the recipe is loaded and reset it.
         if(self.recipes.check_recipe_loaded()):
