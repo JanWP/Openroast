@@ -432,9 +432,10 @@ class RoasterController:
                 heat_setting = self._heat_setting
                 fan_speed = self._fan_speed
                 max_temp_k = self.config.max_temp_k
+                cutoff_enabled = bool(self.config.heater_cutoff_enabled)
 
                 # Over-temperature safety: force heater off regardless of mode.
-                if current_temp_k > max_temp_k:
+                if cutoff_enabled and current_temp_k > max_temp_k:
                     new_heater_level = 0
                     self._heat_setting = 0
                     if self._fault is None:

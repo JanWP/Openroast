@@ -69,16 +69,27 @@ def _parse_args():
     return known
 
 
-def _create_roaster(args):
+def _create_roaster(args, config_data=None):
     """Instantiate and return the appropriate roaster backend object."""
+    config = app_config.normalize_config(config_data or {})
     if args.backend in ("local", "local-mock"):
         try:
             from openroast.backends.local_roaster import LocalRoaster
+            local_kwargs = dict(
+                thermostat=True,
+                kp=float(config["control"]["pid"]["kp"]),
+                ki=float(config["control"]["pid"]["ki"]),
+                kd=float(config["control"]["pid"]["kd"]),
+                pwm_cycle_s=float(config["control"]["pwmCycleSeconds"]),
+                sample_period_s=float(config["control"]["samplePeriodSeconds"]),
+                max_temp_c=float(config["safety"]["maxTempC"]),
+                heater_cutoff_enabled=bool(config["safety"]["heaterCutoffEnabled"]),
+            )
             if args.backend == "local-mock":
                 logging.info("openroastapp: using LOCAL MOCK backend")
-                return LocalRoaster(thermostat=True, force_mock=True)
+                return LocalRoaster(force_mock=True, **local_kwargs)
             logging.info("openroastapp: using LOCAL hardware backend")
-            return LocalRoaster(thermostat=True)
+            return LocalRoaster(**local_kwargs)
         except ImportError as exc:
             if args.backend == "local-mock":
                 from openroast import freshroastsr700_mock as freshroastsr700
@@ -284,7 +295,7 @@ class OpenroastApp(object):
 
         # initialize roaster backend and recipe object
         roaster_args = argparse.Namespace(backend=self._effective_backend)
-        self.roaster = _create_roaster(roaster_args)
+        self.roaster = _create_roaster(roaster_args, self._config)
         self._default_display_temperature_unit = self._config["display"].get(
             "temperatureUnitDefault", TEMP_UNIT_C)
         set_default_display_temperature_unit(self._default_display_temperature_unit)

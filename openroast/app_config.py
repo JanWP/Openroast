@@ -3,7 +3,7 @@ import json
 import os
 import platform
 
-from openroast.temperature import TEMP_UNIT_C, TEMP_UNIT_F, TEMP_UNIT_K, normalize_temperature_unit
+from openroast.temperature import TEMP_UNIT_C, normalize_temperature_unit
 
 VALID_BACKENDS = ("usb", "usb-mock", "local", "local-mock")
 
@@ -15,6 +15,19 @@ MIN_Y_AXIS_STEP_C = 1.0
 MAX_Y_AXIS_STEP_C = 25.0
 MIN_PLOT_LINE_WIDTH = 1.0
 MAX_PLOT_LINE_WIDTH = 8.0
+
+MIN_PID_KP = 0.0
+MAX_PID_KP = 2.0
+MIN_PID_KI = 0.0
+MAX_PID_KI = 1.0
+MIN_PID_KD = 0.0
+MAX_PID_KD = 1.0
+MIN_PWM_CYCLE_SECONDS = 0.2
+MAX_PWM_CYCLE_SECONDS = 10.0
+MIN_SAMPLE_PERIOD_SECONDS = 0.05
+MAX_SAMPLE_PERIOD_SECONDS = 5.0
+MIN_SAFETY_MAX_TEMP_C = 120.0
+MAX_SAFETY_MAX_TEMP_C = 350.0
 
 
 def _clamp_int(value, low, high, default):
@@ -41,6 +54,7 @@ DEFAULT_CONFIG = {
         "compactModeDefault": False,
         "fullscreenOnStart": False,
         "refreshIntervalMs": 1000,
+        "expertModeEnabled": False,
     },
     "plot": {
         "yAxisHeadroomC": 5.0,
@@ -54,6 +68,19 @@ DEFAULT_CONFIG = {
     "roast": {
         "confirmOnStop": False,
         "confirmOnClear": False,
+    },
+    "control": {
+        "pid": {
+            "kp": 0.108,
+            "ki": 0.0135,
+            "kd": 0.018,
+        },
+        "pwmCycleSeconds": 1.0,
+        "samplePeriodSeconds": 0.5,
+    },
+    "safety": {
+        "maxTempC": 287.78,
+        "heaterCutoffEnabled": True,
     },
 }
 
@@ -77,10 +104,19 @@ def _merge_defaults(raw_cfg):
     if not isinstance(raw_cfg, dict):
         return cfg
 
-    for section in ("display", "ui", "plot", "app", "roast"):
+    for section in ("display", "ui", "plot", "app", "roast", "control", "safety"):
         incoming = raw_cfg.get(section)
         if isinstance(incoming, dict):
-            cfg[section].update(incoming)
+            if section == "control":
+                incoming_pid = incoming.get("pid")
+                if isinstance(incoming_pid, dict):
+                    cfg["control"]["pid"].update(incoming_pid)
+                for key, value in incoming.items():
+                    if key == "pid":
+                        continue
+                    cfg["control"][key] = value
+            else:
+                cfg[section].update(incoming)
 
     if "configVersion" in raw_cfg:
         cfg["configVersion"] = raw_cfg["configVersion"]
@@ -97,6 +133,7 @@ def normalize_config(raw_cfg):
 
     cfg["ui"]["compactModeDefault"] = bool(cfg["ui"].get("compactModeDefault", False))
     cfg["ui"]["fullscreenOnStart"] = bool(cfg["ui"].get("fullscreenOnStart", False))
+    cfg["ui"]["expertModeEnabled"] = bool(cfg["ui"].get("expertModeEnabled", False))
     cfg["ui"]["refreshIntervalMs"] = _clamp_int(
         cfg["ui"].get("refreshIntervalMs", 1000),
         MIN_REFRESH_INTERVAL_MS,
@@ -134,6 +171,45 @@ def normalize_config(raw_cfg):
     cfg["roast"]["confirmOnStop"] = bool(cfg["roast"].get("confirmOnStop", False))
     cfg["roast"]["confirmOnClear"] = bool(cfg["roast"].get("confirmOnClear", False))
 
+    cfg["control"]["pid"]["kp"] = _clamp_float(
+        cfg["control"]["pid"].get("kp", 0.108),
+        MIN_PID_KP,
+        MAX_PID_KP,
+        0.108,
+    )
+    cfg["control"]["pid"]["ki"] = _clamp_float(
+        cfg["control"]["pid"].get("ki", 0.0135),
+        MIN_PID_KI,
+        MAX_PID_KI,
+        0.0135,
+    )
+    cfg["control"]["pid"]["kd"] = _clamp_float(
+        cfg["control"]["pid"].get("kd", 0.018),
+        MIN_PID_KD,
+        MAX_PID_KD,
+        0.018,
+    )
+    cfg["control"]["pwmCycleSeconds"] = _clamp_float(
+        cfg["control"].get("pwmCycleSeconds", 1.0),
+        MIN_PWM_CYCLE_SECONDS,
+        MAX_PWM_CYCLE_SECONDS,
+        1.0,
+    )
+    cfg["control"]["samplePeriodSeconds"] = _clamp_float(
+        cfg["control"].get("samplePeriodSeconds", 0.5),
+        MIN_SAMPLE_PERIOD_SECONDS,
+        MAX_SAMPLE_PERIOD_SECONDS,
+        0.5,
+    )
+
+    cfg["safety"]["maxTempC"] = _clamp_float(
+        cfg["safety"].get("maxTempC", 287.78),
+        MIN_SAFETY_MAX_TEMP_C,
+        MAX_SAFETY_MAX_TEMP_C,
+        287.78,
+    )
+    cfg["safety"]["heaterCutoffEnabled"] = bool(cfg["safety"].get("heaterCutoffEnabled", True))
+
     cfg["configVersion"] = int(cfg.get("configVersion", 1))
     return cfg
 
@@ -164,7 +240,10 @@ def save_config(config):
 def update_config(config, *, display_unit=None, compact_mode=None, fullscreen=None,
                   backend=None, refresh_interval_ms=None,
                   y_axis_headroom_c=None, y_axis_step_c=None, plot_show_grid=None,
-                  plot_line_width=None, confirm_on_stop=None, confirm_on_clear=None):
+                  plot_line_width=None, confirm_on_stop=None, confirm_on_clear=None,
+                  expert_mode_enabled=None, pid_kp=None, pid_ki=None, pid_kd=None,
+                  pwm_cycle_seconds=None, sample_period_seconds=None,
+                  safety_max_temp_c=None, heater_cutoff_enabled=None):
     next_cfg = normalize_config(config)
 
     if display_unit is not None:
@@ -176,6 +255,8 @@ def update_config(config, *, display_unit=None, compact_mode=None, fullscreen=No
         next_cfg["ui"]["compactModeDefault"] = bool(compact_mode)
     if fullscreen is not None:
         next_cfg["ui"]["fullscreenOnStart"] = bool(fullscreen)
+    if expert_mode_enabled is not None:
+        next_cfg["ui"]["expertModeEnabled"] = bool(expert_mode_enabled)
     if backend is not None and backend in VALID_BACKENDS:
         next_cfg["app"]["backendDefault"] = backend
     if refresh_interval_ms is not None:
@@ -212,6 +293,51 @@ def update_config(config, *, display_unit=None, compact_mode=None, fullscreen=No
         next_cfg["roast"]["confirmOnStop"] = bool(confirm_on_stop)
     if confirm_on_clear is not None:
         next_cfg["roast"]["confirmOnClear"] = bool(confirm_on_clear)
+
+    if pid_kp is not None:
+        next_cfg["control"]["pid"]["kp"] = _clamp_float(
+            pid_kp,
+            MIN_PID_KP,
+            MAX_PID_KP,
+            next_cfg["control"]["pid"].get("kp", 0.108),
+        )
+    if pid_ki is not None:
+        next_cfg["control"]["pid"]["ki"] = _clamp_float(
+            pid_ki,
+            MIN_PID_KI,
+            MAX_PID_KI,
+            next_cfg["control"]["pid"].get("ki", 0.0135),
+        )
+    if pid_kd is not None:
+        next_cfg["control"]["pid"]["kd"] = _clamp_float(
+            pid_kd,
+            MIN_PID_KD,
+            MAX_PID_KD,
+            next_cfg["control"]["pid"].get("kd", 0.018),
+        )
+    if pwm_cycle_seconds is not None:
+        next_cfg["control"]["pwmCycleSeconds"] = _clamp_float(
+            pwm_cycle_seconds,
+            MIN_PWM_CYCLE_SECONDS,
+            MAX_PWM_CYCLE_SECONDS,
+            next_cfg["control"].get("pwmCycleSeconds", 1.0),
+        )
+    if sample_period_seconds is not None:
+        next_cfg["control"]["samplePeriodSeconds"] = _clamp_float(
+            sample_period_seconds,
+            MIN_SAMPLE_PERIOD_SECONDS,
+            MAX_SAMPLE_PERIOD_SECONDS,
+            next_cfg["control"].get("samplePeriodSeconds", 0.5),
+        )
+    if safety_max_temp_c is not None:
+        next_cfg["safety"]["maxTempC"] = _clamp_float(
+            safety_max_temp_c,
+            MIN_SAFETY_MAX_TEMP_C,
+            MAX_SAFETY_MAX_TEMP_C,
+            next_cfg["safety"].get("maxTempC", 287.78),
+        )
+    if heater_cutoff_enabled is not None:
+        next_cfg["safety"]["heaterCutoffEnabled"] = bool(heater_cutoff_enabled)
 
     return next_cfg
 

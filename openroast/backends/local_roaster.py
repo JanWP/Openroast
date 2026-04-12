@@ -37,17 +37,27 @@ class LocalRoaster:
         heater_segments=8,
         force_mock=False,
         pwm_tick_s=None,
+        sample_period_s=None,
+        pwm_cycle_s=None,
+        max_temp_c=None,
+        heater_cutoff_enabled=True,
     ):
+        max_temp_k = celsius_to_kelvin(self.temperature_max_c if max_temp_c is None else float(max_temp_c))
         config_kwargs = dict(
             thermostat=thermostat,
             kp=kp,
             ki=ki,
             kd=kd,
             min_display_temp_k=celsius_to_kelvin(self.temperature_min_c),
-            max_temp_k=celsius_to_kelvin(self.temperature_max_c),
+            max_temp_k=max_temp_k,
+            heater_cutoff_enabled=bool(heater_cutoff_enabled),
         )
         if pwm_tick_s is not None:
             config_kwargs["pwm_tick_s"] = float(pwm_tick_s)
+        if sample_period_s is not None:
+            config_kwargs["sample_period_s"] = float(sample_period_s)
+        if pwm_cycle_s is not None:
+            config_kwargs["pwm_cycle_s"] = float(pwm_cycle_s)
         self._config = ControllerConfig(**config_kwargs)
         self._controller = create_controller(config=self._config, force_mock=force_mock)
         self._connect_state = 0

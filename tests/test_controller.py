@@ -190,6 +190,20 @@ class ControllerSafetyTests(unittest.TestCase):
         self.assertEqual(ctrl.heater_level, 0)
         ctrl.shutdown()
 
+    def test_over_temperature_cutoff_can_be_disabled(self):
+        ctrl, _driver, _config = self._make_controller(
+            thermostat=False,
+            temp_k=600.0,
+            heater_cutoff_enabled=False,
+        )
+        ctrl.connect()
+        ctrl.heat_setting = 3
+        ctrl.roast()
+        time.sleep(0.2)
+        # In expert mode, disabled cutoff keeps manual heat command active.
+        self.assertGreater(ctrl.heater_level, 0)
+        ctrl.shutdown()
+
     def test_pid_resets_on_roast_from_idle(self):
         ctrl, driver, _ = self._make_controller(thermostat=True)
         ctrl.connect()

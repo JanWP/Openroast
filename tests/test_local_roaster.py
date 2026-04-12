@@ -85,6 +85,29 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertEqual(roaster.temperature_min_c, MIN_TEMPERATURE_C)
         self.assertEqual(roaster.temperature_max_c, MAX_TEMPERATURE_C)
 
+    def test_constructor_forwards_expert_control_and_safety_settings(self):
+        fake_controller = FakeController()
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller) as create_mock:
+            LocalRoaster(
+                kp=0.2,
+                ki=0.03,
+                kd=0.04,
+                sample_period_s=0.25,
+                pwm_cycle_s=2.0,
+                max_temp_c=240.0,
+                heater_cutoff_enabled=False,
+            )
+
+        cfg = create_mock.call_args.kwargs["config"]
+        self.assertAlmostEqual(cfg.kp, 0.2, places=4)
+        self.assertAlmostEqual(cfg.ki, 0.03, places=4)
+        self.assertAlmostEqual(cfg.kd, 0.04, places=4)
+        self.assertAlmostEqual(cfg.sample_period_s, 0.25, places=4)
+        self.assertAlmostEqual(cfg.pwm_cycle_s, 2.0, places=4)
+        self.assertAlmostEqual(cfg.max_temp_k, celsius_to_kelvin(240.0), places=2)
+        self.assertFalse(cfg.heater_cutoff_enabled)
+
     def test_current_temp_clamps_only_to_max_bound(self):
         fake_controller = FakeController()
         fake_controller.current_temp_k = 1200
