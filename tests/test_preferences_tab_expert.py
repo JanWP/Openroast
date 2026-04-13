@@ -198,6 +198,38 @@ class PreferencesTabExpertTests(unittest.TestCase):
             widget.close()
             self._app.processEvents()
 
+    def test_autotune_uses_pre_autotune_hook(self):
+        class DummyRoaster:
+            connected = True
+
+            def get_roaster_state(self):
+                return "idle"
+
+            def autotune_pid(self, **_kwargs):
+                return {"kp": 0.2, "ki": 0.03, "kd": 0.04}
+
+        hook_calls = []
+
+        def pre_hook():
+            hook_calls.append(True)
+            return False
+
+        widget = PreferencesTab(
+            config=app_config.DEFAULT_CONFIG,
+            roaster=DummyRoaster(),
+            pre_autotune_hook=pre_hook,
+        )
+        try:
+            with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
+                widget._on_autotune_clicked()
+
+            self.assertEqual(len(hook_calls), 1)
+            self.assertIsNone(widget._autotune_worker)
+            self.assertEqual(widget.statusLabel.text(), "Autotune canceled")
+        finally:
+            widget.close()
+            self._app.processEvents()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -245,6 +245,7 @@ class MainWindow(QtWidgets.QMainWindow):
             config=self.app_config_data,
             on_save=self.on_preferences_saved,
             roaster=roaster,
+            pre_autotune_hook=self.prepare_autotune_run,
         )
         apply_prefs = getattr(self.roast, "apply_preferences", None)
         if callable(apply_prefs):
@@ -277,6 +278,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.app_config_data = config_data
         if callable(self._on_preferences_saved):
             self._on_preferences_saved(config_data)
+
+    def prepare_autotune_run(self):
+        """Reset previous roast/autotune graph state before autotune begins."""
+        if hasattr(self, "roast") and hasattr(self.roast, "has_previous_roast_state"):
+            if not self.roast.has_previous_roast_state():
+                return True
+            return bool(self.roast.clear_roast())
+        return True
 
     def change_blocked_button(self, index):
         # Set all buttons enabled.

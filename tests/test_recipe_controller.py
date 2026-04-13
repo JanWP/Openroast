@@ -24,6 +24,7 @@ class FakeApp:
 class FakeRoaster:
     def __init__(self, temperature_unit="F"):
         self.temperature_unit = temperature_unit
+        self.connected = True
         self.target_temp = None
         self.fan_speed = None
         self.time_remaining = None
@@ -247,6 +248,27 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
             self.assertEqual(recipe.get_current_target_temp(), 100)
         finally:
             os.remove(path)
+
+    def test_disconnected_roaster_skips_reset_and_section_hardware_writes(self):
+        roaster = FakeRoaster("F")
+        roaster.connected = False
+        recipe = Recipe(roaster=roaster, app=FakeApp())
+
+        recipe.reset_roaster_settings()
+        self.assertIsNone(roaster.target_temp)
+        self.assertIsNone(roaster.fan_speed)
+        self.assertIsNone(roaster.time_remaining)
+
+        recipe.load_recipe_json(
+            {
+                "temperatureUnit": RECIPE_UNIT_CELSIUS,
+                "steps": [{"targetTemp": 100, "fanSpeed": 5, "sectionTime": 30}],
+            }
+        )
+        recipe.load_current_section()
+        self.assertIsNone(roaster.target_temp)
+        self.assertIsNone(roaster.fan_speed)
+        self.assertIsNone(roaster.time_remaining)
 
 
 if __name__ == "__main__":

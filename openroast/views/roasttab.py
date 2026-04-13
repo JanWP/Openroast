@@ -714,16 +714,31 @@ class RoastTab(QtWidgets.QWidget):
                 QtWidgets.QMessageBox.No,
             )
             if answer != QtWidgets.QMessageBox.Yes:
-                return
+                return False
 
         # Reset openroast.roaster.
         self.recipes.reset_roaster_settings()
+        self._reset_backend_simulation_state()
 
         # Clear the recipe.
         self.recipes.clear_recipe()
 
         # Clear roast tab gui.
         self.clear_roast_tab_gui()
+        return True
+
+    def has_graph_data(self):
+        graph_widget = getattr(self, "graphWidget", None)
+        if graph_widget is None:
+            return False
+        return bool(getattr(graph_widget, "counter", 0) > 0)
+
+    def has_previous_roast_state(self):
+        if self.recipes.check_recipe_loaded():
+            return True
+        if self.has_graph_data():
+            return True
+        return int(max(0, self._get_roaster_total_time_s())) > 0
 
     def reset_current_roast(self):
         """ Used to reset the current loaded recipe """
@@ -744,11 +759,7 @@ class RoastTab(QtWidgets.QWidget):
             self.recipes.restart_current_recipe()
             self.recreate_progress_bar()
 
-        # Optional simulation reset for backends that support restarting
-        # thermal state (used by local-mock).
-        reset_simulation = getattr(self.roaster, "reset_simulation_state", None)
-        if callable(reset_simulation):
-            reset_simulation()
+        self._reset_backend_simulation_state()
 
         # Clear roast tab gui.
         self.clear_roast_tab_gui()
@@ -772,6 +783,12 @@ class RoastTab(QtWidgets.QWidget):
         # Clear roast graph.
         self._reset_graph_axis_tracking()
         self.graphWidget.clear_graph()
+
+    def _reset_backend_simulation_state(self):
+        """Reset optional backend simulation state (used by local-mock)."""
+        reset_simulation = getattr(self.roaster, "reset_simulation_state", None)
+        if callable(reset_simulation):
+            reset_simulation()
 
     def load_recipe_into_roast_tab(self):
         self.recipes.load_current_section()

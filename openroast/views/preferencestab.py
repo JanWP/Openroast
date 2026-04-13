@@ -42,10 +42,11 @@ class PreferencesTab(QtWidgets.QWidget):
             else:
                 self.resultReady.emit(result, None)
 
-    def __init__(self, config, on_save=None, roaster=None):
+    def __init__(self, config, on_save=None, roaster=None, pre_autotune_hook=None):
         super().__init__()
         self._on_save = on_save
         self._roaster = roaster
+        self._pre_autotune_hook = pre_autotune_hook
         self._config = app_config.normalize_config(config)
         self._saved_form_state = None
         self._expert_warning_ack = False
@@ -431,6 +432,12 @@ class PreferencesTab(QtWidgets.QWidget):
         if self._roaster is None:
             self.statusLabel.setText("Autotune unavailable: no backend handle")
             return
+
+        if callable(self._pre_autotune_hook):
+            ready = bool(self._pre_autotune_hook())
+            if not ready:
+                self.statusLabel.setText("Autotune canceled")
+                return
 
         answer = QtWidgets.QMessageBox.question(
             self,

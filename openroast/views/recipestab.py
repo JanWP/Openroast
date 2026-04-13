@@ -269,8 +269,16 @@ class RecipesTab(QtWidgets.QWidget):
 
     def load_recipe(self):
         """Loads recipe into Roast tab."""
-        if (self.recipes_obj.check_recipe_loaded()):
-            self.roastTab.clear_roast()
+        has_previous_state = False
+        has_previous_state_fn = getattr(self.roastTab, "has_previous_roast_state", None)
+        if callable(has_previous_state_fn):
+            has_previous_state = bool(has_previous_state_fn())
+        elif self.recipes_obj.check_recipe_loaded():
+            has_previous_state = True
+
+        if has_previous_state:
+            if not self.roastTab.clear_roast():
+                return
 
         self.recipes_obj.load_recipe_json(self.currentlySelectedRecipe)
         self.roastTab.load_recipe_into_roast_tab()

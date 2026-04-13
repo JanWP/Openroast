@@ -25,9 +25,11 @@ class _FakeRecipes:
     def get_current_section_duration(self):
         return self._current_section_duration
 
-    # Backward-compatible alias.
-    def get_current_section_time(self):
-        return self.get_current_section_duration()
+    def reset_roaster_settings(self):
+        return None
+
+    def clear_recipe(self):
+        return None
 
 
 class RoastTabSectionTimeTests(unittest.TestCase):
@@ -98,6 +100,23 @@ class RoastTabSectionTimeTests(unittest.TestCase):
         tab.create_gauge_window()
 
         self.assertIn("REMAINING SECTION DURATION", captured)
+
+    def test_clear_roast_resets_backend_simulation_state(self):
+        class _FakeRoasterWithReset:
+            def __init__(self):
+                self.reset_calls = 0
+
+            def reset_simulation_state(self):
+                self.reset_calls += 1
+
+        tab = RoastTab.__new__(RoastTab)
+        tab._confirm_on_clear = False
+        tab.roaster = _FakeRoasterWithReset()
+        tab.recipes = _FakeRecipes(False, 0)
+        tab.clear_roast_tab_gui = lambda: None
+
+        self.assertTrue(tab.clear_roast())
+        self.assertEqual(tab.roaster.reset_calls, 1)
 
 
 if __name__ == "__main__":

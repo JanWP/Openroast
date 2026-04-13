@@ -210,7 +210,15 @@ class Recipe(object):
         recipe_unit = self._recipe().get("displayTemperatureUnit")
         return normalize_temperature_unit(recipe_unit, default=get_default_display_temperature_unit())
 
+    def _is_roaster_connected(self):
+        connected = getattr(self.roaster, "connected", None)
+        if connected is None:
+            return True
+        return bool(connected)
+
     def reset_roaster_settings(self):
+        if not self._is_roaster_connected():
+            return
         self._set_roaster_target_temp_c(self._default_target_temp_c)
         self.roaster.fan_speed = 1
         self._set_roaster_time_remaining_s(0)
@@ -231,6 +239,8 @@ class Recipe(object):
         self.roaster.time_remaining = section_duration_s
 
     def set_roaster_settings(self, target_temp_c, fan_speed, section_duration_s, cooling):
+        if not self._is_roaster_connected():
+            return
         if cooling:
             self.roaster.cool()
 
