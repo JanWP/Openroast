@@ -45,6 +45,13 @@ class RoastTab(QtWidgets.QWidget):
     LABEL_REMAINING_SECTION_DURATION = RoastTabUI.LABEL_REMAINING_SECTION_DURATION
     LABEL_TOTAL_TIME = RoastTabUI.LABEL_TOTAL_TIME
     BUTTON_NEXT = RoastTabUI.BUTTON_NEXT
+    BUTTON_NEXT_WIDTH = RoastTabUI.BUTTON_NEXT_WIDTH
+    TIMELINE_MAX_LABELS = RoastTabUI.TIMELINE_MAX_LABELS
+    TIMELINE_COMPACT_SPACING = RoastTabUI.TIMELINE_COMPACT_SPACING
+    TIMELINE_DEFAULT_SPACING = RoastTabUI.TIMELINE_DEFAULT_SPACING
+    TIMELINE_TICK_WIDTH = RoastTabUI.TIMELINE_TICK_WIDTH
+    TIMELINE_TICK_HEIGHT = RoastTabUI.TIMELINE_TICK_HEIGHT
+    TIMELINE_LABEL_GAP = RoastTabUI.TIMELINE_LABEL_GAP
 
     DIALOG_RESET_TITLE = RoastTabUI.DIALOG_RESET_TITLE
     DIALOG_RESET_STATE_MESSAGE = RoastTabUI.DIALOG_RESET_STATE_MESSAGE
@@ -293,17 +300,10 @@ class RoastTab(QtWidgets.QWidget):
 
         # Update current section progress bar.
         if(self.recipes.check_recipe_loaded()):
-            section_duration_s = self.recipes.get_current_section_duration()
-            if section_duration_s > 0:
-                progress_pct = section_duration_s - self._get_roaster_time_remaining_s()
-                progress_pct = round((progress_pct / section_duration_s) * 100)
-            else:
-                progress_pct = 0
-            progress_pct = max(0, min(100, progress_pct))
-
-            bar = self.sectionBars[self.recipes.get_current_step_number()]
-            if bar.value() != progress_pct:
-                bar.setValue(progress_pct)
+            timeline_widget = getattr(self, "sectionTimelineWidget", None)
+            if timeline_widget is not None:
+                elapsed_s = self._get_roaster_total_time_s() if self.check_roaster_status() else 0
+                timeline_widget.set_elapsed_seconds(elapsed_s)
 
         # Check connection status of the openroast.roaster.
         roaster_connected = bool(self.roaster.connected)
@@ -367,69 +367,73 @@ class RoastTab(QtWidgets.QWidget):
         return rightPane
 
     def create_progress_bar(self):
-        progressBar = QtWidgets.QGridLayout()
-        progressBar.setSpacing(0)
+        progressBar = QtWidgets.QVBoxLayout()
+        progressBar.setSpacing(
+            self.TIMELINE_COMPACT_SPACING if self.compact_ui else self.TIMELINE_DEFAULT_SPACING
+        )
         if self.compact_ui:
             progressBar.setContentsMargins(0, 0, 0, 0)
 
-        # An array to hold all progress bars.
-        self.sectionBars = []
+        rowLayout = QtWidgets.QHBoxLayout()
+        rowLayout.setSpacing(4)
+        rowLayout.setContentsMargins(0, 0, 0, 0)
+
+        self.sectionTimelineWidget = customqtwidgets.SectionProgressTimelineWidget(
+            max_labels=self.TIMELINE_MAX_LABELS,
+            tick_height=self.TIMELINE_TICK_HEIGHT,
+            tick_label_gap=self.TIMELINE_LABEL_GAP,
+        )
+        rowLayout.addWidget(self.sectionTimelineWidget, 1)
 
         if(self.recipes.check_recipe_loaded()):
             counter = 0
             display_unit = self._get_display_temperature_unit()
+            section_durations_s = []
+            section_labels = []
 
             for i in range(0, self.recipes.get_num_recipe_sections()):
                 # Calculate display time and generate label text.
                 section_duration_s = self.recipes.get_section_duration(i)
-                labelText = celsius_to_formatted_display(
+                label_text = celsius_to_formatted_display(
                     self.recipes.get_section_temp(i),
                     display_unit,
                 )
 
-               # Create label for section.
-                label = QtWidgets.QLabel(labelText)
-                label.setObjectName("progressLabel")
-                label.setAlignment(QtCore.Qt.AlignCenter)
-                progressBar.addWidget(label, 0, i)
-
-               # Create progress bar for section.
-                bar = QtWidgets.QProgressBar(self)
-                bar.setTextVisible(False)
-
-                # Add css styling based upon the order of the progress bars.
-                if(i == 0):
-                    bar.setObjectName("firstProgressBar")
-                elif(i == self.recipes.get_num_recipe_sections() - 1):
-                    bar.setObjectName("lastProgressBar")
-                else:
-                    bar.setObjectName("middleProgressBar")
-
-                # Add progress bar to layout and array.
-                self.sectionBars.append(bar)
-                progressBar.addWidget(bar, 0, i)
-
-                # Add stretch factor to column based upon minutes.
-                progressBar.setColumnStretch(i, section_duration_s)
+                section_durations_s.append(int(section_duration_s))
+                section_labels.append(label_text)
 
                 # Make the counter equal to i.
                 counter = i
 
+            self.sectionTimelineWidget.set_sections(section_durations_s, section_labels)
+
            # Create next button.
             nextButton = QtWidgets.QPushButton(self.BUTTON_NEXT)
             nextButton.setObjectName("nextButton")
+            nextButton.setFixedWidth(self.BUTTON_NEXT_WIDTH)
             nextButton.clicked.connect(self.next_section)
-            progressBar.addWidget(nextButton, 0, (counter + 1))
+            rowLayout.addWidget(nextButton, 0)
+        else:
+            self.sectionTimelineWidget.clear()
 
+        progressBar.addLayout(rowLayout)
         return progressBar
 
     def recreate_progress_bar(self):
-        # Remove all existing widgets from progressbar layout
-        for i in reversed(range(self.progressBar.count())):
-            self.progressBar.itemAt(i).widget().setParent(None)
-
+        self.layout.removeItem(self.progressBar)
+        self._clear_layout_items(self.progressBar)
         self.progressBar = self.create_progress_bar()
         self.layout.addLayout(self.progressBar, 1, 0, 1, 2, QtCore.Qt.AlignCenter)
+
+    def _clear_layout_items(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            child_layout = item.layout()
+            if widget is not None:
+                widget.setParent(None)
+            elif child_layout is not None:
+                self._clear_layout_items(child_layout)
 
     def calc_display_time(self, duration_s):
         duration_min = duration_s / 60

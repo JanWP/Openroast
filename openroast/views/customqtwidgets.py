@@ -293,6 +293,273 @@ class RoastGraphWidget():
         else:
             pass
 
+
+class SectionProgressTimelineWidget(QtWidgets.QWidget):
+    """Lightweight roast timeline with duration-accurate sections and ticks."""
+
+    def __init__(self, max_labels=6, tick_height=10, tick_label_gap=3, parent=None):
+        super().__init__(parent)
+        self._max_labels = max(2, int(max_labels))
+        self._tick_height = max(4, int(tick_height))
+        self._tick_label_gap = max(1, int(tick_label_gap))
+
+        self._durations_s = []
+        self._labels = []
+        self._total_s = 0
+        self._elapsed_s = 0
+
+        self._bar_h = 20
+        self._ticks_top_gap = 2
+        self._bar_round = 5
+        self._timeline_rounding_s = 30
+
+        self._static_cache = None
+        self._static_cache_size = QtCore.QSize()
+
+        self._color_bg = QtGui.QColor("#23252b")
+        self._color_fill = QtGui.QColor(SharedColors.ACCENT_PRIMARY)
+        self._color_border = QtGui.QColor("#171a1e")
+        self._color_section_boundary = QtGui.QColor(SharedColors.FOREGROUND_TEXT)
+        self._color_tick = QtGui.QColor(SharedColors.FOREGROUND_TEXT)
+        self._color_text = QtGui.QColor(SharedColors.FOREGROUND_TEXT)
+
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.setMinimumHeight(self.sizeHint().height())
+
+    def sizeHint(self):
+        return QtCore.QSize(480, self._bar_h + self._tick_height + 8)
+
+    def set_sections(self, durations_s, labels):
+        durations = [max(0, int(v)) for v in durations_s]
+        section_count = len(durations)
+        text_labels = [str(v) for v in labels[:section_count]]
+        if len(text_labels) < section_count:
+            text_labels.extend([""] * (section_count - len(text_labels)))
+
+        if self._durations_s == durations and self._labels == text_labels:
+            return
+
+        self._durations_s = durations
+        self._labels = text_labels
+        self._total_s = sum(self._durations_s)
+        self._elapsed_s = 0
+        self._invalidate_static_cache()
+        self.update()
+
+    def set_elapsed_seconds(self, elapsed_s):
+        if not self._durations_s:
+            return
+        elapsed_s = max(0, int(elapsed_s))
+        if elapsed_s == self._elapsed_s:
+            return
+        self._elapsed_s = elapsed_s
+        self.update(self._bar_rect().toRect().adjusted(-2, -2, 2, 2))
+
+    def clear(self):
+        self._durations_s = []
+        self._labels = []
+        self._total_s = 0
+        self._elapsed_s = 0
+        self._invalidate_static_cache()
+        self.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._invalidate_static_cache()
+
+    def _invalidate_static_cache(self):
+        self._static_cache = None
+        self._static_cache_size = QtCore.QSize()
+
+    def _bar_rect(self):
+        y = 0
+        return QtCore.QRectF(0, y, max(1, self.width() - 1), self._bar_h)
+
+    def _section_and_progress_for_elapsed(self):
+        if not self._durations_s:
+            return (0, 0)
+
+        elapsed_s = max(0, int(self._elapsed_s))
+        running = 0
+        for idx, duration_s in enumerate(self._durations_s):
+            duration_s = max(1, int(duration_s))
+            if elapsed_s < running + duration_s:
+                return (idx, int(round(((elapsed_s - running) / duration_s) * 100.0)))
+            running += duration_s
+        return (len(self._durations_s) - 1, 100)
+
+    def _section_boundaries(self):
+        count = len(self._durations_s)
+        if count == 0:
+            return [0, max(1, int(self._bar_rect().width()))]
+
+        bar = self._bar_rect()
+        left = int(bar.left())
+        width = max(1, int(bar.width()))
+
+        if self._total_s <= 0:
+            return [left + round((i * width) / count) for i in range(count + 1)]
+
+        boundaries = [left]
+        acc = 0
+        for duration_s in self._durations_s:
+            acc += int(duration_s)
+            boundaries.append(left + int(round((acc / self._total_s) * width)))
+        boundaries[-1] = left + width
+        return boundaries
+
+    def _tick_times(self):
+        total_s = int(self._total_s)
+        if total_s <= 0:
+            return [0]
+
+        marker_count = min(
+            self._max_labels,
+            max(2, int(total_s / self._timeline_rounding_s) + 1),
+        )
+        values = [0]
+        for idx in range(1, marker_count - 1):
+            raw = (idx * total_s) / (marker_count - 1)
+            rounded = int(round(raw / self._timeline_rounding_s) * self._timeline_rounding_s)
+            rounded = max(0, min(total_s, rounded))
+            if rounded > values[-1]:
+                values.append(rounded)
+        if values[-1] != total_s:
+            values.append(total_s)
+        return values
+
+    def _time_to_x(self, seconds):
+        bar = self._bar_rect()
+        if self._total_s <= 0:
+            return int(bar.left())
+        ratio = max(0.0, min(1.0, float(seconds) / float(self._total_s)))
+        return int(round(bar.left() + ratio * bar.width()))
+
+    def _ensure_static_cache(self):
+        size = self.size()
+        if self._static_cache is not None and self._static_cache_size == size:
+            return
+
+        dpr = self.devicePixelRatioF()
+        pixmap = QtGui.QPixmap(max(1, int(size.width() * dpr)), max(1, int(size.height() * dpr)))
+        pixmap.setDevicePixelRatio(dpr)
+        pixmap.fill(QtCore.Qt.transparent)
+
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.TextAntialiasing, True)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing, False)
+
+        bar = self._bar_rect()
+        boundaries = self._section_boundaries()
+
+        if not self._durations_s:
+            painter.end()
+            self._static_cache = pixmap
+            self._static_cache_size = size
+            return
+
+        fm = painter.fontMetrics()
+
+        # Draw bar background and border.
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.setBrush(self._color_bg)
+        painter.drawRoundedRect(bar, self._bar_round, self._bar_round)
+
+        painter.setPen(self._color_border)
+        painter.setBrush(QtCore.Qt.NoBrush)
+        painter.drawRoundedRect(bar, self._bar_round, self._bar_round)
+
+        # Draw fixed timeline ticks + labels on one compact row.
+        ticks_top = int(bar.bottom()) + self._ticks_top_gap
+        ticks_bottom = ticks_top + self._tick_height
+        tick_times = self._tick_times()
+        baseline = ticks_top + int((self._tick_height + fm.ascent() - fm.descent()) / 2)
+
+        for i, tick_s in enumerate(tick_times):
+            x = self._time_to_x(tick_s)
+            painter.setPen(self._color_tick)
+            painter.drawLine(x, ticks_top, x, ticks_bottom)
+
+            label = time.strftime("%M:%S", time.gmtime(int(tick_s)))
+            text_w = fm.horizontalAdvance(label)
+            if i == len(tick_times) - 1:
+                text_x = x - text_w - self._tick_label_gap
+            else:
+                text_x = x + self._tick_label_gap
+            painter.drawText(text_x, baseline, label)
+
+        painter.end()
+        self._static_cache = pixmap
+        self._static_cache_size = size
+
+    def paintEvent(self, event):
+        _ = event
+        self._ensure_static_cache()
+
+        painter = QtGui.QPainter(self)
+        if self._static_cache is not None:
+            painter.drawPixmap(0, 0, self._static_cache)
+
+        if not self._durations_s:
+            painter.end()
+            return
+
+        bar = self._bar_rect()
+        boundaries = self._section_boundaries()
+        current_section, current_progress_pct = self._section_and_progress_for_elapsed()
+
+        # Clip fills to rounded bar to avoid overdraw artifacts.
+        clip_path = QtGui.QPainterPath()
+        clip_path.addRoundedRect(bar, self._bar_round, self._bar_round)
+        painter.save()
+        painter.setClipPath(clip_path)
+
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.setBrush(self._color_fill)
+
+        for idx in range(len(self._durations_s)):
+            x0 = boundaries[idx]
+            x1 = boundaries[idx + 1]
+            width = max(0, x1 - x0)
+            if idx < current_section:
+                fill_w = width
+            elif idx == current_section:
+                fill_w = int(round(width * (current_progress_pct / 100.0)))
+            else:
+                fill_w = 0
+            if fill_w <= 0:
+                continue
+            painter.drawRect(QtCore.QRectF(x0, bar.top(), fill_w, bar.height()))
+        painter.restore()
+
+        # Draw section target labels inside the bar for compact vertical layout.
+        fm = painter.fontMetrics()
+        for idx, label_text in enumerate(self._labels):
+            x0 = boundaries[idx]
+            x1 = boundaries[idx + 1]
+            rect = QtCore.QRect(x0 + 1, int(bar.top()), max(1, x1 - x0 - 2), int(bar.height()))
+            painter.setPen(self._color_text)
+            painter.save()
+            painter.setClipRect(rect)
+            # Center text when it fits; otherwise left-align and clip to preserve leading digits.
+            text_width = fm.horizontalAdvance(label_text)
+            if text_width + 4 <= rect.width():
+                align = QtCore.Qt.AlignCenter
+                draw_rect = rect
+            else:
+                align = QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter
+                draw_rect = rect.adjusted(2, 0, 0, 0)
+            painter.drawText(draw_rect, align, label_text)
+            painter.restore()
+
+        # Re-draw boundaries over fill for crisp section separation.
+        painter.setPen(self._color_section_boundary)
+        for x in boundaries[1:-1]:
+            painter.drawLine(x, int(bar.top()), x, int(bar.bottom()))
+        painter.setPen(self._color_border)
+        painter.drawRoundedRect(bar, self._bar_round, self._bar_round)
+        painter.end()
+
 class ComboBoxNoWheel(QtWidgets.QComboBox):
     """A combobox with the wheel removed."""
     def __init__(self, *args, **kwargs):

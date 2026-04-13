@@ -106,6 +106,15 @@ class RoastTabUI:
     LABEL_REMAINING_SECTION_DURATION = "REMAINING SECTION DURATION"
     LABEL_TOTAL_TIME = "TOTAL TIME"
     BUTTON_NEXT = "NEXT"
+    BUTTON_NEXT_WIDTH = 72
+
+    # Timeline/progress widget spacing and marker geometry.
+    TIMELINE_MAX_LABELS = 6
+    TIMELINE_COMPACT_SPACING = 1
+    TIMELINE_DEFAULT_SPACING = 2
+    TIMELINE_TICK_WIDTH = 1
+    TIMELINE_TICK_HEIGHT = 10
+    TIMELINE_LABEL_GAP = 3
 
     CONNECT_TEXT_PLEASE_CONNECT = "Please connect your roaster."
     CONNECT_TEXT_CONNECTING = "Found roaster, connecting. This could take >20 seconds "
