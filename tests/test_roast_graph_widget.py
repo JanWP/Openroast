@@ -59,6 +59,26 @@ class RoastGraphWidgetTests(unittest.TestCase):
         axis_label = widget.plotWidget.getAxis("left").labelText
         self.assertIn("\N{DEGREE SIGN}F", axis_label)
 
+    def test_time_axis_tick_labels_scale_with_refresh_interval(self):
+        widget = RoastGraphWidget(animated=False)
+        widget.set_refresh_interval_ms(500)
+        tick_label = widget.plotWidget.getAxis("bottom").tickStrings([2], 1, 1)[0]
+        self.assertEqual(tick_label, "00:01")
+
+    def test_section_window_seconds_convert_to_index_space(self):
+        widget = RoastGraphWidget(animated=False)
+        widget.set_refresh_interval_ms(500)
+        widget.append_x(21)
+        widget.append_x(22)
+        widget.append_x(23)
+        widget.set_time_window_max_seconds(5)
+        widget.graph_draw(force=True)
+
+        xmin, xmax = widget.plotWidget.viewRange()[0]
+        self.assertEqual(int(round(xmin)), 1)
+        # 5 s / 0.5 s = 10 samples minimum visible range.
+        self.assertGreaterEqual(int(round(xmax)), 10)
+
 
 if __name__ == "__main__":
     unittest.main()

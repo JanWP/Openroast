@@ -23,11 +23,18 @@ from openroast.temperature import (
 
 
 class _TimeAxis(pg.AxisItem):
+    def __init__(self, orientation="bottom"):
+        super().__init__(orientation=orientation)
+        self._seconds_per_x = 1.0
+
+    def set_seconds_per_x(self, seconds_per_x):
+        self._seconds_per_x = max(0.001, float(seconds_per_x))
+
     def tickStrings(self, values, scale, spacing):
         _ = scale, spacing
         labels = []
         for value in values:
-            total_s = max(0, int(round(value)))
+            total_s = max(0, int(round(float(value) * self._seconds_per_x)))
             labels.append(time.strftime("%M:%S", time.gmtime(total_s)))
         return labels
 
@@ -69,6 +76,7 @@ class RoastGraphWidget():
         self._plot_show_grid = True
         self._line_width = 3.0
         self._refresh_interval_ms = 1000
+        self._seconds_per_sample = 1.0
         self._x_window_max_s = None
         self._graph_timer = None
         self._display_temp_unit = TEMP_UNIT_C
@@ -81,9 +89,10 @@ class RoastGraphWidget():
         graphWidget.setObjectName("graph")
 
         self._temp_axis = _TemperatureAxis(orientation="left")
+        self._time_axis = _TimeAxis(orientation="bottom")
         self.plotWidget = pg.PlotWidget(
             axisItems={
-                "bottom": _TimeAxis(orientation="bottom"),
+                "bottom": self._time_axis,
                 "left": self._temp_axis,
             }
         )
@@ -146,6 +155,8 @@ class RoastGraphWidget():
 
     def set_refresh_interval_ms(self, refresh_interval_ms):
         self._refresh_interval_ms = int(max(1, refresh_interval_ms))
+        self._seconds_per_sample = self._refresh_interval_ms / 1000.0
+        self._time_axis.set_seconds_per_x(self._seconds_per_sample)
         if self._graph_timer is not None:
             self._graph_timer.setInterval(self._refresh_interval_ms)
 
@@ -193,14 +204,15 @@ class RoastGraphWidget():
 
         self.graphLine.setData(self.graphXValueList, self.graphYValueList)
         if current_len > 1:
-            xmin = self.graphXValueList[0]
-            elapsed_s = self.counter
+            xmin = float(self.graphXValueList[0])
+            elapsed_samples = float(self.counter)
             if self._x_window_max_s is None:
-                x_limit_s = elapsed_s
+                x_limit_samples = elapsed_samples
             else:
-                # Keep section-based window, but never clip live data.
-                x_limit_s = max(int(self._x_window_max_s), int(elapsed_s))
-            self.plotWidget.setXRange(xmin, max(1, x_limit_s), padding=0)
+                # Convert section-window seconds to sample-index units.
+                window_samples = math.ceil(float(self._x_window_max_s) / self._seconds_per_sample)
+                x_limit_samples = max(elapsed_samples, float(window_samples))
+            self.plotWidget.setXRange(xmin, max(xmin + 1.0, x_limit_samples), padding=0)
         # Keep graph baseline at room temperature (20 C) without flipping axis.
         self._apply_temperature_axis_limits()
         self._last_drawn_len = current_len
