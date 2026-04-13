@@ -17,15 +17,38 @@ from openroast.temperature import (
     temperature_to_celsius,
     temperature_unit_symbol_to_display,
 )
+from openroast.views.ui_constants import PreferencesUI, SharedButtons, SharedColors, SharedTabStyle
 
 
 class PreferencesTab(QtWidgets.QWidget):
-    LEFT_COLUMN_MAX_WIDTH = 520
-    RIGHT_COLUMN_MAX_WIDTH = 420
-    TAB_BG_COLOR = "#444952"
-    TAB_BORDER_COLOR = "#23252a"
-    TAB_TEXT_COLOR = "#cfd6e0"
-    TAB_SELECTED_TEXT_COLOR = "#ffffff"
+    LEFT_COLUMN_MAX_WIDTH = PreferencesUI.LEFT_COLUMN_MAX_WIDTH
+    RIGHT_COLUMN_MAX_WIDTH = PreferencesUI.RIGHT_COLUMN_MAX_WIDTH
+    TAB_BG_COLOR = SharedColors.SURFACE_TAB_PANE
+    TAB_BORDER_COLOR = SharedColors.BORDER_PANEL
+    TAB_INACTIVE_BG_COLOR = SharedColors.SURFACE_TAB_INACTIVE
+    TAB_TEXT_COLOR = SharedColors.FOREGROUND_TEXT_MUTED
+    TAB_SELECTED_TEXT_COLOR = SharedColors.FOREGROUND_TEXT
+    TAB_PADDING_V = SharedTabStyle.TAB_PADDING_V
+    TAB_PADDING_H = SharedTabStyle.TAB_PADDING_H
+    CORNER_BUTTON_HEIGHT = SharedButtons.CORNER_BUTTON_HEIGHT
+    ROOT_MARGIN = PreferencesUI.ROOT_MARGIN
+    ROOT_SPACING = PreferencesUI.ROOT_SPACING
+    PAGE_MARGIN = PreferencesUI.PAGE_MARGIN
+    CORNER_SPACING = PreferencesUI.CORNER_SPACING
+    DIALOG_AUTOTUNE_TITLE = PreferencesUI.DIALOG_AUTOTUNE_TITLE
+    DIALOG_AUTOTUNE_MESSAGE = PreferencesUI.DIALOG_AUTOTUNE_MESSAGE
+    DIALOG_DISABLE_CUTOFF_TITLE = PreferencesUI.DIALOG_DISABLE_CUTOFF_TITLE
+    DIALOG_DISABLE_CUTOFF_MESSAGE = PreferencesUI.DIALOG_DISABLE_CUTOFF_MESSAGE
+    DIALOG_REVERT_EXPERT_TITLE = PreferencesUI.DIALOG_REVERT_EXPERT_TITLE
+    DIALOG_REVERT_EXPERT_MESSAGE = PreferencesUI.DIALOG_REVERT_EXPERT_MESSAGE
+    DIALOG_REVERT_USER_TITLE = PreferencesUI.DIALOG_REVERT_USER_TITLE
+    DIALOG_REVERT_USER_MESSAGE = PreferencesUI.DIALOG_REVERT_USER_MESSAGE
+    DIALOG_EXPERT_WARNING_TITLE = PreferencesUI.DIALOG_EXPERT_WARNING_TITLE
+    DIALOG_EXPERT_WARNING_MESSAGE = PreferencesUI.DIALOG_EXPERT_WARNING_MESSAGE
+    DIALOG_RESTORE_EXPERT_TITLE = PreferencesUI.DIALOG_RESTORE_EXPERT_TITLE
+    DIALOG_RESTORE_EXPERT_MESSAGE = PreferencesUI.DIALOG_RESTORE_EXPERT_MESSAGE
+    DIALOG_RESTORE_USER_TITLE = PreferencesUI.DIALOG_RESTORE_USER_TITLE
+    DIALOG_RESTORE_USER_MESSAGE = PreferencesUI.DIALOG_RESTORE_USER_MESSAGE
 
     class _AutotuneWorker(QtCore.QThread):
         resultReady = QtCore.pyqtSignal(object, object)
@@ -66,8 +89,8 @@ class PreferencesTab(QtWidgets.QWidget):
 
     def _build_ui(self):
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(6, 6, 6, 6)
-        root.setSpacing(6)
+        root.setContentsMargins(self.ROOT_MARGIN, self.ROOT_MARGIN, self.ROOT_MARGIN, self.ROOT_MARGIN)
+        root.setSpacing(self.ROOT_SPACING)
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setStyleSheet(
@@ -76,40 +99,45 @@ class PreferencesTab(QtWidgets.QWidget):
             f"border: 1px solid {self.TAB_BORDER_COLOR};"
             "}"
             "QTabBar::tab {"
-            f"background: #2e3138; color: {self.TAB_TEXT_COLOR};"
-            "padding: 6px 12px;"
+            f"background: {self.TAB_INACTIVE_BG_COLOR}; color: {self.TAB_TEXT_COLOR};"
+            f"padding: {self.TAB_PADDING_V}px {self.TAB_PADDING_H}px;"
             "}"
             "QTabBar::tab:selected {"
             f"background: {self.TAB_BG_COLOR}; color: {self.TAB_SELECTED_TEXT_COLOR};"
             "}"
         )
-        self.tabs.addTab(self._create_user_preferences_page(), "User preferences")
-        self.tabs.addTab(self._create_expert_preferences_page(), "Expert options")
+        self.tabs.addTab(self._create_user_preferences_page(), PreferencesUI.TAB_TITLE_USER)
+        self.tabs.addTab(self._create_expert_preferences_page(), PreferencesUI.TAB_TITLE_EXPERT)
 
         controls = QtWidgets.QWidget()
         controls_layout = QtWidgets.QHBoxLayout(controls)
         controls_layout.setContentsMargins(0, 0, 0, 0)
-        controls_layout.setSpacing(6)
+        controls_layout.setSpacing(self.CORNER_SPACING)
 
-        self.revertChangesButton = QtWidgets.QPushButton("REVERT CHANGES")
+        self.revertChangesButton = QtWidgets.QPushButton(PreferencesUI.BUTTON_REVERT)
         self.revertChangesButton.setObjectName("smallButtonAlt")
+        self.revertChangesButton.setFixedHeight(self.CORNER_BUTTON_HEIGHT)
         self.revertChangesButton.clicked.connect(self._on_revert_changes_clicked)
         controls_layout.addWidget(self.revertChangesButton)
 
-        self.restoreDefaultsButton = QtWidgets.QPushButton("RESTORE DEFAULTS")
+        self.restoreDefaultsButton = QtWidgets.QPushButton(PreferencesUI.BUTTON_RESTORE_DEFAULTS)
         self.restoreDefaultsButton.setObjectName("smallButtonAlt")
+        self.restoreDefaultsButton.setFixedHeight(self.CORNER_BUTTON_HEIGHT)
         self.restoreDefaultsButton.clicked.connect(self._on_restore_defaults_clicked)
         controls_layout.addWidget(self.restoreDefaultsButton)
 
-        self.saveButton = QtWidgets.QPushButton("SAVE")
+        self.saveButton = QtWidgets.QPushButton(PreferencesUI.BUTTON_SAVE)
         self.saveButton.setObjectName("smallButton")
+        self.saveButton.setFixedHeight(self.CORNER_BUTTON_HEIGHT)
         self.saveButton.clicked.connect(self.save_preferences)
         controls_layout.addWidget(self.saveButton)
 
         self.tabs.setCornerWidget(controls, QtCore.Qt.TopRightCorner)
         root.addWidget(self.tabs)
 
-        self.configPathLabel = QtWidgets.QLabel(f"Config file: {app_config.get_config_path()}")
+        self.configPathLabel = QtWidgets.QLabel(
+            PreferencesUI.LABEL_CONFIG_PATH_TEMPLATE.format(path=app_config.get_config_path())
+        )
         self.configPathLabel.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         root.addWidget(self.configPathLabel)
 
@@ -129,7 +157,7 @@ class PreferencesTab(QtWidgets.QWidget):
     def _create_user_preferences_page(self):
         page = QtWidgets.QWidget()
         page_layout = QtWidgets.QHBoxLayout(page)
-        page_layout.setContentsMargins(4, 4, 4, 4)
+        page_layout.setContentsMargins(self.PAGE_MARGIN, self.PAGE_MARGIN, self.PAGE_MARGIN, self.PAGE_MARGIN)
 
         left_column = QtWidgets.QWidget()
         left_column.setMaximumWidth(self.LEFT_COLUMN_MAX_WIDTH)
@@ -196,19 +224,19 @@ class PreferencesTab(QtWidgets.QWidget):
         self.confirmOnStop = QtWidgets.QCheckBox()
         self.confirmOnClear = QtWidgets.QCheckBox()
 
-        form.addRow("Display temperature unit:", self.temperatureUnitSelect)
-        form.addRow("Default backend:", self.backendSelect)
-        form.addRow("Enable compact UI by default:", self.compactUiDefault)
-        form.addRow("Start in fullscreen:", self.fullscreenDefault)
-        form.addRow("Enable expert options:", self.expertModeEnabled)
-        form.addRow("UI refresh interval:", self.refreshIntervalMs)
+        form.addRow(PreferencesUI.FORM_LABEL_DISPLAY_TEMPERATURE_UNIT, self.temperatureUnitSelect)
+        form.addRow(PreferencesUI.FORM_LABEL_DEFAULT_BACKEND, self.backendSelect)
+        form.addRow(PreferencesUI.FORM_LABEL_ENABLE_COMPACT_UI_DEFAULT, self.compactUiDefault)
+        form.addRow(PreferencesUI.FORM_LABEL_START_FULLSCREEN, self.fullscreenDefault)
+        form.addRow(PreferencesUI.FORM_LABEL_ENABLE_EXPERT_OPTIONS, self.expertModeEnabled)
+        form.addRow(PreferencesUI.FORM_LABEL_UI_REFRESH_INTERVAL, self.refreshIntervalMs)
 
-        form_right.addRow("Plot y-axis headroom:", self.plotYAxisHeadroomC)
-        form_right.addRow("Plot y-axis step:", self.plotYAxisStepC)
-        form_right.addRow("Show plot grid:", self.plotShowGrid)
-        form_right.addRow("Plot line width:", self.plotLineWidth)
-        form_right.addRow("Confirm on STOP:", self.confirmOnStop)
-        form_right.addRow("Confirm on RESET:", self.confirmOnClear)
+        form_right.addRow(PreferencesUI.FORM_LABEL_PLOT_Y_AXIS_HEADROOM, self.plotYAxisHeadroomC)
+        form_right.addRow(PreferencesUI.FORM_LABEL_PLOT_Y_AXIS_STEP, self.plotYAxisStepC)
+        form_right.addRow(PreferencesUI.FORM_LABEL_SHOW_PLOT_GRID, self.plotShowGrid)
+        form_right.addRow(PreferencesUI.FORM_LABEL_PLOT_LINE_WIDTH, self.plotLineWidth)
+        form_right.addRow(PreferencesUI.FORM_LABEL_CONFIRM_ON_STOP, self.confirmOnStop)
+        form_right.addRow(PreferencesUI.FORM_LABEL_CONFIRM_ON_RESET, self.confirmOnClear)
 
         left_layout.addLayout(form)
         left_layout.addStretch(1)
@@ -223,7 +251,7 @@ class PreferencesTab(QtWidgets.QWidget):
     def _create_expert_preferences_page(self):
         page = QtWidgets.QWidget()
         layout = QtWidgets.QHBoxLayout(page)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(self.PAGE_MARGIN, self.PAGE_MARGIN, self.PAGE_MARGIN, self.PAGE_MARGIN)
 
         left_column = QtWidgets.QWidget()
         left_column.setMaximumWidth(self.LEFT_COLUMN_MAX_WIDTH)
@@ -285,17 +313,17 @@ class PreferencesTab(QtWidgets.QWidget):
 
         self.heaterCutoffEnabled = QtWidgets.QCheckBox()
 
-        control_form.addRow("PID Kp:", self.pidKp)
-        control_form.addRow("PID Ki:", self.pidKi)
-        control_form.addRow("PID Kd:", self.pidKd)
-        self.autotuneButton = QtWidgets.QPushButton("AUTOTUNE")
+        control_form.addRow(PreferencesUI.FORM_LABEL_PID_KP, self.pidKp)
+        control_form.addRow(PreferencesUI.FORM_LABEL_PID_KI, self.pidKi)
+        control_form.addRow(PreferencesUI.FORM_LABEL_PID_KD, self.pidKd)
+        self.autotuneButton = QtWidgets.QPushButton(PreferencesUI.BUTTON_AUTOTUNE)
         self.autotuneButton.setObjectName("smallButtonAlt")
         control_form.addRow("", self.autotuneButton)
-        control_form.addRow("PWM cycle period:", self.pwmCycleSeconds)
-        control_form.addRow("Control sample period:", self.samplePeriodSeconds)
+        control_form.addRow(PreferencesUI.FORM_LABEL_PWM_CYCLE_PERIOD, self.pwmCycleSeconds)
+        control_form.addRow(PreferencesUI.FORM_LABEL_CONTROL_SAMPLE_PERIOD, self.samplePeriodSeconds)
 
-        safety_form.addRow("Max safe temperature:", self.safetyMaxTempC)
-        safety_form.addRow("Enable heater over-temp cutoff:", self.heaterCutoffEnabled)
+        safety_form.addRow(PreferencesUI.FORM_LABEL_MAX_SAFE_TEMPERATURE, self.safetyMaxTempC)
+        safety_form.addRow(PreferencesUI.FORM_LABEL_ENABLE_HEATER_CUTOFF, self.heaterCutoffEnabled)
 
         left_layout.addLayout(control_form)
         left_layout.addStretch(1)
@@ -430,19 +458,19 @@ class PreferencesTab(QtWidgets.QWidget):
         if self._autotune_worker is not None:
             return
         if self._roaster is None:
-            self.statusLabel.setText("Autotune unavailable: no backend handle")
+            self.statusLabel.setText(PreferencesUI.STATUS_AUTOTUNE_UNAVAILABLE)
             return
 
         if callable(self._pre_autotune_hook):
             ready = bool(self._pre_autotune_hook())
             if not ready:
-                self.statusLabel.setText("Autotune canceled")
+                self.statusLabel.setText(PreferencesUI.STATUS_AUTOTUNE_CANCELED)
                 return
 
         answer = QtWidgets.QMessageBox.question(
             self,
-            "Run PID autotune",
-            "Autotune applies a heating step test and may take up to about a minute. Continue?",
+            self.DIALOG_AUTOTUNE_TITLE,
+            self.DIALOG_AUTOTUNE_MESSAGE,
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No,
         )
@@ -451,7 +479,7 @@ class PreferencesTab(QtWidgets.QWidget):
 
         self.autotuneButton.setEnabled(False)
         self.saveButton.setEnabled(False)
-        self.statusLabel.setText("Running autotune...")
+        self.statusLabel.setText(PreferencesUI.STATUS_AUTOTUNE_RUNNING)
 
         self._autotune_worker = self._AutotuneWorker(
             lambda: autotune_pid_for_backend(self._roaster),
@@ -466,14 +494,14 @@ class PreferencesTab(QtWidgets.QWidget):
         self.saveButton.setEnabled(True)
 
         if error_text:
-            self.statusLabel.setText(f"Autotune failed: {error_text}")
+            self.statusLabel.setText(PreferencesUI.STATUS_AUTOTUNE_FAILED_TEMPLATE.format(error=error_text))
             return
 
         self.pidKp.setValue(float(result["kp"]))
         self.pidKi.setValue(float(result["ki"]))
         self.pidKd.setValue(float(result["kd"]))
         self.save_preferences()
-        self.statusLabel.setText("Autotune complete and saved")
+        self.statusLabel.setText(PreferencesUI.STATUS_AUTOTUNE_COMPLETE_AND_SAVED)
 
     def _on_autotune_worker_finished(self):
         worker = self._autotune_worker
@@ -506,8 +534,8 @@ class PreferencesTab(QtWidgets.QWidget):
             return
         answer = QtWidgets.QMessageBox.question(
             self,
-            "Disable safety cutoff?",
-            "Disabling over-temperature cutoff can damage equipment and increase fire risk. Continue?",
+            self.DIALOG_DISABLE_CUTOFF_TITLE,
+            self.DIALOG_DISABLE_CUTOFF_MESSAGE,
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No,
         )
@@ -519,11 +547,11 @@ class PreferencesTab(QtWidgets.QWidget):
     def _on_revert_changes_clicked(self):
         is_expert_tab = self.tabs.currentIndex() == 1
         if is_expert_tab:
-            title = "Revert expert changes"
-            message = "Revert unsaved expert options to last saved values?"
+            title = self.DIALOG_REVERT_EXPERT_TITLE
+            message = self.DIALOG_REVERT_EXPERT_MESSAGE
         else:
-            title = "Revert user changes"
-            message = "Revert unsaved user preferences to last saved values?"
+            title = self.DIALOG_REVERT_USER_TITLE
+            message = self.DIALOG_REVERT_USER_MESSAGE
 
         answer = QtWidgets.QMessageBox.question(
             self,
@@ -555,10 +583,8 @@ class PreferencesTab(QtWidgets.QWidget):
 
         answer = QtWidgets.QMessageBox.question(
             self,
-            "Expert options warning",
-            "These parameters affect control and safety behavior. "
-            "Incorrect values can cause unstable heating or unsafe operation. "
-            "Only change them if you understand the risks. Continue?",
+            self.DIALOG_EXPERT_WARNING_TITLE,
+            self.DIALOG_EXPERT_WARNING_MESSAGE,
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No,
         )
@@ -573,11 +599,11 @@ class PreferencesTab(QtWidgets.QWidget):
     def _on_restore_defaults_clicked(self):
         is_expert_tab = self.tabs.currentIndex() == 1
         if is_expert_tab:
-            title = "Restore expert defaults"
-            message = "Reset all expert options to their defaults?"
+            title = self.DIALOG_RESTORE_EXPERT_TITLE
+            message = self.DIALOG_RESTORE_EXPERT_MESSAGE
         else:
-            title = "Restore user defaults"
-            message = "Reset all user preferences to their defaults?"
+            title = self.DIALOG_RESTORE_USER_TITLE
+            message = self.DIALOG_RESTORE_USER_MESSAGE
 
         answer = QtWidgets.QMessageBox.question(
             self,
@@ -594,7 +620,7 @@ class PreferencesTab(QtWidgets.QWidget):
             self._restore_expert_defaults(defaults)
         else:
             self._restore_user_defaults(defaults)
-        self.statusLabel.setText("Unsaved changes")
+        self.statusLabel.setText(PreferencesUI.STATUS_UNSAVED_CHANGES)
 
     def _restore_user_defaults(self, defaults):
         unit = normalize_temperature_unit(
@@ -678,7 +704,7 @@ class PreferencesTab(QtWidgets.QWidget):
         if self._saved_form_state is None:
             return
         if self._current_form_state() != self._saved_form_state:
-            self.statusLabel.setText("Unsaved changes")
+            self.statusLabel.setText(PreferencesUI.STATUS_UNSAVED_CHANGES)
         else:
             self.statusLabel.setText("")
 
@@ -719,5 +745,5 @@ class PreferencesTab(QtWidgets.QWidget):
             self._on_save(saved)
 
         self._mark_saved_state()
-        self.statusLabel.setText("Preferences saved. Some changes apply on next start.")
+        self.statusLabel.setText(PreferencesUI.STATUS_PREFERENCES_SAVED)
 

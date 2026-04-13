@@ -20,6 +20,7 @@ from openroast.temperature import (
     normalize_temperature_unit,
     temperature_unit_symbol_to_display,
 )
+from openroast.views.ui_constants import GraphUI, SharedColors
 
 
 class _TimeAxis(pg.AxisItem):
@@ -57,6 +58,16 @@ class _TemperatureAxis(pg.AxisItem):
 
 class RoastGraphWidget():
     Y_AXIS_STEP_C = 5.0
+    PLOT_BG_COLOR = SharedColors.SURFACE_PANEL
+    PLOT_LINE_COLOR = SharedColors.ACCENT_PRIMARY
+    PLOT_LABEL_COLOR = SharedColors.FOREGROUND_TEXT
+    AXIS_BOTTOM_TIME = GraphUI.AXIS_BOTTOM_TIME
+    AXIS_LEFT_TEMPERATURE_TEMPLATE = GraphUI.AXIS_LEFT_TEMPERATURE_TEMPLATE
+    DIALOG_SAVE_GRAPH_TITLE = GraphUI.SAVE_GRAPH_TITLE
+    DIALOG_SAVE_GRAPH_FILTER = GraphUI.SAVE_GRAPH_FILTER
+    DIALOG_SAVE_GRAPH_CSV_TITLE = GraphUI.SAVE_GRAPH_CSV_TITLE
+    DIALOG_SAVE_GRAPH_CSV_FILTER = GraphUI.SAVE_GRAPH_CSV_FILTER
+    CSV_HEADER = GraphUI.CSV_HEADER
 
     def __init__(self, graphXValueList=None, graphYValueList=None,
             animated=False, updateMethod=None, animatingMethod=None):
@@ -96,13 +107,13 @@ class RoastGraphWidget():
                 "left": self._temp_axis,
             }
         )
-        self.plotWidget.setBackground('#23252a')
+        self.plotWidget.setBackground(self.PLOT_BG_COLOR)
         self.set_display_temperature_unit(self._display_temp_unit)
-        self.plotWidget.setLabel('bottom', 'TIME', color='w')
+        self.plotWidget.setLabel('bottom', self.AXIS_BOTTOM_TIME, color='w')
         self.plotWidget.showGrid(x=self._plot_show_grid, y=self._plot_show_grid, alpha=0.2 if self._plot_show_grid else 0.0)
         self.plotWidget.getAxis('left').setTextPen('w')
         self.plotWidget.getAxis('bottom').setTextPen('w')
-        self.graphLine = self.plotWidget.plot([], [], pen=pg.mkPen('#8ab71b', width=self._line_width))
+        self.graphLine = self.plotWidget.plot([], [], pen=pg.mkPen(self.PLOT_LINE_COLOR, width=self._line_width))
         self._apply_temperature_axis_limits()
 
         # Add graph widgets to layout for graph.
@@ -128,11 +139,13 @@ class RoastGraphWidget():
         self._temp_axis.set_display_unit(self._display_temp_unit)
         left_axis = self.plotWidget.getAxis('left')
         left_axis.setLabel(
-            text=f"TEMPERATURE ({temperature_unit_symbol_to_display(self._display_temp_unit)})",
-            color="#ffffff",
+            text=self.AXIS_LEFT_TEMPERATURE_TEMPLATE.format(
+                unit=temperature_unit_symbol_to_display(self._display_temp_unit)
+            ),
+            color=self.PLOT_LABEL_COLOR,
         )
         if hasattr(left_axis, "label") and hasattr(left_axis.label, "setDefaultTextColor"):
-            left_axis.label.setDefaultTextColor(QtGui.QColor("#ffffff"))
+            left_axis.label.setDefaultTextColor(QtGui.QColor(self.PLOT_LABEL_COLOR))
 
     def _apply_temperature_axis_limits(self):
         bottom = float(MIN_TEMPERATURE_C)
@@ -175,7 +188,7 @@ class RoastGraphWidget():
             )
         if line_width is not None:
             self._line_width = max(1.0, float(line_width))
-            self.graphLine.setPen(pg.mkPen('#8ab71b', width=self._line_width))
+            self.graphLine.setPen(pg.mkPen(self.PLOT_LINE_COLOR, width=self._line_width))
 
         self._y_axis_top = None
         self._apply_temperature_axis_limits()
@@ -247,9 +260,9 @@ class RoastGraphWidget():
         try:
             file_name = QtWidgets.QFileDialog.getSaveFileName(
                 None,
-                'Save Roast Graph',
+                self.DIALOG_SAVE_GRAPH_TITLE,
                 os.path.expanduser('~/'),
-                'Graph (*.png);;All Files (*)')
+                self.DIALOG_SAVE_GRAPH_FILTER)
             if file_name[0]:
                 exporter = ImageExporter(self.plotWidget.plotItem)
                 exporter.export(file_name[0])
@@ -263,11 +276,11 @@ class RoastGraphWidget():
         try:
             file_name = QtWidgets.QFileDialog.getSaveFileName(
                 None,
-                'Save Roast Graph CSV',
+                self.DIALOG_SAVE_GRAPH_CSV_TITLE,
                 os.path.expanduser('~/'),
-                'CSV (*.csv);;All Files (*)')
+                self.DIALOG_SAVE_GRAPH_CSV_FILTER)
             with open(file_name[0], 'w') as outfile:
-                outfile.write("Seconds,Temperature\n")
+                outfile.write(self.CSV_HEADER)
                 if not self.graphXValueList:
                     return
                 init_s = int(self.graphXValueList[0])

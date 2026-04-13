@@ -35,6 +35,7 @@ from openroast.temperature import (
     temperature_to_celsius,
 )
 from openroast.views import customqtwidgets
+from openroast.views.ui_constants import RecipeEditorUI
 
 
 class _TimeAxis(pg.AxisItem):
@@ -80,80 +81,122 @@ class CompactDurationEdit(customqtwidgets.TimeEditNoWheel):
 
 
 class RecipeEditor(QtWidgets.QDialog):
-    # Window sizing
-    WINDOW_MIN_WIDTH = 800
-    WINDOW_MIN_HEIGHT_COMPACT = 480
-    WINDOW_MIN_HEIGHT_DEFAULT = 600
-    WINDOW_RESIZE_WIDTH_DEFAULT = 980
-    WINDOW_RESIZE_HEIGHT_DEFAULT = 680
+    # Centralized UI constants (kept as class aliases for compatibility/tests).
+    WINDOW_MIN_WIDTH = RecipeEditorUI.WINDOW_MIN_WIDTH
+    WINDOW_MIN_HEIGHT_COMPACT = RecipeEditorUI.WINDOW_MIN_HEIGHT_COMPACT
+    WINDOW_MIN_HEIGHT_DEFAULT = RecipeEditorUI.WINDOW_MIN_HEIGHT_DEFAULT
+    WINDOW_RESIZE_WIDTH_DEFAULT = RecipeEditorUI.WINDOW_RESIZE_WIDTH_DEFAULT
+    WINDOW_RESIZE_HEIGHT_DEFAULT = RecipeEditorUI.WINDOW_RESIZE_HEIGHT_DEFAULT
 
-    # Steps table geometry
-    COLUMN_WIDTH_TEMP = 34
-    COLUMN_WIDTH_FAN = 34
-    COLUMN_WIDTH_DURATION_COMPACT = 64
-    COLUMN_WIDTH_DURATION_DEFAULT = 72
-    COLUMN_WIDTH_MODIFY_COMPACT = 72
-    COLUMN_WIDTH_MODIFY_DEFAULT = 136
-    TABLE_MIN_EXTRA_WIDTH = 14
-    TABLE_MIN_WIDTH = (
-        COLUMN_WIDTH_TEMP
-        + COLUMN_WIDTH_FAN
-        + COLUMN_WIDTH_DURATION_COMPACT
-        + COLUMN_WIDTH_MODIFY_COMPACT
-        + TABLE_MIN_EXTRA_WIDTH
-    )
-    TABLE_ROW_HEIGHT_COMPACT = 30
+    COLUMN_WIDTH_TEMP = RecipeEditorUI.COLUMN_WIDTH_TEMP
+    COLUMN_WIDTH_FAN = RecipeEditorUI.COLUMN_WIDTH_FAN
+    COLUMN_WIDTH_DURATION_COMPACT = RecipeEditorUI.COLUMN_WIDTH_DURATION_COMPACT
+    COLUMN_WIDTH_DURATION_DEFAULT = RecipeEditorUI.COLUMN_WIDTH_DURATION_DEFAULT
+    COLUMN_WIDTH_MODIFY_COMPACT = RecipeEditorUI.COLUMN_WIDTH_MODIFY_COMPACT
+    COLUMN_WIDTH_MODIFY_DEFAULT = RecipeEditorUI.COLUMN_WIDTH_MODIFY_DEFAULT
+    TABLE_MIN_EXTRA_WIDTH = RecipeEditorUI.TABLE_MIN_EXTRA_WIDTH
+    TABLE_MIN_WIDTH = RecipeEditorUI.TABLE_MIN_WIDTH
+    TABLE_ROW_HEIGHT_COMPACT = RecipeEditorUI.TABLE_ROW_HEIGHT_COMPACT
 
-    # In-cell editor widths
-    TEMP_EDITOR_WIDTH_COMPACT = 26
-    TEMP_EDITOR_WIDTH_DEFAULT = 32
-    FAN_EDITOR_WIDTH_COMPACT = 26
-    FAN_EDITOR_WIDTH_DEFAULT = 32
-    TIME_EDITOR_WIDTH_COMPACT = 58
-    TIME_EDITOR_WIDTH_DEFAULT = 64
+    TEMP_EDITOR_WIDTH_COMPACT = RecipeEditorUI.TEMP_EDITOR_WIDTH_COMPACT
+    TEMP_EDITOR_WIDTH_DEFAULT = RecipeEditorUI.TEMP_EDITOR_WIDTH_DEFAULT
+    FAN_EDITOR_WIDTH_COMPACT = RecipeEditorUI.FAN_EDITOR_WIDTH_COMPACT
+    FAN_EDITOR_WIDTH_DEFAULT = RecipeEditorUI.FAN_EDITOR_WIDTH_DEFAULT
+    TIME_EDITOR_WIDTH_COMPACT = RecipeEditorUI.TIME_EDITOR_WIDTH_COMPACT
+    TIME_EDITOR_WIDTH_DEFAULT = RecipeEditorUI.TIME_EDITOR_WIDTH_DEFAULT
 
-    # Compact touch duration picker increments and limits.
-    DURATION_STEP_SMALL_S = 5
-    DURATION_STEP_LARGE_S = 30
-    DURATION_MAX_S = 59 * 60 + 59
+    DURATION_STEP_SMALL_S = RecipeEditorUI.DURATION_STEP_SMALL_S
+    DURATION_STEP_LARGE_S = RecipeEditorUI.DURATION_STEP_LARGE_S
+    DURATION_MAX_S = RecipeEditorUI.DURATION_MAX_S
 
-    # Short cooling label to fit narrow temperature column.
-    COOLING_LABEL = "Cool"
+    COOLING_LABEL = RecipeEditorUI.COOLING_LABEL
 
-    # Tab styling
-    TAB_WIDGET_OBJECT_NAME = "recipeEditorTabs"
-    TAB_PAGE_OBJECT_NAME_INFO = "recipeInfoPage"
-    TAB_PAGE_OBJECT_NAME_PROFILE = "heatingProfilePage"
-    TAB_TITLE_INFO = "Recipe info"
-    TAB_TITLE_PROFILE = "Heating profile"
+    TAB_WIDGET_OBJECT_NAME = RecipeEditorUI.TAB_WIDGET_OBJECT_NAME
+    TAB_PAGE_OBJECT_NAME_INFO = RecipeEditorUI.TAB_PAGE_OBJECT_NAME_INFO
+    TAB_PAGE_OBJECT_NAME_PROFILE = RecipeEditorUI.TAB_PAGE_OBJECT_NAME_PROFILE
+    TAB_TITLE_INFO = RecipeEditorUI.TAB_TITLE_INFO
+    TAB_TITLE_PROFILE = RecipeEditorUI.TAB_TITLE_PROFILE
 
-    COLOR_TAB_PANE_BG = "#444952"
-    COLOR_TAB_PANE_BORDER = "#23252a"
-    COLOR_TAB_BG = "#2e3138"
-    COLOR_TAB_TEXT = "#cfd6e0"
-    COLOR_TAB_SELECTED_TEXT = "#ffffff"
-    TAB_PADDING_V = 6
-    TAB_PADDING_H = 12
+    COLOR_TAB_PANE_BG = RecipeEditorUI.COLOR_TAB_PANE_BG
+    COLOR_TAB_PANE_BORDER = RecipeEditorUI.COLOR_TAB_PANE_BORDER
+    COLOR_TAB_BG = RecipeEditorUI.COLOR_TAB_BG
+    COLOR_TAB_TEXT = RecipeEditorUI.COLOR_TAB_TEXT
+    COLOR_TAB_SELECTED_TEXT = RecipeEditorUI.COLOR_TAB_SELECTED_TEXT
+    TAB_PADDING_V = RecipeEditorUI.TAB_PADDING_V
+    TAB_PADDING_H = RecipeEditorUI.TAB_PADDING_H
 
-    # Corner action button sizing
-    CORNER_BUTTON_HEIGHT = 30
-    CORNER_BUTTON_WIDTH_CLOSE = 72
-    CORNER_BUTTON_WIDTH_SAVE = 72
-    CORNER_BUTTON_WIDTH_SAVE_AS = 92
+    CORNER_BUTTON_HEIGHT = RecipeEditorUI.CORNER_BUTTON_HEIGHT
+    CORNER_BUTTON_WIDTH_CLOSE = RecipeEditorUI.CORNER_BUTTON_WIDTH_CLOSE
+    CORNER_BUTTON_WIDTH_SAVE = RecipeEditorUI.CORNER_BUTTON_WIDTH_SAVE
+    CORNER_BUTTON_WIDTH_SAVE_AS = RecipeEditorUI.CORNER_BUTTON_WIDTH_SAVE_AS
 
-    # Curve panel minimum heights
-    CURVE_MIN_HEIGHT_COMPACT = 220
-    CURVE_MIN_HEIGHT_DEFAULT = 360
+    CURVE_MIN_HEIGHT_COMPACT = RecipeEditorUI.CURVE_MIN_HEIGHT_COMPACT
+    CURVE_MIN_HEIGHT_DEFAULT = RecipeEditorUI.CURVE_MIN_HEIGHT_DEFAULT
 
-    # Compact touch temperature picker increments (display-unit steps)
-    TEMP_PICKER_STEP_SMALL = 1
-    TEMP_PICKER_STEP_LARGE = 5
+    TEMP_PICKER_STEP_SMALL = RecipeEditorUI.TEMP_PICKER_STEP_SMALL
+    TEMP_PICKER_STEP_LARGE = RecipeEditorUI.TEMP_PICKER_STEP_LARGE
 
-    TAB_INDEX_INFO = 0
-    TAB_INDEX_PROFILE = 1
+    TAB_INDEX_INFO = RecipeEditorUI.TAB_INDEX_INFO
+    TAB_INDEX_PROFILE = RecipeEditorUI.TAB_INDEX_PROFILE
+
+    ROOT_MARGIN = RecipeEditorUI.ROOT_MARGIN
+    ROOT_SPACING = RecipeEditorUI.ROOT_SPACING
+    PAGE_MARGIN = RecipeEditorUI.PAGE_MARGIN
+    PAGE_SPACING = RecipeEditorUI.PAGE_SPACING
+    FORM_H_SPACING = RecipeEditorUI.FORM_H_SPACING
+    FORM_V_SPACING = RecipeEditorUI.FORM_V_SPACING
+
+    CORNER_BUTTON_TEXT_CLOSE = RecipeEditorUI.CORNER_BUTTON_TEXT_CLOSE
+    CORNER_BUTTON_TEXT_SAVE = RecipeEditorUI.CORNER_BUTTON_TEXT_SAVE
+    CORNER_BUTTON_TEXT_SAVE_AS = RecipeEditorUI.CORNER_BUTTON_TEXT_SAVE_AS
+
+    PICKER_DIALOG_WIDTH_COMPACT = RecipeEditorUI.PICKER_DIALOG_WIDTH_COMPACT
+    PICKER_DIALOG_WIDTH_DEFAULT = RecipeEditorUI.PICKER_DIALOG_WIDTH_DEFAULT
+    PICKER_CANCEL_TEXT = RecipeEditorUI.PICKER_CANCEL_TEXT
+    PICKER_APPLY_TEXT = RecipeEditorUI.PICKER_APPLY_TEXT
+
+    SPLITTER_LAYOUT_OVERHEAD = RecipeEditorUI.SPLITTER_LAYOUT_OVERHEAD
+    SPLITTER_MIN_PLOT_WIDTH = RecipeEditorUI.SPLITTER_MIN_PLOT_WIDTH
+
+    PLOT_BG_COLOR = RecipeEditorUI.PLOT_BG_COLOR
+    PLOT_LINE_COLOR = RecipeEditorUI.PLOT_LINE_COLOR
+    PLOT_LABEL_COLOR = RecipeEditorUI.PLOT_LABEL_COLOR
+
+    WINDOW_TITLE = RecipeEditorUI.WINDOW_TITLE
+
+    FORM_LABEL_RECIPE_NAME = RecipeEditorUI.FORM_LABEL_RECIPE_NAME
+    FORM_LABEL_CREATED_BY = RecipeEditorUI.FORM_LABEL_CREATED_BY
+    FORM_LABEL_ROAST_TYPE = RecipeEditorUI.FORM_LABEL_ROAST_TYPE
+    FORM_LABEL_BEAN_REGION = RecipeEditorUI.FORM_LABEL_BEAN_REGION
+    FORM_LABEL_BEAN_COUNTRY = RecipeEditorUI.FORM_LABEL_BEAN_COUNTRY
+    FORM_LABEL_BEAN_LINK = RecipeEditorUI.FORM_LABEL_BEAN_LINK
+    FORM_LABEL_BEAN_STORE_NAME = RecipeEditorUI.FORM_LABEL_BEAN_STORE_NAME
+    FORM_LABEL_TEMPERATURE_UNIT = RecipeEditorUI.FORM_LABEL_TEMPERATURE_UNIT
+    FORM_LABEL_DESCRIPTION = RecipeEditorUI.FORM_LABEL_DESCRIPTION
+
+    SECTION_LABEL_HEATING_CURVE = RecipeEditorUI.SECTION_LABEL_HEATING_CURVE
+    SECTION_LABEL_LOADING_CURVE = RecipeEditorUI.SECTION_LABEL_LOADING_CURVE
+
+    TABLE_HEADER_TEMPERATURE_PREFIX = RecipeEditorUI.TABLE_HEADER_TEMPERATURE_PREFIX
+    TABLE_HEADER_FAN = RecipeEditorUI.TABLE_HEADER_FAN
+    TABLE_HEADER_DURATION = RecipeEditorUI.TABLE_HEADER_DURATION
+    TABLE_HEADER_MODIFY = RecipeEditorUI.TABLE_HEADER_MODIFY
+
+    PLOT_AXIS_TIME = RecipeEditorUI.PLOT_AXIS_TIME
+    PLOT_AXIS_TEMPERATURE = RecipeEditorUI.PLOT_AXIS_TEMPERATURE
+
+    PICKER_TEMPERATURE_TITLE = RecipeEditorUI.PICKER_TEMPERATURE_TITLE
+    PICKER_TEMPERATURE_COOLING_TOGGLE = RecipeEditorUI.PICKER_TEMPERATURE_COOLING_TOGGLE
+    PICKER_DURATION_TITLE = RecipeEditorUI.PICKER_DURATION_TITLE
+
+    ALERT_MIN_STEPS_TITLE = RecipeEditorUI.ALERT_MIN_STEPS_TITLE
+    ALERT_MIN_STEPS_TEXT = RecipeEditorUI.ALERT_MIN_STEPS_TEXT
+
+    FILE_DIALOG_SAVE_AS_TITLE = RecipeEditorUI.FILE_DIALOG_SAVE_AS_TITLE
+    FILE_DIALOG_SAVE_AS_FILTER = RecipeEditorUI.FILE_DIALOG_SAVE_AS_FILTER
 
     # Match roast window pyqtgraph axis label sizing.
-    PLOT_LABEL_STYLE = {'color': '#ffffff', 'font-size': '11pt'}
+    PLOT_LABEL_STYLE = {'color': PLOT_LABEL_COLOR, 'font-size': '11pt'}
 
     def __init__(self, recipe_data=None, recipe_path=None, compact_ui=False, fullscreen=False):
         super(RecipeEditor, self).__init__()
@@ -173,7 +216,7 @@ class RecipeEditor(QtWidgets.QDialog):
         self.recipeCurveCurve = None
 
         # Define main window for the application.
-        self.setWindowTitle('Openroast')
+        self.setWindowTitle(self.WINDOW_TITLE)
         if self.compact_ui:
             self.setMinimumSize(self.WINDOW_MIN_WIDTH, self.WINDOW_MIN_HEIGHT_COMPACT)
             self.resize(self.WINDOW_MIN_WIDTH, self.WINDOW_MIN_HEIGHT_COMPACT)
@@ -217,8 +260,8 @@ class RecipeEditor(QtWidgets.QDialog):
     def create_ui(self):
         """Create the recipe editor UI using top-level tabs."""
         self.layout = QtWidgets.QGridLayout(self)
-        self.layout.setContentsMargins(8, 8, 8, 8)
-        self.layout.setSpacing(6)
+        self.layout.setContentsMargins(self.ROOT_MARGIN, self.ROOT_MARGIN, self.ROOT_MARGIN, self.ROOT_MARGIN)
+        self.layout.setSpacing(self.ROOT_SPACING)
 
         self.create_editor_tabs()
         self.layout.addWidget(self.editorTabs, 0, 0)
@@ -267,13 +310,13 @@ class RecipeEditor(QtWidgets.QDialog):
 
         self.recipeCurveFigure = None
         self.recipeCurvePlotWidget = pg.PlotWidget(axisItems={"bottom": _TimeAxis(orientation="bottom")})
-        self.recipeCurvePlotWidget.setBackground('#23252a')
-        self.recipeCurvePlotWidget.setLabel('left', 'Temperature (°C)', **self.PLOT_LABEL_STYLE)
-        self.recipeCurvePlotWidget.setLabel('bottom', 'Time', **self.PLOT_LABEL_STYLE)
+        self.recipeCurvePlotWidget.setBackground(self.PLOT_BG_COLOR)
+        self.recipeCurvePlotWidget.setLabel('left', f"{self.PLOT_AXIS_TEMPERATURE} ({chr(176)}C)", **self.PLOT_LABEL_STYLE)
+        self.recipeCurvePlotWidget.setLabel('bottom', self.PLOT_AXIS_TIME, **self.PLOT_LABEL_STYLE)
         self.recipeCurvePlotWidget.showGrid(x=True, y=True, alpha=0.2)
         self.recipeCurvePlotWidget.getAxis('left').setTextPen('w')
         self.recipeCurvePlotWidget.getAxis('bottom').setTextPen('w')
-        self.recipeCurveCurve = self.recipeCurvePlotWidget.plot([], [], pen=pg.mkPen('#8ab71b', width=2))
+        self.recipeCurveCurve = self.recipeCurvePlotWidget.plot([], [], pen=pg.mkPen(self.PLOT_LINE_COLOR, width=2))
 
         self.recipeCurveCanvas = self.recipeCurvePlotWidget
         self.recipeCurveCanvas.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
@@ -288,9 +331,9 @@ class RecipeEditor(QtWidgets.QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        self.closeButton = QtWidgets.QPushButton("CLOSE")
-        self.saveButton = QtWidgets.QPushButton("SAVE")
-        self.saveAsButton = QtWidgets.QPushButton("SAVE AS")
+        self.closeButton = QtWidgets.QPushButton(self.CORNER_BUTTON_TEXT_CLOSE)
+        self.saveButton = QtWidgets.QPushButton(self.CORNER_BUTTON_TEXT_SAVE)
+        self.saveAsButton = QtWidgets.QPushButton(self.CORNER_BUTTON_TEXT_SAVE_AS)
         self.closeButton.setObjectName("smallButton")
         self.saveButton.setObjectName("smallButton")
         self.saveAsButton.setObjectName("smallButton")
@@ -337,15 +380,15 @@ class RecipeEditor(QtWidgets.QDialog):
         page = QtWidgets.QWidget()
         page.setObjectName(self.TAB_PAGE_OBJECT_NAME_INFO)
         layout = QtWidgets.QGridLayout(page)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(8)
+        layout.setContentsMargins(self.PAGE_MARGIN, self.PAGE_MARGIN, self.PAGE_MARGIN, self.PAGE_MARGIN)
+        layout.setSpacing(self.PAGE_SPACING)
 
         # Left side: short metadata fields and temperature unit selector.
         formWidget = QtWidgets.QWidget()
         formLayout = QtWidgets.QGridLayout(formWidget)
         formLayout.setContentsMargins(0, 0, 0, 0)
-        formLayout.setHorizontalSpacing(6)
-        formLayout.setVerticalSpacing(4)
+        formLayout.setHorizontalSpacing(self.FORM_H_SPACING)
+        formLayout.setVerticalSpacing(self.FORM_V_SPACING)
 
         self.recipeName = QtWidgets.QLineEdit()
         self.recipeCreator = QtWidgets.QLineEdit()
@@ -375,14 +418,14 @@ class RecipeEditor(QtWidgets.QDialog):
         self.temperatureUnitSelect.currentIndexChanged.connect(self.on_temperature_unit_changed)
 
         form_fields = [
-            ("Recipe Name:", self.recipeName),
-            ("Created by:", self.recipeCreator),
-            ("Roast Type:", self.recipeRoastType),
-            ("Bean Region:", self.beanRegion),
-            ("Bean Country:", self.beanCountry),
-            ("Bean Link:", self.beanLink),
-            ("Bean Store Name:", self.beanStore),
-            ("Temperature unit:", self.temperatureUnitSelect),
+            (self.FORM_LABEL_RECIPE_NAME, self.recipeName),
+            (self.FORM_LABEL_CREATED_BY, self.recipeCreator),
+            (self.FORM_LABEL_ROAST_TYPE, self.recipeRoastType),
+            (self.FORM_LABEL_BEAN_REGION, self.beanRegion),
+            (self.FORM_LABEL_BEAN_COUNTRY, self.beanCountry),
+            (self.FORM_LABEL_BEAN_LINK, self.beanLink),
+            (self.FORM_LABEL_BEAN_STORE_NAME, self.beanStore),
+            (self.FORM_LABEL_TEMPERATURE_UNIT, self.temperatureUnitSelect),
         ]
         for row, (label_text, widget) in enumerate(form_fields):
             formLayout.addWidget(QtWidgets.QLabel(label_text), row, 0)
@@ -393,7 +436,7 @@ class RecipeEditor(QtWidgets.QDialog):
         descLayout = QtWidgets.QVBoxLayout(descWidget)
         descLayout.setContentsMargins(0, 0, 0, 0)
         descLayout.setSpacing(4)
-        descLayout.addWidget(QtWidgets.QLabel("Description:"))
+        descLayout.addWidget(QtWidgets.QLabel(self.FORM_LABEL_DESCRIPTION))
         self.recipeDescriptionBox = QtWidgets.QTextEdit()
         descLayout.addWidget(self.recipeDescriptionBox)
 
@@ -408,8 +451,8 @@ class RecipeEditor(QtWidgets.QDialog):
         page = QtWidgets.QWidget()
         page.setObjectName(self.TAB_PAGE_OBJECT_NAME_PROFILE)
         layout = QtWidgets.QHBoxLayout(page)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(8)
+        layout.setContentsMargins(self.PAGE_MARGIN, self.PAGE_MARGIN, self.PAGE_MARGIN, self.PAGE_MARGIN)
+        layout.setSpacing(self.PAGE_SPACING)
         page.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 
         self.recipeSteps = self.create_steps_spreadsheet()
@@ -422,8 +465,8 @@ class RecipeEditor(QtWidgets.QDialog):
         self.curveLayout = curveLayout
         curveLayout.setContentsMargins(0, 0, 0, 0)
         curveLayout.setSpacing(4)
-        curveLayout.addWidget(QtWidgets.QLabel("Heating curve:"))
-        self.curveLoadingLabel = QtWidgets.QLabel("Loading curve...")
+        curveLayout.addWidget(QtWidgets.QLabel(self.SECTION_LABEL_HEATING_CURVE))
+        self.curveLoadingLabel = QtWidgets.QLabel(self.SECTION_LABEL_LOADING_CURVE)
         self.curveLoadingLabel.setAlignment(QtCore.Qt.AlignCenter)
         curveLayout.addWidget(self.curveLoadingLabel)
 
@@ -438,8 +481,8 @@ class RecipeEditor(QtWidgets.QDialog):
         # Derive initial split from table geometry constants so tuning constants
         # (column widths/editor widths/TABLE_MIN_WIDTH) directly affects layout.
         base_width = self.WINDOW_MIN_WIDTH if self.compact_ui else self.WINDOW_RESIZE_WIDTH_DEFAULT
-        layout_overhead = 36  # outer margins + splitter handle + tab/frame overhead
-        min_plot_width = 240
+        layout_overhead = self.SPLITTER_LAYOUT_OVERHEAD  # outer margins + splitter handle + tab/frame overhead
+        min_plot_width = self.SPLITTER_MIN_PLOT_WIDTH
         left_width = self.recipeSteps.minimumWidth()
         right_width = max(min_plot_width, base_width - left_width - layout_overhead)
         splitter.setSizes([left_width, right_width])
@@ -516,10 +559,10 @@ class RecipeEditor(QtWidgets.QDialog):
     def _update_steps_header_labels(self, table):
         unit_symbol = self._current_unit_display_label()
         table.setHorizontalHeaderLabels([
-            f"T ({chr(176)}{unit_symbol})",
-            "Fan",
-            "Duration",
-            "Modify",
+            f"{self.TABLE_HEADER_TEMPERATURE_PREFIX} ({chr(176)}{unit_symbol})",
+            self.TABLE_HEADER_FAN,
+            self.TABLE_HEADER_DURATION,
+            self.TABLE_HEADER_MODIFY,
         ])
 
     def close_edit_window(self):
@@ -739,9 +782,11 @@ class RecipeEditor(QtWidgets.QDialog):
                 state["value"] = min_display
 
         dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle("Set Temperature")
+        dialog.setWindowTitle(self.PICKER_TEMPERATURE_TITLE)
         dialog.setModal(True)
-        dialog.setMinimumWidth(320 if self.compact_ui else 360)
+        dialog.setMinimumWidth(
+            self.PICKER_DIALOG_WIDTH_COMPACT if self.compact_ui else self.PICKER_DIALOG_WIDTH_DEFAULT
+        )
 
         layout = QtWidgets.QVBoxLayout(dialog)
         value_label = QtWidgets.QLabel()
@@ -764,7 +809,7 @@ class RecipeEditor(QtWidgets.QDialog):
             state["value"] = max(min_display, min(max_display, state["value"] + int(delta)))
             refresh_label()
 
-        cooling_toggle = QtWidgets.QPushButton("Cooling")
+        cooling_toggle = QtWidgets.QPushButton(self.PICKER_TEMPERATURE_COOLING_TOGGLE)
         cooling_toggle.setCheckable(True)
         cooling_toggle.setChecked(state["cooling"])
         cooling_toggle.clicked.connect(set_cooling)
@@ -784,8 +829,8 @@ class RecipeEditor(QtWidgets.QDialog):
         step_row.addWidget(plus_big)
 
         action_row = QtWidgets.QHBoxLayout()
-        cancel_button = QtWidgets.QPushButton("Cancel")
-        apply_button = QtWidgets.QPushButton("Apply")
+        cancel_button = QtWidgets.QPushButton(self.PICKER_CANCEL_TEXT)
+        apply_button = QtWidgets.QPushButton(self.PICKER_APPLY_TEXT)
         cancel_button.clicked.connect(dialog.reject)
         apply_button.clicked.connect(dialog.accept)
         action_row.addWidget(cancel_button)
@@ -811,9 +856,11 @@ class RecipeEditor(QtWidgets.QDialog):
         }
 
         dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle("Set Duration")
+        dialog.setWindowTitle(self.PICKER_DURATION_TITLE)
         dialog.setModal(True)
-        dialog.setMinimumWidth(320 if self.compact_ui else 360)
+        dialog.setMinimumWidth(
+            self.PICKER_DIALOG_WIDTH_COMPACT if self.compact_ui else self.PICKER_DIALOG_WIDTH_DEFAULT
+        )
 
         layout = QtWidgets.QVBoxLayout(dialog)
         value_label = QtWidgets.QLabel()
@@ -845,8 +892,8 @@ class RecipeEditor(QtWidgets.QDialog):
         step_row.addWidget(plus_big)
 
         action_row = QtWidgets.QHBoxLayout()
-        cancel_button = QtWidgets.QPushButton("Cancel")
-        apply_button = QtWidgets.QPushButton("Apply")
+        cancel_button = QtWidgets.QPushButton(self.PICKER_CANCEL_TEXT)
+        apply_button = QtWidgets.QPushButton(self.PICKER_APPLY_TEXT)
         cancel_button.clicked.connect(dialog.reject)
         apply_button.clicked.connect(dialog.accept)
         action_row.addWidget(cancel_button)
@@ -921,14 +968,14 @@ class RecipeEditor(QtWidgets.QDialog):
         """Reload rows in the recipe steps table with new steps."""
         if len(newSteps) < 1:
             alert = QtWidgets.QMessageBox()
-            alert.setWindowTitle('openroast')
+            alert.setWindowTitle(self.ALERT_MIN_STEPS_TITLE)
             style_sheet = self.styleSheet()
             if not style_sheet:
                 app = QtWidgets.QApplication.instance()
                 style_sheet = app.styleSheet() if app is not None else ""
             if isinstance(style_sheet, str) and style_sheet:
                 alert.setStyleSheet(style_sheet)
-            alert.setText("You must have atleast one step!")
+            alert.setText(self.ALERT_MIN_STEPS_TEXT)
             dialog_exec = getattr(alert, "exec", alert.exec_)
             dialog_exec()
             return
@@ -943,8 +990,8 @@ class RecipeEditor(QtWidgets.QDialog):
         steps = self.get_current_table_values()
 
         unit_symbol = self._current_unit_display_label()
-        self.recipeCurvePlotWidget.setLabel('bottom', 'Time', **self.PLOT_LABEL_STYLE)
-        self.recipeCurvePlotWidget.setLabel('left', f"Temperature ({chr(176)}{unit_symbol})", **self.PLOT_LABEL_STYLE)
+        self.recipeCurvePlotWidget.setLabel('bottom', self.PLOT_AXIS_TIME, **self.PLOT_LABEL_STYLE)
+        self.recipeCurvePlotWidget.setLabel('left', f"{self.PLOT_AXIS_TEMPERATURE} ({chr(176)}{unit_symbol})", **self.PLOT_LABEL_STYLE)
 
         x_seconds = [0]
         baseline_c = float(MIN_TEMPERATURE_C)
@@ -1009,9 +1056,9 @@ class RecipeEditor(QtWidgets.QDialog):
         start_path = self._default_recipe_path()
         file_path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
-            "Save Recipe As",
+            self.FILE_DIALOG_SAVE_AS_TITLE,
             start_path,
-            "Recipe Files (*.json);;All Files (*)",
+            self.FILE_DIALOG_SAVE_AS_FILTER,
         )
         if not file_path:
             return

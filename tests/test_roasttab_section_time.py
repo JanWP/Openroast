@@ -170,6 +170,31 @@ class RoastTabSectionTimeTests(unittest.TestCase):
         self.assertEqual(tab.roaster.idle_calls, 1)
         self.assertEqual(tab.roaster.reset_control_state_calls, 1)
 
+    def test_create_right_pane_non_compact_places_spacer_above_buttons(self):
+        tab = RoastTab.__new__(RoastTab)
+        tab.compact_ui = False
+        tab.create_gauge_window = lambda: QtWidgets.QVBoxLayout()
+        tab.create_slider_panel = lambda: QtWidgets.QGridLayout()
+        tab.create_button_panel = lambda: QtWidgets.QGridLayout()
+
+        pane = tab.create_right_pane()
+
+        self.assertEqual(pane.count(), 4)
+        self.assertIsNotNone(pane.itemAt(2).widget())
+        self.assertIsNotNone(pane.itemAt(3).layout())
+
+    def test_create_right_pane_compact_has_no_extra_spacer(self):
+        tab = RoastTab.__new__(RoastTab)
+        tab.compact_ui = True
+        tab.create_gauge_window = lambda: QtWidgets.QVBoxLayout()
+        tab.create_slider_panel = lambda: QtWidgets.QGridLayout()
+        tab.create_button_panel = lambda: QtWidgets.QGridLayout()
+
+        pane = tab.create_right_pane()
+
+        self.assertEqual(pane.count(), 3)
+        self.assertIsNotNone(pane.itemAt(2).layout())
+
 
 if __name__ == "__main__":
     unittest.main()

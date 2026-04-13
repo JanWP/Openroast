@@ -22,9 +22,36 @@ from openroast.temperature import (
     temperature_to_celsius,
 )
 from openroast.views import customqtwidgets
+from openroast.views.ui_constants import RoastTabUI
 from openroast import app_config
 
+
+NON_COMPACT_PROGRESS_ROW_MIN_HEIGHT = RoastTabUI.NON_COMPACT_PROGRESS_ROW_MIN_HEIGHT
+
 class RoastTab(QtWidgets.QWidget):
+    COMPACT_CONTENTS_MARGINS = RoastTabUI.COMPACT_CONTENTS_MARGINS
+    COMPACT_HORIZONTAL_SPACING = RoastTabUI.COMPACT_HORIZONTAL_SPACING
+    COMPACT_VERTICAL_SPACING = RoastTabUI.COMPACT_VERTICAL_SPACING
+
+    BUTTON_ROAST = RoastTabUI.BUTTON_ROAST
+    BUTTON_COOL = RoastTabUI.BUTTON_COOL
+    BUTTON_STOP = RoastTabUI.BUTTON_STOP
+    BUTTON_RESET = RoastTabUI.BUTTON_RESET
+
+    LABEL_TARGET_TEMP = RoastTabUI.LABEL_TARGET_TEMP
+    LABEL_SECTION_DURATION = RoastTabUI.LABEL_SECTION_DURATION
+    LABEL_FAN_SPEED = RoastTabUI.LABEL_FAN_SPEED
+    LABEL_CURRENT_TEMP = RoastTabUI.LABEL_CURRENT_TEMP
+    LABEL_REMAINING_SECTION_DURATION = RoastTabUI.LABEL_REMAINING_SECTION_DURATION
+    LABEL_TOTAL_TIME = RoastTabUI.LABEL_TOTAL_TIME
+    BUTTON_NEXT = RoastTabUI.BUTTON_NEXT
+
+    DIALOG_RESET_TITLE = RoastTabUI.DIALOG_RESET_TITLE
+    DIALOG_RESET_STATE_MESSAGE = RoastTabUI.DIALOG_RESET_STATE_MESSAGE
+    DIALOG_RESET_BEGINNING_MESSAGE = RoastTabUI.DIALOG_RESET_BEGINNING_MESSAGE
+    DIALOG_STOP_TITLE = RoastTabUI.DIALOG_STOP_TITLE
+    DIALOG_STOP_MESSAGE = RoastTabUI.DIALOG_STOP_MESSAGE
+
     def __init__(self, roaster, recipes, compact_ui=False):
         super(RoastTab, self).__init__()
 
@@ -34,8 +61,8 @@ class RoastTab(QtWidgets.QWidget):
 
         # Use a blinker for connect_state == CS_CONNECTING...
         self._connecting_blinker = True
-        self.CONNECT_TXT_PLEASE_CONNECT = "Please connect your roaster."
-        self.CONNECT_TXT_CONNECTING = "Found roaster, connecting. This could take >20 seconds "
+        self.CONNECT_TXT_PLEASE_CONNECT = RoastTabUI.CONNECT_TEXT_PLEASE_CONNECT
+        self.CONNECT_TXT_CONNECTING = RoastTabUI.CONNECT_TEXT_CONNECTING
 
         # process-safe flag to schedule controller vars update from recipe obj
         self._flag_update_controllers = sharedctypes.Value('i', 0)
@@ -85,9 +112,9 @@ class RoastTab(QtWidgets.QWidget):
         # Create the main layout for the roast tab.
         self.layout = QtWidgets.QGridLayout()
         if self.compact_ui:
-            self.layout.setContentsMargins(4, 2, 4, 2)
-            self.layout.setHorizontalSpacing(8)
-            self.layout.setVerticalSpacing(4)
+            self.layout.setContentsMargins(*self.COMPACT_CONTENTS_MARGINS)
+            self.layout.setHorizontalSpacing(self.COMPACT_HORIZONTAL_SPACING)
+            self.layout.setVerticalSpacing(self.COMPACT_VERTICAL_SPACING)
 
         # Create graph widget.
         self.graphWidget = customqtwidgets.RoastGraphWidget(
@@ -107,6 +134,10 @@ class RoastTab(QtWidgets.QWidget):
         if self.compact_ui:
             self.layout.setRowStretch(0, 10)
             self.layout.setRowStretch(1, 1)
+        else:
+            # Reserve progress-bar space from startup so graph/control bottoms
+            # stay aligned before and after a recipe is loaded.
+            self.layout.setRowMinimumHeight(1, NON_COMPACT_PROGRESS_ROW_MIN_HEIGHT)
 
         # Create not connected label.
         self.connectionStatusLabel = QtWidgets.QLabel(self.CONNECT_TXT_PLEASE_CONNECT)
@@ -322,15 +353,16 @@ class RoastTab(QtWidgets.QWidget):
         sliderPanel = self.create_slider_panel()
         rightPane.addLayout(sliderPanel)
 
-        # Create button panel.
-        buttonPanel = self.create_button_panel()
-        rightPane.addLayout(buttonPanel)
-
-        # Add a bottom spacer to keep sizing.
+        # In non-compact mode, place a stretchable spacer before buttons so
+        # the button row anchors to the bottom and aligns with graph bottom.
         if not self.compact_ui:
             spacer = QtWidgets.QWidget()
             spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
             rightPane.addWidget(spacer)
+
+        # Create button panel.
+        buttonPanel = self.create_button_panel()
+        rightPane.addLayout(buttonPanel)
 
         return rightPane
 
@@ -384,7 +416,7 @@ class RoastTab(QtWidgets.QWidget):
                 counter = i
 
            # Create next button.
-            nextButton = QtWidgets.QPushButton("NEXT")
+            nextButton = QtWidgets.QPushButton(self.BUTTON_NEXT)
             nextButton.setObjectName("nextButton")
             nextButton.clicked.connect(self.next_section)
             progressBar.addWidget(nextButton, 0, (counter + 1))
@@ -417,13 +449,13 @@ class RoastTab(QtWidgets.QWidget):
 
         # Create current temp gauge.
         self.currentTempLabel = QtWidgets.QLabel(self._format_display_temperature(self._min_temp_c))
-        currentTemp = self.create_info_box("CURRENT TEMP", "tempGauge",
+        currentTemp = self.create_info_box(self.LABEL_CURRENT_TEMP, "tempGauge",
             self.currentTempLabel)
         guageWindow.addLayout(currentTemp, 0, 0)
 
         # Create target temp gauge.
         self.targetTempLabel = QtWidgets.QLabel()
-        targetTemp = self.create_info_box("TARGET TEMP", "tempGauge", self.targetTempLabel)
+        targetTemp = self.create_info_box(self.LABEL_TARGET_TEMP, "tempGauge", self.targetTempLabel)
         guageWindow.addLayout(targetTemp, 0, 1)
 
         # Create current duration.
@@ -431,7 +463,7 @@ class RoastTab(QtWidgets.QWidget):
         # Backward-compatible alias for tests/callers still using the old name.
         self.sectionTimeLabel = self.sectionDurationLabel
         currentTime = self.create_info_box(
-            "REMAINING SECTION DURATION",
+            self.LABEL_REMAINING_SECTION_DURATION,
             "timeWindow",
             self.sectionDurationLabel,
         )
@@ -439,7 +471,7 @@ class RoastTab(QtWidgets.QWidget):
 
         # Create totalTime.
         self.totalTimeLabel = QtWidgets.QLabel()
-        totalTime = self.create_info_box("TOTAL TIME", "timeWindow", self.totalTimeLabel)
+        totalTime = self.create_info_box(self.LABEL_TOTAL_TIME, "timeWindow", self.totalTimeLabel)
         guageWindow.addLayout(totalTime, 1, 1)
 
         return guageWindow
@@ -452,25 +484,25 @@ class RoastTab(QtWidgets.QWidget):
             buttonPanel.setVerticalSpacing(2)
 
         # Create start roast button.
-        self.startButton = QtWidgets.QPushButton("ROAST")
+        self.startButton = QtWidgets.QPushButton(self.BUTTON_ROAST)
         self.startButton.setObjectName("roastControlButton")
         self.startButton.clicked.connect(self.roaster.roast)
         buttonPanel.addWidget(self.startButton, 0, 0)
 
         # Create cool button.
-        self.coolButton = QtWidgets.QPushButton("COOL")
+        self.coolButton = QtWidgets.QPushButton(self.BUTTON_COOL)
         self.coolButton.setObjectName("roastControlButton")
         self.coolButton.clicked.connect(self.roaster.cool)
         buttonPanel.addWidget(self.coolButton, 0, 1)
 
         # Create stop roast button.
-        self.stopButton = QtWidgets.QPushButton("STOP")
+        self.stopButton = QtWidgets.QPushButton(self.BUTTON_STOP)
         self.stopButton.setObjectName("roastControlButton")
         self.stopButton.clicked.connect(self.on_stop_clicked)
         buttonPanel.addWidget(self.stopButton, 0, 2)
 
         # Create reset roast button.
-        self.resetButton = QtWidgets.QPushButton("RESET")
+        self.resetButton = QtWidgets.QPushButton(self.BUTTON_RESET)
         self.resetButton.setObjectName("roastControlButton")
         self.resetButton.clicked.connect(self.reset_current_roast)
         buttonPanel.addWidget(self.resetButton, 0, 3)
@@ -486,7 +518,7 @@ class RoastTab(QtWidgets.QWidget):
             sliderPanel.setVerticalSpacing(2)
 
         # Create temperature slider label.
-        tempSliderLabel = QtWidgets.QLabel("TARGET TEMP")
+        tempSliderLabel = QtWidgets.QLabel(self.LABEL_TARGET_TEMP)
         sliderPanel.addWidget(tempSliderLabel, 0, 0)
 
         # Create temperature slider.
@@ -509,7 +541,7 @@ class RoastTab(QtWidgets.QWidget):
         self.update_target_temp()
 
         # Create duration slider label.
-        durationSliderLabel = QtWidgets.QLabel("SECTION DURATION")
+        durationSliderLabel = QtWidgets.QLabel(self.LABEL_SECTION_DURATION)
         sliderPanel.addWidget(durationSliderLabel, 2, 0)
 
         # Create duration slider.
@@ -535,7 +567,7 @@ class RoastTab(QtWidgets.QWidget):
         self.update_section_duration_setpoint()
 
         # Create fan speed slider.
-        fanSliderLabel = QtWidgets.QLabel("FAN SPEED")
+        fanSliderLabel = QtWidgets.QLabel(self.LABEL_FAN_SPEED)
         sliderPanel.addWidget(fanSliderLabel, 4, 0)
 
         # Create fan speed slider.
@@ -708,8 +740,8 @@ class RoastTab(QtWidgets.QWidget):
         if self._confirm_on_clear:
             answer = QtWidgets.QMessageBox.question(
                 self,
-                "Reset roast",
-                "Reset the current roast and recipe state?",
+                self.DIALOG_RESET_TITLE,
+                self.DIALOG_RESET_STATE_MESSAGE,
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
                 QtWidgets.QMessageBox.No,
             )
@@ -748,8 +780,8 @@ class RoastTab(QtWidgets.QWidget):
         if self._confirm_on_clear:
             answer = QtWidgets.QMessageBox.question(
                 self,
-                "Reset roast",
-                "Reset the current roast to the beginning?",
+                self.DIALOG_RESET_TITLE,
+                self.DIALOG_RESET_BEGINNING_MESSAGE,
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
                 QtWidgets.QMessageBox.No,
             )
@@ -845,8 +877,8 @@ class RoastTab(QtWidgets.QWidget):
         if self._confirm_on_stop:
             answer = QtWidgets.QMessageBox.question(
                 self,
-                "Stop roast",
-                "Stop the current roast now?",
+                self.DIALOG_STOP_TITLE,
+                self.DIALOG_STOP_MESSAGE,
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
                 QtWidgets.QMessageBox.No,
             )

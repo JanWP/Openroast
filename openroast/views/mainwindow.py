@@ -13,6 +13,7 @@ from openroast.views import roasttab
 from openroast.views import recipestab
 from openroast.views import preferencestab
 from openroast.views import aboutwindow
+from openroast.views.ui_constants import MainWindowUI, SharedColors
 from openroast.version import __version__
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -27,7 +28,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._disconnect_called = False
 
         # Define main window for the application.
-        self.setWindowTitle('Openroast v%s' % __version__)
+        self.setWindowTitle(MainWindowUI.WINDOW_TITLE_TEMPLATE.format(version=__version__))
         self.setMinimumSize(800, 480)
         self.setContextMenuPolicy(QtCore.Qt.NoContextMenu)
         self.compact_ui = compact_ui
@@ -65,44 +66,44 @@ class MainWindow(QtWidgets.QMainWindow):
     def create_actions(self):
         # File menu actions.
         self.clearRoastAct = QtWidgets.QAction(
-            "&Clear",
+            MainWindowUI.ACTION_CLEAR,
             self,
             shortcut=QtGui.QKeySequence(
                 QtCore.Qt.CTRL + QtCore.Qt.SHIFT + QtCore.Qt.Key_C),
-            statusTip="Clear the roast window",
+            statusTip=MainWindowUI.STATUS_CLEAR_ROAST,
             triggered=self.roast.clear_roast)
 
-        self.newRoastAct = QtWidgets.QAction("&Roast Again", self,
+        self.newRoastAct = QtWidgets.QAction(MainWindowUI.ACTION_ROAST_AGAIN, self,
             shortcut=QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_R),
-            statusTip="Roast recipe again",
+            statusTip=MainWindowUI.STATUS_ROAST_AGAIN,
             triggered=self.roast.reset_current_roast)
 
-        self.importRecipeAct = QtWidgets.QAction("&Import Recipe", self,
+        self.importRecipeAct = QtWidgets.QAction(MainWindowUI.ACTION_IMPORT_RECIPE, self,
             shortcut=QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_I),
-            statusTip="Import a recipe file",
+            statusTip=MainWindowUI.STATUS_IMPORT_RECIPE,
             triggered=self.import_recipe_file)
 
-        self.exportRecipeAct = QtWidgets.QAction("&Export Recipe", self,
+        self.exportRecipeAct = QtWidgets.QAction(MainWindowUI.ACTION_EXPORT_RECIPE, self,
             shortcut=QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_E),
-            statusTip="Export a recipe file",
+            statusTip=MainWindowUI.STATUS_EXPORT_RECIPE,
             triggered=self.export_recipe_file)
 
-        self.saveRoastGraphAct = QtWidgets.QAction("&Save Roast Graph", self,
+        self.saveRoastGraphAct = QtWidgets.QAction(MainWindowUI.ACTION_SAVE_ROAST_GRAPH, self,
             shortcut=QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_K),
-            statusTip="Save an image of the roast graph",
+            statusTip=MainWindowUI.STATUS_SAVE_ROAST_GRAPH,
             triggered=self.roast.save_roast_graph)
 
-        self.saveRoastGraphCSVAct = QtWidgets.QAction("&Save Roast Graph CSV", self,
-            statusTip="Save the roast graph as a csv",
+        self.saveRoastGraphCSVAct = QtWidgets.QAction(MainWindowUI.ACTION_SAVE_ROAST_GRAPH_CSV, self,
+            statusTip=MainWindowUI.STATUS_SAVE_ROAST_GRAPH_CSV,
             triggered=self.roast.save_roast_graph_csv)
 
-        self.openAboutWindow = QtWidgets.QAction("&About", self,
-            statusTip="About openroast",
+        self.openAboutWindow = QtWidgets.QAction(MainWindowUI.ACTION_ABOUT, self,
+            statusTip=MainWindowUI.STATUS_ABOUT,
             triggered=self.open_about_window)
 
-        self.quitAppAct = QtWidgets.QAction("&Quit", self,
+        self.quitAppAct = QtWidgets.QAction(MainWindowUI.ACTION_QUIT, self,
             shortcut=QtGui.QKeySequence(QtCore.Qt.CTRL + QtCore.Qt.Key_Q),
-            statusTip="Quit Openroast",
+            statusTip=MainWindowUI.STATUS_QUIT,
             triggered=self.close)
 
     def create_shortcuts(self):
@@ -142,7 +143,7 @@ class MainWindow(QtWidgets.QMainWindow):
         menubar = self.menuBar()
 
         # Create file menu.
-        self.fileMenu = menubar.addMenu("&File")
+        self.fileMenu = menubar.addMenu(MainWindowUI.MENU_FILE)
         self.fileMenu.addAction(self.clearRoastAct)
         self.fileMenu.addAction(self.newRoastAct)
         self.fileMenu.addSeparator()
@@ -155,7 +156,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fileMenu.addAction(self.quitAppAct)
 
         # Create help menu.
-        self.helpMenu = menubar.addMenu("&Help")
+        self.helpMenu = menubar.addMenu(MainWindowUI.MENU_HELP)
         self.helpMenu.addAction(self.openAboutWindow)
 
         if self.compact_ui:
@@ -171,24 +172,24 @@ class MainWindow(QtWidgets.QMainWindow):
             self.mainToolBar.setIconSize(QtCore.QSize(16, 16))
 
         # Add logo.
-        self.logo = QtWidgets.QLabel("openroast")
+        self.logo = QtWidgets.QLabel(MainWindowUI.LOGO_TEXT)
         self.logo.setObjectName("logo")
         self.mainToolBar.addWidget(self.logo)
 
         # Add roasting tab button.
-        self.roastTabButton = QtWidgets.QPushButton("ROAST", self)
+        self.roastTabButton = QtWidgets.QPushButton(MainWindowUI.TAB_BUTTON_ROAST, self)
         self.roastTabButton.setObjectName("toolbar")
         self.roastTabButton.clicked.connect(self.select_roast_tab)
         self.mainToolBar.addWidget(self.roastTabButton)
 
         # Add recipes tab button.
-        self.recipesTabButton = QtWidgets.QPushButton("RECIPES", self)
+        self.recipesTabButton = QtWidgets.QPushButton(MainWindowUI.TAB_BUTTON_RECIPES, self)
         self.recipesTabButton.setObjectName("toolbar")
         self.recipesTabButton.clicked.connect(self.select_recipes_tab)
         self.mainToolBar.addWidget(self.recipesTabButton)
 
         # Add preferences tab button.
-        self.preferencesTabButton = QtWidgets.QPushButton("PREFERENCES", self)
+        self.preferencesTabButton = QtWidgets.QPushButton(MainWindowUI.TAB_BUTTON_PREFERENCES, self)
         self.preferencesTabButton.setObjectName("toolbar")
         self.preferencesTabButton.clicked.connect(self.select_preferences_tab)
         self.mainToolBar.addWidget(self.preferencesTabButton)
@@ -199,7 +200,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.mainToolBar.addWidget(self.spacer)
 
-        self.heaterDebugLabel = QtWidgets.QLabel("Heater: 0%")
+        self.heaterDebugLabel = QtWidgets.QLabel(MainWindowUI.HEATER_LABEL_TEMPLATE.format(level=0))
         self.heaterDebugLabel.setObjectName("heaterDebugLabel")
         self.mainToolBar.addWidget(self.heaterDebugLabel)
 
@@ -209,17 +210,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mainToolBar.addWidget(self.heaterDebugLed)
 
         # Always-available touchscreen controls for kiosk-like setups.
-        self.menuToggleButton = QtWidgets.QPushButton("MENU", self)
+        self.menuToggleButton = QtWidgets.QPushButton(MainWindowUI.TOOLBAR_MENU_TOGGLE, self)
         self.menuToggleButton.setObjectName("toolbarUtility")
         self.menuToggleButton.clicked.connect(self.toggle_menu_bar)
         self.mainToolBar.addWidget(self.menuToggleButton)
 
-        self.fullscreenToggleButton = QtWidgets.QPushButton("FULL", self)
+        self.fullscreenToggleButton = QtWidgets.QPushButton(MainWindowUI.TOOLBAR_FULLSCREEN_TOGGLE, self)
         self.fullscreenToggleButton.setObjectName("toolbarUtility")
         self.fullscreenToggleButton.clicked.connect(self.toggle_fullscreen)
         self.mainToolBar.addWidget(self.fullscreenToggleButton)
 
-        self.quitTouchButton = QtWidgets.QPushButton("QUIT", self)
+        self.quitTouchButton = QtWidgets.QPushButton(MainWindowUI.TOOLBAR_QUIT, self)
         self.quitTouchButton.setObjectName("toolbarUtility")
         self.quitTouchButton.clicked.connect(self.close)
         self.mainToolBar.addWidget(self.quitTouchButton)
@@ -297,8 +298,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def import_recipe_file(self):
         try:
-            recipeFile = QtWidgets.QFileDialog.getOpenFileName(self, 'Select Recipe',
-                os.path.expanduser('~/'), 'Recipes (*.json);;All Files (*)')
+            recipeFile = QtWidgets.QFileDialog.getOpenFileName(self, MainWindowUI.FILE_DIALOG_SELECT_RECIPE_TITLE,
+                os.path.expanduser('~/'), MainWindowUI.FILE_DIALOG_RECIPE_FILTER)
             shutil.copy2(recipeFile[0],
                 os.path.expanduser('~/Documents/Openroast/Recipes/My Recipes/'))
         except FileNotFoundError:
@@ -309,8 +310,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def export_recipe_file(self):
         try:
-            recipeFile = QtWidgets.QFileDialog.getSaveFileName(self, 'Export Recipe',
-                os.path.expanduser('~/'), 'Recipes (*.json);;All Files (*)')
+            recipeFile = QtWidgets.QFileDialog.getSaveFileName(self, MainWindowUI.FILE_DIALOG_EXPORT_RECIPE_TITLE,
+                os.path.expanduser('~/'), MainWindowUI.FILE_DIALOG_RECIPE_FILTER)
             jsonObject = json.dumps(
                 self.recipes.currentlySelectedRecipe, indent=4)
 
@@ -380,7 +381,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._heaterLevel == heater_level:
             return
         self._heaterLevel = heater_level
-        self.heaterDebugLabel.setText(f"Heater: {heater_level:3d}%")
+        self.heaterDebugLabel.setText(MainWindowUI.HEATER_LABEL_TEMPLATE.format(level=heater_level))
 
     def _apply_heater_led_state(self, heater_on):
         heater_on = bool(heater_on)
@@ -390,20 +391,22 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if heater_on:
             self.heaterDebugLed.setStyleSheet(
-                "background-color: #8ab71b; border: 1px solid #649100; border-radius: 6px;"
+                f"background-color: {SharedColors.ACCENT_PRIMARY}; "
+                f"border: 1px solid {SharedColors.ACCENT_PRIMARY_BORDER}; border-radius: 6px;"
             )
         else:
             self.heaterDebugLed.setStyleSheet(
-                "background-color: #2e3138; border: 1px solid #6d7686; border-radius: 6px;"
+                f"background-color: {SharedColors.SURFACE_TAB_INACTIVE}; "
+                f"border: 1px solid {SharedColors.BORDER_NEUTRAL}; border-radius: 6px;"
             )
 
     def update_toolbar_utility_buttons(self):
         if hasattr(self, 'menuToggleButton'):
             self.menuToggleButton.setText(
-                "MENU ON" if self.menuBar().isVisible() else "MENU OFF")
+                MainWindowUI.TOOLBAR_MENU_ON if self.menuBar().isVisible() else MainWindowUI.TOOLBAR_MENU_OFF)
         if hasattr(self, 'fullscreenToggleButton'):
             self.fullscreenToggleButton.setText(
-                "WINDOW" if self.isFullScreen() else "FULL")
+                MainWindowUI.TOOLBAR_WINDOW if self.isFullScreen() else MainWindowUI.TOOLBAR_FULLSCREEN_TOGGLE)
         self.update_heater_debug_indicators()
 
     def closeEvent(self, event):

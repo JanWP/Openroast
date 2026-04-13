@@ -17,6 +17,7 @@ from openroast.temperature import (
 )
 from openroast.views import customqtwidgets
 from openroast.views import recipeeditorwindow
+from openroast.views.ui_constants import RecipesTabUI
 
 
 class RecipesTab(QtWidgets.QWidget):
@@ -88,7 +89,7 @@ class RecipesTab(QtWidgets.QWidget):
     def create_new_recipe_button(self):
 
         # Add create new recipe button.
-        createNewRecipeButton = QtWidgets.QPushButton("NEW RECIPE")
+        createNewRecipeButton = QtWidgets.QPushButton(RecipesTabUI.BUTTON_NEW_RECIPE)
         createNewRecipeButton.clicked.connect(self.create_new_recipe)
         return createNewRecipeButton
 
@@ -97,12 +98,12 @@ class RecipesTab(QtWidgets.QWidget):
         populated when a recipe is chosen from the left column."""
         # Create all of the gui Objects
         window = QtWidgets.QGridLayout()
-        self.nameLabel = QtWidgets.QLabel("Recipe Name")
-        self.creatorLabel = QtWidgets.QLabel("Created by ")
-        self.totalTimeLabel = QtWidgets.QLabel("Total Time: ")
-        self.roastTypeLabel = QtWidgets.QLabel("Roast Type: ")
-        self.beanRegionLabel = QtWidgets.QLabel("Bean Region: ")
-        self.beanCountryLabel = QtWidgets.QLabel("Bean Country: ")
+        self.nameLabel = QtWidgets.QLabel(RecipesTabUI.LABEL_RECIPE_NAME)
+        self.creatorLabel = QtWidgets.QLabel(RecipesTabUI.LABEL_CREATED_BY)
+        self.totalTimeLabel = QtWidgets.QLabel(RecipesTabUI.LABEL_TOTAL_TIME)
+        self.roastTypeLabel = QtWidgets.QLabel(RecipesTabUI.LABEL_ROAST_TYPE)
+        self.beanRegionLabel = QtWidgets.QLabel(RecipesTabUI.LABEL_BEAN_REGION)
+        self.beanCountryLabel = QtWidgets.QLabel(RecipesTabUI.LABEL_BEAN_COUNTRY)
         self.descriptionBox = QtWidgets.QTextEdit()
         self.descriptionBox.setReadOnly(True)
         self.stepsTable = QtWidgets.QTableWidget()
@@ -141,9 +142,9 @@ class RecipesTab(QtWidgets.QWidget):
         interact with the currently selected/viewed recipe."""
         buttonsLayout = QtWidgets.QGridLayout()
         buttonsLayout.setSpacing(0)
-        self.roastButton = QtWidgets.QPushButton("ROAST NOW")
-        self.editRecipeButton = QtWidgets.QPushButton("EDIT")
-        self.beanLinkButton = QtWidgets.QPushButton("PURCHASE BEANS")
+        self.roastButton = QtWidgets.QPushButton(RecipesTabUI.BUTTON_ROAST_NOW)
+        self.editRecipeButton = QtWidgets.QPushButton(RecipesTabUI.BUTTON_EDIT)
+        self.beanLinkButton = QtWidgets.QPushButton(RecipesTabUI.BUTTON_PURCHASE_BEANS)
 
         # Assign object names for qss styling.
         self.roastButton.setObjectName("smallButton")
@@ -217,13 +218,13 @@ class RecipesTab(QtWidgets.QWidget):
             default=get_default_display_temperature_unit(),
         )
         self.nameLabel.setText(recipe_object["roastName"])
-        self.creatorLabel.setText("Created by " +
+        self.creatorLabel.setText(RecipesTabUI.LABEL_CREATED_BY +
             recipe_object["creator"])
-        self.roastTypeLabel.setText("Roast Type: " +
+        self.roastTypeLabel.setText(RecipesTabUI.LABEL_ROAST_TYPE +
             recipe_object["roastDescription"]["roastType"])
-        self.beanRegionLabel.setText("Bean Region: " +
+        self.beanRegionLabel.setText(RecipesTabUI.LABEL_BEAN_REGION +
             recipe_object["bean"]["region"])
-        self.beanCountryLabel.setText("Bean Country: " +
+        self.beanCountryLabel.setText(RecipesTabUI.LABEL_BEAN_COUNTRY +
             recipe_object["bean"]["country"])
         self.descriptionBox.setText(recipe_object["roastDescription"]
             ["description"])
@@ -231,13 +232,13 @@ class RecipesTab(QtWidgets.QWidget):
 
         # Total Time
         total_time_mmss = time.strftime("%M:%S", time.gmtime(recipe_object["totalTime"]))
-        self.totalTimeLabel.setText("Total Time: " + total_time_mmss + " minutes")
+        self.totalTimeLabel.setText(RecipesTabUI.LABEL_TOTAL_TIME + total_time_mmss + RecipesTabUI.TOTAL_TIME_SUFFIX)
 
         # Steps spreadsheet
         self.stepsTable.setRowCount(len(recipe_object["steps"]))
         self.stepsTable.setColumnCount(3)
-        self.stepsTable.setHorizontalHeaderLabels([f"T ({temperature_unit_symbol_to_display(display_unit)})",
-            "FAN", "DURATION"])
+        self.stepsTable.setHorizontalHeaderLabels([f"{RecipesTabUI.TABLE_HEADER_TEMPERATURE_PREFIX} ({temperature_unit_symbol_to_display(display_unit)})",
+            RecipesTabUI.TABLE_HEADER_FAN, RecipesTabUI.TABLE_HEADER_DURATION])
 
         for row in range(len(recipe_object["steps"])):
 
@@ -255,7 +256,7 @@ class RecipesTab(QtWidgets.QWidget):
                     display_unit,
                 ))
             else:
-                sectionTempWidget.setText("Cooling")
+                sectionTempWidget.setText(RecipesTabUI.TABLE_CELL_COOLING)
 
             # Set widget cell alignment.
             sectionTempWidget.setTextAlignment(QtCore.Qt.AlignCenter)
