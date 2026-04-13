@@ -12,6 +12,15 @@ from openroast.views.roasttab import RoastTab
 class _FakeRoaster:
     def __init__(self, remaining_s=0):
         self.time_remaining_s = remaining_s
+        self.cancel_autotune_calls = 0
+        self.idle_calls = 0
+
+    def cancel_autotune(self):
+        self.cancel_autotune_calls += 1
+        return True
+
+    def idle(self):
+        self.idle_calls += 1
 
 
 class _FakeRecipes:
@@ -117,6 +126,28 @@ class RoastTabSectionTimeTests(unittest.TestCase):
 
         self.assertTrue(tab.clear_roast())
         self.assertEqual(tab.roaster.reset_calls, 1)
+
+    def test_stop_click_cancels_autotune_and_idles_roaster(self):
+        tab = RoastTab.__new__(RoastTab)
+        tab._confirm_on_stop = False
+        tab.roaster = _FakeRoaster()
+
+        tab.on_stop_clicked()
+
+        self.assertEqual(tab.roaster.cancel_autotune_calls, 1)
+        self.assertEqual(tab.roaster.idle_calls, 1)
+
+    def test_reset_current_roast_cancels_autotune(self):
+        tab = RoastTab.__new__(RoastTab)
+        tab._confirm_on_clear = False
+        tab.roaster = _FakeRoaster()
+        tab.recipes = _FakeRecipes(False, 0)
+        tab._reset_backend_simulation_state = lambda: None
+        tab.clear_roast_tab_gui = lambda: None
+
+        tab.reset_current_roast()
+
+        self.assertEqual(tab.roaster.cancel_autotune_calls, 1)
 
 
 if __name__ == "__main__":

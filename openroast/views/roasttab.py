@@ -716,6 +716,8 @@ class RoastTab(QtWidgets.QWidget):
             if answer != QtWidgets.QMessageBox.Yes:
                 return False
 
+        self._cancel_autotune_if_running()
+
         # Reset openroast.roaster.
         self.recipes.reset_roaster_settings()
         self._reset_backend_simulation_state()
@@ -754,6 +756,8 @@ class RoastTab(QtWidgets.QWidget):
             if answer != QtWidgets.QMessageBox.Yes:
                 return
 
+        self._cancel_autotune_if_running()
+
         # Verify that the recipe is loaded and reset it.
         if(self.recipes.check_recipe_loaded()):
             self.recipes.restart_current_recipe()
@@ -789,6 +793,11 @@ class RoastTab(QtWidgets.QWidget):
         reset_simulation = getattr(self.roaster, "reset_simulation_state", None)
         if callable(reset_simulation):
             reset_simulation()
+
+    def _cancel_autotune_if_running(self):
+        cancel_autotune = getattr(self.roaster, "cancel_autotune", None)
+        if callable(cancel_autotune):
+            cancel_autotune()
 
     def load_recipe_into_roast_tab(self):
         self.recipes.load_current_section()
@@ -826,6 +835,7 @@ class RoastTab(QtWidgets.QWidget):
             )
             if answer != QtWidgets.QMessageBox.Yes:
                 return
+        self._cancel_autotune_if_running()
         self.roaster.idle()
 
     def apply_preferences(self, config_data):

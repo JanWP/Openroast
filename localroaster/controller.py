@@ -124,6 +124,7 @@ class RoasterController:
 
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
+        self._autotune_cancel_event = threading.Event()
         self._pwm_wake_event = threading.Event()
         self._threads_started = False
 
@@ -310,6 +311,8 @@ class RoasterController:
         if self.state != RoasterState.IDLE:
             raise RuntimeError("Autotune requires the roaster to be idle")
 
+        self._autotune_cancel_event.clear()
+
         with self._lock:
             original_thermostat = bool(self.config.thermostat)
             original_fan = int(self._fan_speed)
@@ -339,6 +342,8 @@ class RoasterController:
 
             settle_deadline = time.monotonic() + max(0.2, float(settle_s))
             while time.monotonic() < settle_deadline:
+                if self._autotune_cancel_event.is_set():
+                    raise RuntimeError("Autotune canceled by user")
                 baseline_samples_c.append(self._kelvin_to_celsius(self.current_temp_k))
                 if self._stop_event.wait(sample_dt):
                     break
@@ -350,6 +355,8 @@ class RoasterController:
             self.heat_setting = heat_setting
             test_deadline = time.monotonic() + max(5.0, float(test_duration_s))
             while time.monotonic() < test_deadline:
+                if self._autotune_cancel_event.is_set():
+                    raise RuntimeError("Autotune canceled by user")
                 now = time.monotonic()
                 temp_c = self._kelvin_to_celsius(self.current_temp_k)
                 response_samples.append((now - start_time, temp_c))
@@ -402,6 +409,7 @@ class RoasterController:
                 "step_percent": float(actual_step_percent),
             }
         finally:
+            self._autotune_cancel_event.clear()
             self.idle()
             with self._lock:
                 self.config.thermostat = original_thermostat
@@ -410,6 +418,11 @@ class RoasterController:
                 self._state_transition_callback = original_state_transition_callback
             self.fan_speed = original_fan
             self.heat_setting = original_heat_setting
+
+    def cancel_autotune(self) -> bool:
+        """Signal an in-progress autotune run to abort safely."""
+        self._autotune_cancel_event.set()
+        return True
 
     def add_telemetry_listener(self, callback: Callable[[Telemetry], None]) -> None:
         self._telemetry_listeners.append(callback)

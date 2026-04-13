@@ -334,3 +334,8 @@ class LocalRoaster:
             raise RuntimeError("Autotune is not supported by this backend")
         return run_autotune(**kwargs)
 
+    def cancel_autotune(self):
+        cancel = getattr(self._controller, "cancel_autotune", None)
+        if callable(cancel):
+            return bool(cancel())
+        return False

@@ -377,6 +377,39 @@ class ControllerSafetyTests(unittest.TestCase):
         self.assertEqual(transitions, [])
         ctrl.shutdown()
 
+    def test_cancel_autotune_aborts_autotune_run(self):
+        cfg = ControllerConfig(
+            thermostat=True,
+            sample_period_s=0.05,
+            pwm_cycle_s=0.2,
+            pwm_tick_s=0.05,
+            max_temp_k=560.0,
+            min_display_temp_k=293.15,
+        )
+        driver = _AutotuneDriver(ambient_k=295.0)
+        ctrl = RoasterController(driver, config=cfg)
+        ctrl.connect()
+
+        result = {}
+
+        def _run_autotune():
+            try:
+                ctrl.autotune_pid(settle_s=0.2, test_duration_s=8.0, min_rise_c=1.0)
+            except Exception as exc:  # pragma: no cover - asserted below
+                result["error"] = exc
+
+        worker = threading.Thread(target=_run_autotune)
+        worker.start()
+        time.sleep(0.25)
+        ctrl.cancel_autotune()
+        worker.join(timeout=3.0)
+
+        self.assertFalse(worker.is_alive(), "autotune thread did not exit after cancel")
+        self.assertIn("error", result)
+        self.assertIn("canceled", str(result["error"]).lower())
+        self.assertEqual(ctrl.state, RoasterState.IDLE)
+        ctrl.shutdown()
+
     def test_pid_resets_on_roast_from_idle(self):
         ctrl, driver, _ = self._make_controller(thermostat=True)
         ctrl.connect()
