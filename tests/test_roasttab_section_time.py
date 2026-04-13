@@ -14,6 +14,7 @@ class _FakeRoaster:
         self.time_remaining_s = remaining_s
         self.cancel_autotune_calls = 0
         self.idle_calls = 0
+        self.reset_control_state_calls = 0
 
     def cancel_autotune(self):
         self.cancel_autotune_calls += 1
@@ -21,6 +22,9 @@ class _FakeRoaster:
 
     def idle(self):
         self.idle_calls += 1
+
+    def reset_control_state(self):
+        self.reset_control_state_calls += 1
 
 
 class _FakeRecipes:
@@ -114,6 +118,18 @@ class RoastTabSectionTimeTests(unittest.TestCase):
         class _FakeRoasterWithReset:
             def __init__(self):
                 self.reset_calls = 0
+                self.cancel_autotune_calls = 0
+                self.idle_calls = 0
+                self.reset_control_state_calls = 0
+
+            def cancel_autotune(self):
+                self.cancel_autotune_calls += 1
+
+            def idle(self):
+                self.idle_calls += 1
+
+            def reset_control_state(self):
+                self.reset_control_state_calls += 1
 
             def reset_simulation_state(self):
                 self.reset_calls += 1
@@ -126,6 +142,9 @@ class RoastTabSectionTimeTests(unittest.TestCase):
 
         self.assertTrue(tab.clear_roast())
         self.assertEqual(tab.roaster.reset_calls, 1)
+        self.assertEqual(tab.roaster.cancel_autotune_calls, 1)
+        self.assertEqual(tab.roaster.idle_calls, 1)
+        self.assertEqual(tab.roaster.reset_control_state_calls, 1)
 
     def test_stop_click_cancels_autotune_and_idles_roaster(self):
         tab = RoastTab.__new__(RoastTab)
@@ -137,7 +156,7 @@ class RoastTabSectionTimeTests(unittest.TestCase):
         self.assertEqual(tab.roaster.cancel_autotune_calls, 1)
         self.assertEqual(tab.roaster.idle_calls, 1)
 
-    def test_reset_current_roast_cancels_autotune(self):
+    def test_reset_current_roast_cancels_autotune_and_resets_control_state(self):
         tab = RoastTab.__new__(RoastTab)
         tab._confirm_on_clear = False
         tab.roaster = _FakeRoaster()
@@ -148,6 +167,8 @@ class RoastTabSectionTimeTests(unittest.TestCase):
         tab.reset_current_roast()
 
         self.assertEqual(tab.roaster.cancel_autotune_calls, 1)
+        self.assertEqual(tab.roaster.idle_calls, 1)
+        self.assertEqual(tab.roaster.reset_control_state_calls, 1)
 
 
 if __name__ == "__main__":

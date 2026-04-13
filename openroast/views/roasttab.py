@@ -716,7 +716,7 @@ class RoastTab(QtWidgets.QWidget):
             if answer != QtWidgets.QMessageBox.Yes:
                 return False
 
-        self._cancel_autotune_if_running()
+        self._prepare_backend_for_stop(reset_control_state=True)
 
         # Reset openroast.roaster.
         self.recipes.reset_roaster_settings()
@@ -756,7 +756,7 @@ class RoastTab(QtWidgets.QWidget):
             if answer != QtWidgets.QMessageBox.Yes:
                 return
 
-        self._cancel_autotune_if_running()
+        self._prepare_backend_for_stop(reset_control_state=True)
 
         # Verify that the recipe is loaded and reset it.
         if(self.recipes.check_recipe_loaded()):
@@ -794,10 +794,27 @@ class RoastTab(QtWidgets.QWidget):
         if callable(reset_simulation):
             reset_simulation()
 
+    def _reset_backend_control_state(self):
+        """Reset optional backend control internals (PID/integrator state)."""
+        reset_control = getattr(self.roaster, "reset_control_state", None)
+        if callable(reset_control):
+            reset_control()
+
+    def _idle_backend(self):
+        idle = getattr(self.roaster, "idle", None)
+        if callable(idle):
+            idle()
+
     def _cancel_autotune_if_running(self):
         cancel_autotune = getattr(self.roaster, "cancel_autotune", None)
         if callable(cancel_autotune):
             cancel_autotune()
+
+    def _prepare_backend_for_stop(self, reset_control_state=False):
+        self._cancel_autotune_if_running()
+        self._idle_backend()
+        if reset_control_state:
+            self._reset_backend_control_state()
 
     def load_recipe_into_roast_tab(self):
         self.recipes.load_current_section()
@@ -835,8 +852,7 @@ class RoastTab(QtWidgets.QWidget):
             )
             if answer != QtWidgets.QMessageBox.Yes:
                 return
-        self._cancel_autotune_if_running()
-        self.roaster.idle()
+        self._prepare_backend_for_stop(reset_control_state=False)
 
     def apply_preferences(self, config_data):
         config = app_config.normalize_config(config_data)

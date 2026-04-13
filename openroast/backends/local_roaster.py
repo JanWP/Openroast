@@ -311,6 +311,13 @@ class LocalRoaster:
             return True
         return False
 
+    def reset_control_state(self):
+        reset_control = getattr(self._controller, "reset_control_state", None)
+        if callable(reset_control):
+            reset_control()
+            return True
+        return False
+
     def apply_runtime_preferences(self, config_data):
         config = app_config.normalize_config(config_data)
         apply_runtime_config = getattr(self._controller, "apply_runtime_config", None)

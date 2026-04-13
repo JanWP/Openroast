@@ -257,6 +257,14 @@ class RoasterController:
                     self._fault = None
                 self._emit_telemetry()
 
+    def reset_control_state(self) -> None:
+        """Reset controller internals used by thermostat/PID operation."""
+        with self._lock:
+            self._pid.reset()
+        self._set_heater_level(0)
+        self._set_heater_output(False, emit_telemetry=False)
+        self._emit_telemetry()
+
     def apply_runtime_config(
         self,
         *,

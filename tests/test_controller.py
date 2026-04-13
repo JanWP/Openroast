@@ -427,6 +427,18 @@ class ControllerSafetyTests(unittest.TestCase):
         self.assertLessEqual(level, 100)
         ctrl.shutdown()
 
+    def test_reset_control_state_clears_pid_and_heater_outputs(self):
+        ctrl, _driver, _ = self._make_controller(thermostat=True)
+        ctrl._pid.update(current=0.0, target=100.0)
+        ctrl._set_heater_level(42)
+
+        ctrl.reset_control_state()
+
+        self.assertEqual(ctrl._pid._integral, 0.0)
+        self.assertEqual(ctrl._pid._prev_error, 0.0)
+        self.assertEqual(ctrl.heater_level, 0)
+        self.assertFalse(ctrl.heater_output)
+
     def test_pid_preserved_on_roast_to_roast_transition(self):
         """Calling roast() while already roasting must NOT reset the PID.
 

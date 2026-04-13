@@ -38,6 +38,7 @@ class FakeController:
         self.runtime_config_calls = []
         self.autotune_calls = 0
         self.cancel_autotune_calls = 0
+        self.reset_control_state_calls = 0
 
     def add_telemetry_listener(self, func):
         self.add_telemetry_listener_calls += 1
@@ -89,6 +90,9 @@ class FakeController:
     def cancel_autotune(self):
         self.cancel_autotune_calls += 1
         return True
+
+    def reset_control_state(self):
+        self.reset_control_state_calls += 1
 
 
 class LocalRoasterAdapterTests(unittest.TestCase):
@@ -398,6 +402,15 @@ class LocalRoasterAdapterTests(unittest.TestCase):
 
         self.assertTrue(roaster.cancel_autotune())
         self.assertEqual(fake_controller.cancel_autotune_calls, 1)
+
+    def test_reset_control_state_forwards_to_controller(self):
+        fake_controller = FakeController()
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster()
+
+        self.assertTrue(roaster.reset_control_state())
+        self.assertEqual(fake_controller.reset_control_state_calls, 1)
 
 
 if __name__ == "__main__":
