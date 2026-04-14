@@ -397,6 +397,14 @@ class RecipesTabUI:
     TABLE_CELL_COOLING = "Cooling"
     TOTAL_TIME_SUFFIX = " minutes"
 
+    DIALOG_LOAD_RECIPE_FAILED_TITLE = "Cannot load recipe"
+    DIALOG_LOAD_RECIPE_FAILED_MESSAGE = (
+        "This recipe cannot be loaded with the current safety/configuration limits.\n\n"
+        "Check recipe target temperatures and your configured max safe temperature, "
+        "then try again.\n\n"
+        "Details: {error}"
+    )
+
 
 class AboutUI:
     WINDOW_TITLE = "About Openroast"

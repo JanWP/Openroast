@@ -282,7 +282,18 @@ class RecipesTab(QtWidgets.QWidget):
                 return
 
         self.recipes_obj.load_recipe_json(self.currentlySelectedRecipe)
-        self.roastTab.load_recipe_into_roast_tab()
+        try:
+            self.roastTab.load_recipe_into_roast_tab()
+        except ValueError as exc:
+            clear_recipe = getattr(self.recipes_obj, "clear_recipe", None)
+            if callable(clear_recipe):
+                clear_recipe()
+            QtWidgets.QMessageBox.critical(
+                self,
+                RecipesTabUI.DIALOG_LOAD_RECIPE_FAILED_TITLE,
+                RecipesTabUI.DIALOG_LOAD_RECIPE_FAILED_MESSAGE.format(error=str(exc)),
+            )
+            return
         self.MainWindow.select_roast_tab()
 
     def open_link_in_browser(self):
