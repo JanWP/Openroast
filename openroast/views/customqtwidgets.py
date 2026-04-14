@@ -330,7 +330,7 @@ class RoastGraphWidget():
 class SectionProgressTimelineWidget(QtWidgets.QWidget):
     """Lightweight roast timeline with duration-accurate sections and ticks."""
 
-    def __init__(self, max_labels=6, tick_height=10, tick_label_gap=3, parent=None):
+    def __init__(self, max_labels=8, tick_height=10, tick_label_gap=3, parent=None):
         super().__init__(parent)
         self._max_labels = max(2, int(max_labels))
         self._tick_height = max(4, int(tick_height))
@@ -344,7 +344,6 @@ class SectionProgressTimelineWidget(QtWidgets.QWidget):
         self._bar_h = 20
         self._ticks_top_gap = 2
         self._bar_round = 5
-        self._timeline_rounding_s = 30
 
         self._static_cache = None
         self._static_cache_size = QtCore.QSize()
@@ -441,25 +440,45 @@ class SectionProgressTimelineWidget(QtWidgets.QWidget):
         boundaries[-1] = left + width
         return boundaries
 
+    def _section_boundary_times(self):
+        if not self._durations_s:
+            return [0]
+        total_s = int(max(0, self._total_s))
+        if total_s <= 0:
+            return [0]
+        acc = 0
+        boundaries = [0]
+        for duration_s in self._durations_s:
+            acc += int(max(0, duration_s))
+            boundaries.append(min(total_s, max(0, acc)))
+        boundaries[0] = 0
+        boundaries[-1] = total_s
+        return boundaries
+
     def _tick_times(self):
         total_s = int(self._total_s)
         if total_s <= 0:
             return [0]
 
-        marker_count = min(
-            self._max_labels,
-            max(2, int(total_s / self._timeline_rounding_s) + 1),
-        )
-        values = [0]
-        for idx in range(1, marker_count - 1):
-            raw = (idx * total_s) / (marker_count - 1)
-            rounded = int(round(raw / self._timeline_rounding_s) * self._timeline_rounding_s)
-            rounded = max(0, min(total_s, rounded))
-            if rounded > values[-1]:
-                values.append(rounded)
-        if values[-1] != total_s:
-            values.append(total_s)
-        return values
+        marker_count = max(2, int(self._max_labels))
+        boundaries = self._section_boundary_times()
+
+        snapped_values = []
+        for idx in range(marker_count):
+            raw = (idx * total_s) / max(1, marker_count - 1)
+            nearest = min(boundaries, key=lambda b: (abs(float(b) - raw), float(b)))
+            snapped_values.append(int(nearest))
+
+        unique_values = []
+        for value in snapped_values:
+            if not unique_values or value != unique_values[-1]:
+                unique_values.append(value)
+
+        if unique_values[0] != 0:
+            unique_values.insert(0, 0)
+        if unique_values[-1] != total_s:
+            unique_values.append(total_s)
+        return unique_values
 
     def _time_to_x(self, seconds):
         bar = self._bar_rect()

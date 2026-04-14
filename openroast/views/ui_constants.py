@@ -109,7 +109,7 @@ class RoastTabUI:
     BUTTON_NEXT_WIDTH = 72
 
     # Timeline/progress widget spacing and marker geometry.
-    TIMELINE_MAX_LABELS = 6
+    TIMELINE_MAX_LABELS = 8
     TIMELINE_COMPACT_SPACING = 1
     TIMELINE_DEFAULT_SPACING = 2
     TIMELINE_TICK_WIDTH = 1
