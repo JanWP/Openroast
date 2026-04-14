@@ -263,13 +263,11 @@ class LocalRoaster:
 
     def set_state_transition_func(self, func):
         if self.connected:
-            logging.error(
+            raise RuntimeError(
                 "LocalRoaster.set_state_transition_func must be called before "
-                "auto_connect(). Not registering func."
+                "auto_connect(). Cannot register callback after connection."
             )
-            return False
         self._state_transition_func = func
-        return True
 
     def set_heater_output_func(self, func):
         self._heater_output_func = func

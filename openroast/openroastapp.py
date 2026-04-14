@@ -301,14 +301,14 @@ class OpenroastApp(object):
         self._default_display_temperature_unit = self._config["display"].get(
             "temperatureUnitDefault", TEMP_UNIT_C)
         set_default_display_temperature_unit(self._default_display_temperature_unit)
-        self.recipes = recipe.Recipe(self.roaster, self)
-        if(not self.roaster.set_state_transition_func(
-            self.recipes.move_to_next_section)):
-            # signal an error somehow
-            logging.error(
-                "OpenroastApp.__init__ failed to set state transition "
-                "callback.  This won't work."
-                )
+        self.recipes = recipe.Recipe(
+            self.roaster,
+            on_section_change=self.roasttab_flag_update_controllers,
+            use_shared_memory=self._effective_backend not in ("local", "local-mock"),
+        )
+        set_transition = getattr(self.roaster, "set_state_transition_func", None)
+        if callable(set_transition):
+            set_transition(self.recipes.move_to_next_section)
 
     def _shutdown_backends(self):
         if self._shutdown_started:

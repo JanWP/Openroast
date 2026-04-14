@@ -261,10 +261,11 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
             roaster = LocalRoaster()
 
-        self.assertTrue(roaster.set_state_transition_func(lambda: None))
+        roaster.set_state_transition_func(lambda: None)
 
         fake_controller.connected = True
-        self.assertFalse(roaster.set_state_transition_func(lambda: None))
+        with self.assertRaises(RuntimeError):
+            roaster.set_state_transition_func(lambda: None)
 
     def test_set_heater_output_func_allows_post_connect_registration(self):
         fake_controller = FakeController()

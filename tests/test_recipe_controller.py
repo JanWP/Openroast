@@ -10,12 +10,17 @@ from openroast.temperature import (
     RECIPE_UNIT_KELVIN,
     TEMP_UNIT_C,
     TEMP_UNIT_F,
+    celsius_to_fahrenheit,
 )
 
 
 class FakeApp:
+    """Tracks section-change callback invocations."""
     def __init__(self):
         self.roasttab_update_calls = 0
+
+    def __call__(self):
+        self.roasttab_update_calls += 1
 
     def roasttab_flag_update_controllers(self):
         self.roasttab_update_calls += 1
@@ -79,13 +84,14 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
 
     def test_set_roaster_settings_converts_to_roaster_units_and_starts_roast(self):
         roaster = FakeRoaster("F")
-        recipe = Recipe(roaster=roaster, app=FakeApp())
+        app = FakeApp()
+        recipe = Recipe(roaster=roaster, on_section_change=app)
 
         # Section index > 0 enables roast() when section duration > 0 and not cooling.
-        recipe.currentRecipeStep.value = 1
+        recipe._storage.current_step = 1
         recipe.set_roaster_settings(target_temp_c=100, fan_speed=7, section_duration_s=45, cooling=False)
 
-        self.assertEqual(roaster.target_temp, 212)
+        self.assertEqual(roaster.target_temp, int(round(celsius_to_fahrenheit(100))))
         self.assertEqual(roaster.fan_speed, 7)
         self.assertEqual(roaster.time_remaining, 45)
         self.assertEqual(roaster.roast_calls, 1)
@@ -93,22 +99,23 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
 
     def test_set_roaster_settings_cooling_path_calls_cool(self):
         roaster = FakeRoaster("F")
-        recipe = Recipe(roaster=roaster, app=FakeApp())
+        app = FakeApp()
+        recipe = Recipe(roaster=roaster, on_section_change=app)
 
-        recipe.currentRecipeStep.value = 1
+        recipe._storage.current_step = 1
         recipe.set_roaster_settings(target_temp_c=80, fan_speed=9, section_duration_s=60, cooling=True)
 
         self.assertEqual(roaster.cool_calls, 1)
         self.assertEqual(roaster.roast_calls, 0)
-        self.assertEqual(roaster.target_temp, 176)
+        self.assertEqual(roaster.target_temp, int(round(celsius_to_fahrenheit(80))))
 
     def test_reset_roaster_settings_applies_default_target_and_base_fan(self):
         roaster = FakeRoaster("F")
-        recipe = Recipe(roaster=roaster, app=FakeApp())
+        recipe = Recipe(roaster=roaster, on_section_change=FakeApp())
 
         recipe.reset_roaster_settings()
 
-        self.assertEqual(roaster.target_temp, 149)
+        self.assertEqual(roaster.target_temp, int(round(celsius_to_fahrenheit(DEFAULT_TARGET_TEMPERATURE_C))))
         self.assertEqual(roaster.fan_speed, 1)
         self.assertEqual(roaster.time_remaining, 0)
 
@@ -179,8 +186,8 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         for case in cases:
             with self.subTest(case=case):
                 roaster = FakeRoaster("C")
-                recipe = Recipe(roaster=roaster, app=FakeApp())
-                recipe.currentRecipeStep.value = case["step"]
+                recipe = Recipe(roaster=roaster, on_section_change=FakeApp())
+                recipe._storage.current_step = case["step"]
 
                 recipe.set_roaster_settings(
                     target_temp_c=100,
@@ -269,6 +276,53 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         self.assertIsNone(roaster.target_temp)
         self.assertIsNone(roaster.fan_speed)
         self.assertIsNone(roaster.time_remaining)
+
+    def test_move_to_next_section_no_callback_no_crash(self):
+        """move_to_next_section with no section_change callback must not crash.
+
+        This covers the startup race where the window may not exist yet.
+        """
+        roaster = FakeRoaster("C")
+        recipe = Recipe(roaster=roaster, on_section_change=None, use_shared_memory=False)
+        recipe.load_recipe_json(
+            {
+                "temperatureUnit": RECIPE_UNIT_CELSIUS,
+                "steps": [
+                    {"targetTemp": 80, "fanSpeed": 3, "sectionTime": 20},
+                    {"targetTemp": 90, "fanSpeed": 5, "sectionTime": 30},
+                ],
+            }
+        )
+        # Should not crash even with no callback.
+        recipe.move_to_next_section()
+        self.assertEqual(recipe.get_current_step_number(), 1)
+
+    def test_thread_safe_storage_backend(self):
+        """Recipe with use_shared_memory=False uses lightweight thread-safe storage."""
+        roaster = FakeRoaster("C")
+        app = FakeApp()
+        recipe = Recipe(roaster=roaster, on_section_change=app, use_shared_memory=False)
+
+        recipe.load_recipe_json(
+            {
+                "temperatureUnit": RECIPE_UNIT_CELSIUS,
+                "steps": [
+                    {"targetTemp": 80, "fanSpeed": 3, "sectionTime": 20},
+                    {"targetTemp": 90, "fanSpeed": 5, "sectionTime": 30},
+                ],
+            }
+        )
+        self.assertTrue(recipe.check_recipe_loaded())
+        self.assertEqual(recipe.get_num_recipe_sections(), 2)
+        self.assertEqual(recipe.get_current_step_number(), 0)
+
+        recipe.move_to_next_section()
+        self.assertEqual(recipe.get_current_step_number(), 1)
+        self.assertEqual(app.roasttab_update_calls, 1)
+
+        recipe.clear_recipe()
+        self.assertFalse(recipe.check_recipe_loaded())
+        self.assertEqual(recipe.get_current_step_number(), 0)
 
 
 if __name__ == "__main__":
