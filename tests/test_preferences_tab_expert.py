@@ -10,6 +10,7 @@ from PyQt5 import QtCore, QtWidgets
 from openroast import app_config
 from openroast.temperature import TEMP_UNIT_F
 from openroast.views.preferencestab import PreferencesTab
+from openroast.views.ui_constants import PreferencesUI
 
 
 class PreferencesTabExpertTests(unittest.TestCase):
@@ -189,12 +190,12 @@ class PreferencesTabExpertTests(unittest.TestCase):
     def test_pid_editors_use_requested_step_sizes(self):
         widget = self._build_widget()
         try:
-            self.assertAlmostEqual(widget.pidKp._spec.step_small, 0.01, places=6)
-            self.assertAlmostEqual(widget.pidKp._spec.step_large, 0.1, places=6)
-            self.assertAlmostEqual(widget.pidKi._spec.step_small, 0.01, places=6)
-            self.assertAlmostEqual(widget.pidKi._spec.step_large, 0.1, places=6)
-            self.assertAlmostEqual(widget.pidKd._spec.step_small, 0.01, places=6)
-            self.assertAlmostEqual(widget.pidKd._spec.step_large, 0.1, places=6)
+            self.assertAlmostEqual(widget.pidKp._spec.step_small, PreferencesUI.PID_STEP_SMALL, places=6)
+            self.assertAlmostEqual(widget.pidKp._spec.step_large, PreferencesUI.PID_STEP_LARGE, places=6)
+            self.assertAlmostEqual(widget.pidKi._spec.step_small, PreferencesUI.PID_STEP_SMALL, places=6)
+            self.assertAlmostEqual(widget.pidKi._spec.step_large, PreferencesUI.PID_STEP_LARGE, places=6)
+            self.assertAlmostEqual(widget.pidKd._spec.step_small, PreferencesUI.PID_STEP_SMALL, places=6)
+            self.assertAlmostEqual(widget.pidKd._spec.step_large, PreferencesUI.PID_STEP_LARGE, places=6)
         finally:
             widget.close()
             self._app.processEvents()

@@ -185,15 +185,6 @@ class PreferencesTab(QtWidgets.QWidget):
         form_right.setLabelAlignment(QtCore.Qt.AlignLeft)
         form_right.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
 
-        def make_numeric(spec):
-            editor = customqtwidgets.AdaptiveValueEditor(
-                spec,
-                compact=self._compact_ui,
-                parent=self,
-            )
-            self._configure_numeric_editor(editor)
-            return editor
-
         self.temperatureUnitSelect = QtWidgets.QComboBox()
         self.temperatureUnitSelect.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         for label, unit in self._unit_options:
@@ -208,44 +199,54 @@ class PreferencesTab(QtWidgets.QWidget):
         self.fullscreenDefault = QtWidgets.QCheckBox()
         self.expertModeEnabled = QtWidgets.QCheckBox()
 
-        self.refreshIntervalMs = make_numeric(
+        self.refreshIntervalMs = self._create_numeric_editor(
             customqtwidgets.ValueSpec(
                 kind="int",
+                minimum=app_config.MIN_REFRESH_INTERVAL_MS,
+                maximum=app_config.MAX_REFRESH_INTERVAL_MS,
                 decimals=0,
                 step_small=self.REFRESH_INTERVAL_STEP_SMALL_MS,
                 step_large=self.REFRESH_INTERVAL_STEP_LARGE_MS,
+                suffix=" ms",
             )
         )
-        self.refreshIntervalMs.setRange(
-            app_config.MIN_REFRESH_INTERVAL_MS,
-            app_config.MAX_REFRESH_INTERVAL_MS,
-        )
-        self.refreshIntervalMs.setSuffix(" ms")
 
-        self.plotYAxisHeadroomC = make_numeric(customqtwidgets.ValueSpec(kind="float", decimals=2))
-        self.plotYAxisHeadroomC.setRange(
-            app_config.MIN_Y_AXIS_HEADROOM_C,
-            app_config.MAX_Y_AXIS_HEADROOM_C,
+        self.plotYAxisHeadroomC = self._create_numeric_editor(
+            customqtwidgets.ValueSpec(
+                kind="float",
+                minimum=app_config.MIN_Y_AXIS_HEADROOM_C,
+                maximum=app_config.MAX_Y_AXIS_HEADROOM_C,
+                decimals=2,
+                step_small=0.5,
+                step_large=5.0,
+                suffix=" C",
+            )
         )
-        self.plotYAxisHeadroomC.setSingleStep(0.5)
-        self.plotYAxisHeadroomC.setSuffix(" C")
 
-        self.plotYAxisStepC = make_numeric(customqtwidgets.ValueSpec(kind="float", decimals=2))
-        self.plotYAxisStepC.setRange(
-            app_config.MIN_Y_AXIS_STEP_C,
-            app_config.MAX_Y_AXIS_STEP_C,
+        self.plotYAxisStepC = self._create_numeric_editor(
+            customqtwidgets.ValueSpec(
+                kind="float",
+                minimum=app_config.MIN_Y_AXIS_STEP_C,
+                maximum=app_config.MAX_Y_AXIS_STEP_C,
+                decimals=2,
+                step_small=0.5,
+                step_large=5.0,
+                suffix=" C",
+            )
         )
-        self.plotYAxisStepC.setSingleStep(0.5)
-        self.plotYAxisStepC.setSuffix(" C")
 
         self.plotShowGrid = QtWidgets.QCheckBox()
 
-        self.plotLineWidth = make_numeric(customqtwidgets.ValueSpec(kind="float", decimals=2))
-        self.plotLineWidth.setRange(
-            app_config.MIN_PLOT_LINE_WIDTH,
-            app_config.MAX_PLOT_LINE_WIDTH,
+        self.plotLineWidth = self._create_numeric_editor(
+            customqtwidgets.ValueSpec(
+                kind="float",
+                minimum=app_config.MIN_PLOT_LINE_WIDTH,
+                maximum=app_config.MAX_PLOT_LINE_WIDTH,
+                decimals=2,
+                step_small=0.5,
+                step_large=2.0,
+            )
         )
-        self.plotLineWidth.setSingleStep(0.5)
 
         self.confirmOnStop = QtWidgets.QCheckBox()
         self.confirmOnClear = QtWidgets.QCheckBox()
@@ -295,92 +296,74 @@ class PreferencesTab(QtWidgets.QWidget):
         safety_form.setLabelAlignment(QtCore.Qt.AlignLeft)
         safety_form.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
 
-        self.pidKp = customqtwidgets.AdaptiveValueEditor(
+        self.pidKp = self._create_numeric_editor(
             customqtwidgets.ValueSpec(
                 kind="float",
+                minimum=app_config.MIN_PID_KP,
+                maximum=app_config.MAX_PID_KP,
                 decimals=4,
                 step_small=self.PID_STEP_SMALL,
                 step_large=self.PID_STEP_LARGE,
-            ),
-            compact=self._compact_ui,
-            parent=self,
+            )
         )
-        self._configure_numeric_editor(self.pidKp)
-        self.pidKp.setDecimals(4)
-        self.pidKp.setRange(app_config.MIN_PID_KP, app_config.MAX_PID_KP)
-        self.pidKp.setSingleStep(self.PID_STEP_SMALL)
 
-        self.pidKi = customqtwidgets.AdaptiveValueEditor(
+        self.pidKi = self._create_numeric_editor(
             customqtwidgets.ValueSpec(
                 kind="float",
+                minimum=app_config.MIN_PID_KI,
+                maximum=app_config.MAX_PID_KI,
                 decimals=4,
                 step_small=self.PID_STEP_SMALL,
                 step_large=self.PID_STEP_LARGE,
-            ),
-            compact=self._compact_ui,
-            parent=self,
+            )
         )
-        self._configure_numeric_editor(self.pidKi)
-        self.pidKi.setDecimals(4)
-        self.pidKi.setRange(app_config.MIN_PID_KI, app_config.MAX_PID_KI)
-        self.pidKi.setSingleStep(self.PID_STEP_SMALL)
 
-        self.pidKd = customqtwidgets.AdaptiveValueEditor(
+        self.pidKd = self._create_numeric_editor(
             customqtwidgets.ValueSpec(
                 kind="float",
+                minimum=app_config.MIN_PID_KD,
+                maximum=app_config.MAX_PID_KD,
                 decimals=4,
                 step_small=self.PID_STEP_SMALL,
                 step_large=self.PID_STEP_LARGE,
-            ),
-            compact=self._compact_ui,
-            parent=self,
+            )
         )
-        self._configure_numeric_editor(self.pidKd)
-        self.pidKd.setDecimals(4)
-        self.pidKd.setRange(app_config.MIN_PID_KD, app_config.MAX_PID_KD)
-        self.pidKd.setSingleStep(self.PID_STEP_SMALL)
 
-        self.pwmCycleSeconds = customqtwidgets.AdaptiveValueEditor(
-            customqtwidgets.ValueSpec(kind="float", decimals=2, step_small=0.1, step_large=1.0),
-            compact=self._compact_ui,
-            parent=self,
+        self.pwmCycleSeconds = self._create_numeric_editor(
+            customqtwidgets.ValueSpec(
+                kind="float",
+                minimum=app_config.MIN_PWM_CYCLE_SECONDS,
+                maximum=app_config.MAX_PWM_CYCLE_SECONDS,
+                decimals=2,
+                step_small=0.1,
+                step_large=1.0,
+                suffix=" s",
+            )
         )
-        self._configure_numeric_editor(self.pwmCycleSeconds)
-        self.pwmCycleSeconds.setDecimals(2)
-        self.pwmCycleSeconds.setRange(
-            app_config.MIN_PWM_CYCLE_SECONDS,
-            app_config.MAX_PWM_CYCLE_SECONDS,
-        )
-        self.pwmCycleSeconds.setSingleStep(0.1)
-        self.pwmCycleSeconds.setSuffix(" s")
 
-        self.samplePeriodSeconds = customqtwidgets.AdaptiveValueEditor(
-            customqtwidgets.ValueSpec(kind="float", decimals=2, step_small=0.05, step_large=0.5),
-            compact=self._compact_ui,
-            parent=self,
+        self.samplePeriodSeconds = self._create_numeric_editor(
+            customqtwidgets.ValueSpec(
+                kind="float",
+                minimum=app_config.MIN_SAMPLE_PERIOD_SECONDS,
+                maximum=app_config.MAX_SAMPLE_PERIOD_SECONDS,
+                decimals=2,
+                step_small=0.05,
+                step_large=0.5,
+                suffix=" s",
+            )
         )
-        self._configure_numeric_editor(self.samplePeriodSeconds)
-        self.samplePeriodSeconds.setDecimals(2)
-        self.samplePeriodSeconds.setRange(
-            app_config.MIN_SAMPLE_PERIOD_SECONDS,
-            app_config.MAX_SAMPLE_PERIOD_SECONDS,
-        )
-        self.samplePeriodSeconds.setSingleStep(0.05)
-        self.samplePeriodSeconds.setSuffix(" s")
 
-        self.safetyMaxTempC = customqtwidgets.AdaptiveValueEditor(
-            customqtwidgets.ValueSpec(kind="float", decimals=1, step_small=1.0, step_large=10.0),
-            compact=self._compact_ui,
-            parent=self,
+        self.safetyMaxTempC = self._create_numeric_editor(
+            customqtwidgets.ValueSpec(
+                kind="float",
+                minimum=app_config.MIN_SAFETY_MAX_TEMP_C,
+                maximum=app_config.MAX_SAFETY_MAX_TEMP_C,
+                decimals=1,
+                step_small=1.0,
+                step_large=10.0,
+                suffix=" C",
+            )
         )
-        self._configure_numeric_editor(self.safetyMaxTempC)
-        self.safetyMaxTempC.setDecimals(1)
-        self.safetyMaxTempC.setRange(
-            app_config.MIN_SAFETY_MAX_TEMP_C,
-            app_config.MAX_SAFETY_MAX_TEMP_C,
-        )
-        self.safetyMaxTempC.setSingleStep(1.0)
-        self.safetyMaxTempC.setSuffix(" C")
 
         self.heaterCutoffEnabled = QtWidgets.QCheckBox()
 
@@ -405,6 +388,15 @@ class PreferencesTab(QtWidgets.QWidget):
         layout.addWidget(right_column, 0)
         layout.addStretch(1)
         return page
+
+    def _create_numeric_editor(self, spec):
+        editor = customqtwidgets.AdaptiveValueEditor(
+            spec,
+            compact=self._compact_ui,
+            parent=self,
+        )
+        self._configure_numeric_editor(editor)
+        return editor
 
     def _configure_numeric_editor(self, editor):
         editor.setEditorObjectName(

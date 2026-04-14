@@ -27,7 +27,6 @@ from openroast.temperature import (
     TEMP_UNIT_C,
     TEMP_UNIT_F,
     TEMP_UNIT_K,
-    TEMPERATURE_STEP_C,
     celsius_to_temperature_unit,
     get_default_display_temperature_unit,
     clamp_temperature_c,
@@ -547,14 +546,6 @@ class RecipeEditor(QtWidgets.QDialog):
         steps = self.recipe["steps"]
         self.load_recipe_steps(recipeStepsTable, steps)
 
-    def _display_temp_choices(self):
-        choices = []
-        for temp_c in range(MIN_TEMPERATURE_C, MAX_TEMPERATURE_C + 1, TEMPERATURE_STEP_C):
-            display_value = int(round(celsius_to_temperature_unit(temp_c, self._display_temp_unit)))
-            if str(display_value) not in choices:
-                choices.append(str(display_value))
-        return [self.COOLING_LABEL] + choices
-
     def _temp_display_range(self):
         min_display = int(round(celsius_to_temperature_unit(MIN_TEMPERATURE_C, self._display_temp_unit)))
         max_display = int(round(celsius_to_temperature_unit(MAX_TEMPERATURE_C, self._display_temp_unit)))
@@ -762,8 +753,7 @@ class RecipeEditor(QtWidgets.QDialog):
         })
         self.rebuild_recipe_steps_table(newSteps)
 
-    def _parse_display_temperature(self, value_text):
-        temp_display = int(value_text)
+    def _display_temp_to_celsius(self, temp_display):
         temp_c = temperature_to_celsius(temp_display, self._display_temp_unit)
         return clamp_temperature_c(temp_c)
 
@@ -780,8 +770,8 @@ class RecipeEditor(QtWidgets.QDialog):
             if temp_widget.is_sentinel_selected():
                 currentRow["cooling"] = True
             else:
-                temp_text = str(int(round(temp_widget.value())))
-                currentRow["targetTemp"] = self._parse_display_temperature(temp_text)
+                temp_display = int(round(temp_widget.value()))
+                currentRow["targetTemp"] = self._display_temp_to_celsius(temp_display)
 
             recipeSteps.append(currentRow)
 
