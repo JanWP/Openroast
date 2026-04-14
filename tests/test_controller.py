@@ -215,7 +215,6 @@ class ControllerSafetyTests(unittest.TestCase):
             thermostat=thermostat,
             sample_period_s=0.05,
             pwm_cycle_s=0.1,
-            pwm_tick_s=0.02,
             **config_kwargs,
         )
         driver = RecordingDriver(temperature_k=temp_k)
@@ -387,7 +386,6 @@ class ControllerSafetyTests(unittest.TestCase):
             thermostat=True,
             sample_period_s=0.05,
             pwm_cycle_s=0.2,
-            pwm_tick_s=0.05,
             max_temp_k=560.0,
             min_display_temp_k=293.15,
         )
@@ -409,7 +407,6 @@ class ControllerSafetyTests(unittest.TestCase):
             thermostat=True,
             sample_period_s=0.05,
             pwm_cycle_s=0.2,
-            pwm_tick_s=0.05,
             max_temp_k=560.0,
             min_display_temp_k=293.15,
         )
@@ -429,7 +426,6 @@ class ControllerSafetyTests(unittest.TestCase):
             thermostat=True,
             sample_period_s=0.05,
             pwm_cycle_s=0.2,
-            pwm_tick_s=0.05,
             max_temp_k=560.0,
             min_display_temp_k=293.15,
         )
@@ -711,7 +707,6 @@ class ControllerSafetyTests(unittest.TestCase):
             thermostat=False,
             sample_period_s=0.05,
             pwm_cycle_s=0.2,
-            pwm_tick_s=0.02,
             ambient_temp_k=295.15,
             max_temp_k=560.93,
             mock_thermal_max_temp_k=560.93,

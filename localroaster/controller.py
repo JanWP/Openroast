@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 
 from localroaster.api import ControllerConfig, RoasterFault, RoasterState, Telemetry
+from localroaster import parameter_catalog
 
 
 class HardwareDriver(ABC):
@@ -91,7 +92,7 @@ class DutyCyclePWM:
     """Generate low-frequency on/off output for an SSR from duty in percent."""
 
     def __init__(self, cycle_s: float):
-        self.cycle_s = max(0.1, float(cycle_s))
+        self.cycle_s = max(parameter_catalog.PWM_CYCLE_MIN_S, float(cycle_s))
         self._cycle_start = time.monotonic()
 
     def output(self, duty_percent: float, now: float | None = None) -> bool:
@@ -99,7 +100,11 @@ class DutyCyclePWM:
         return state
 
     def state_and_delay(self, duty_percent: float, now: float | None = None) -> tuple[bool, float]:
-        duty = max(0.0, min(100.0, float(duty_percent)))
+        if float(duty_percent) < float(parameter_catalog.HEATER_PERCENT_MIN):
+            duty = 0.0
+        else:
+            duty = min(float(parameter_catalog.HEATER_PERCENT_MAX), float(duty_percent))
+
         if now is None:
             now = time.monotonic()
 
@@ -108,10 +113,10 @@ class DutyCyclePWM:
             self._cycle_start += self.cycle_s
             elapsed = now - self._cycle_start
 
-        on_time = self.cycle_s * (duty / 100.0)
+        on_time = self.cycle_s * duty / 100.0
         heater_on = elapsed < on_time
 
-        if duty <= 0.0 or duty >= 100.0:
+        if duty == 0.0 or duty >= 100.0:
             # No intra-cycle edge; wake at cycle boundary (or earlier on level change).
             delay_s = self.cycle_s - elapsed
         elif heater_on:
@@ -121,7 +126,7 @@ class DutyCyclePWM:
             # Next edge is rising edge at next cycle boundary.
             delay_s = self.cycle_s - elapsed
 
-        return heater_on, max(0.001, float(delay_s))
+        return heater_on, max(parameter_catalog.PWM_DELAY_MIN_S, float(delay_s))
 
 
 class RoasterController:
@@ -148,9 +153,9 @@ class RoasterController:
         self._connected = False
         self._target_temp_k = float(self.config.min_display_temp_k)
         self._current_temp_k = float(self.config.ambient_temp_k)
-        self._fan_speed = 1
-        self._heat_setting = 0
-        self._heater_level = 0
+        self._fan_speed = parameter_catalog.FAN_SPEED_MIN
+        self._heat_setting = parameter_catalog.HEAT_SETTING_MIN
+        self._heater_level = parameter_catalog.HEATER_PERCENT_MIN
         self._heater_output = False
         self._time_remaining_s = 0
         self._total_time_s = 0
@@ -165,8 +170,8 @@ class RoasterController:
             self.config.kp,
             self.config.ki,
             self.config.kd,
-            output_max=100,
-            output_min=0,
+            output_max=parameter_catalog.HEATER_PERCENT_MAX,
+            output_min=parameter_catalog.HEATER_PERCENT_MIN,
         )
         self._pwm = DutyCyclePWM(cycle_s=self.config.pwm_cycle_s)
         self._exit_handler_registered = False
@@ -323,11 +328,14 @@ class RoasterController:
                 self.config.kd = float(kd)
                 self._pid.kd = float(kd)
             if pwm_cycle_s is not None:
-                cycle_s = max(0.1, float(pwm_cycle_s))
+                cycle_s = max(parameter_catalog.PWM_CYCLE_MIN_S, float(pwm_cycle_s))
                 self.config.pwm_cycle_s = cycle_s
                 self._pwm.cycle_s = cycle_s
             if sample_period_s is not None:
-                self.config.sample_period_s = max(0.01, float(sample_period_s))
+                self.config.sample_period_s = max(
+                    parameter_catalog.SAMPLE_PERIOD_MIN_S,
+                    float(sample_period_s),
+                )
             if max_temp_k is not None:
                 max_temp_k = float(max_temp_k)
                 self.config.max_temp_k = max_temp_k
@@ -339,10 +347,10 @@ class RoasterController:
     def autotune_pid(
         self,
         *,
-        step_percent: int = 67,
-        settle_s: float = 3.0,
-        test_duration_s: float = 45.0,
-        min_rise_c: float = 3.0,
+        step_percent: int = parameter_catalog.AUTOTUNE_DEFAULT_STEP_PERCENT,
+        settle_s: float = parameter_catalog.AUTOTUNE_DEFAULT_SETTLE_S,
+        test_duration_s: float = parameter_catalog.AUTOTUNE_DEFAULT_TEST_DURATION_S,
+        min_rise_c: float = parameter_catalog.AUTOTUNE_DEFAULT_MIN_RISE_C,
     ) -> dict:
         """Run a conservative step-response autotune and return PID values.
 
@@ -364,9 +372,17 @@ class RoasterController:
             original_time_remaining_s = int(self._time_remaining_s)
             original_state_transition_callback = self._state_transition_callback
 
-        heat_setting = max(1, min(3, int(round(float(step_percent) * 3.0 / 100.0))))
-        actual_step_percent = (heat_setting * 100.0) / 3.0
-        sample_dt = max(0.02, float(self.config.sample_period_s))
+        heat_setting = max(
+            parameter_catalog.HEAT_SETTING_MIN,
+            min(
+                parameter_catalog.HEAT_SETTING_MAX,
+                int(round(float(step_percent) * float(parameter_catalog.HEAT_SETTING_MAX) / 100.0)),
+            ),
+        )
+        actual_step_percent = (float(parameter_catalog.HEATER_PERCENT_MAX) *
+            heat_setting / float(parameter_catalog.HEAT_SETTING_MAX)
+        )
+        sample_dt = max(parameter_catalog.AUTOTUNE_SAMPLE_DT_MIN_S, float(self.config.sample_period_s))
 
         start_time = time.monotonic()
         baseline_samples_c: list[float] = []
@@ -377,13 +393,23 @@ class RoasterController:
                 self.config.thermostat = False
                 # Keep timer transitions from invoking recipe callbacks during autotune.
                 self._state_transition_callback = None
-                self._time_remaining_s = int(max(1.0, float(settle_s) + float(test_duration_s) + 5.0))
+                self._time_remaining_s = int(
+                    max(
+                        1.0,
+                        float(settle_s)
+                        + float(test_duration_s)
+                        + parameter_catalog.AUTOTUNE_TEST_DURATION_MIN_S,
+                    )
+                )
 
-            self.fan_speed = max(1, original_fan)
+            self.fan_speed = max(parameter_catalog.FAN_SPEED_MIN, original_fan)
             self.heat_setting = 0
             self.roast()
 
-            settle_deadline = time.monotonic() + max(0.2, float(settle_s))
+            settle_deadline = time.monotonic() + max(
+                parameter_catalog.AUTOTUNE_SETTLE_MIN_S,
+                float(settle_s),
+            )
             while time.monotonic() < settle_deadline:
                 if self._autotune_cancel_event.is_set():
                     raise RuntimeError("Autotune canceled by user")
@@ -396,7 +422,10 @@ class RoasterController:
             baseline_c = sum(baseline_samples_c) / len(baseline_samples_c)
 
             self.heat_setting = heat_setting
-            test_deadline = time.monotonic() + max(5.0, float(test_duration_s))
+            test_deadline = time.monotonic() + max(
+                parameter_catalog.AUTOTUNE_TEST_DURATION_MIN_S,
+                float(test_duration_s),
+            )
             while time.monotonic() < test_deadline:
                 if self._autotune_cancel_event.is_set():
                     raise RuntimeError("Autotune canceled by user")
@@ -421,10 +450,13 @@ class RoasterController:
                 delta_c, dead_time_s, tau_s, fit_rmse_c = fit
             else:
                 # Fallback for unexpected fitting failures.
-                rise_threshold_c = baseline_c + 0.5
+                rise_threshold_c = (
+                    baseline_c
+                    + parameter_catalog.AUTOTUNE_FALLBACK_RISE_THRESHOLD_OFFSET_C
+                )
                 dead_time_s = next((t for t, temp_c in response_samples if temp_c >= rise_threshold_c), None)
                 if dead_time_s is None:
-                    dead_time_s = 0.5
+                    dead_time_s = parameter_catalog.AUTOTUNE_FALLBACK_DEAD_TIME_DEFAULT_S
 
                 tau_target_c = baseline_c + 0.632 * observed_delta_c
                 tau_time_s = next((t for t, temp_c in response_samples if temp_c >= tau_target_c), None)
@@ -432,19 +464,23 @@ class RoasterController:
                     raise RuntimeError("Autotune failed to estimate time constant")
 
                 delta_c = float(observed_delta_c)
-                dead_time_s = max(0.2, float(dead_time_s))
-                tau_s = max(0.2, float(tau_time_s - dead_time_s))
+                dead_time_s = max(parameter_catalog.AUTOTUNE_DEAD_TIME_MIN_S, float(dead_time_s))
+                tau_s = max(parameter_catalog.AUTOTUNE_TAU_MIN_S, float(tau_time_s - dead_time_s))
                 fit_rmse_c = float("nan")
 
-            process_gain = delta_c / max(1e-3, actual_step_percent)
-            dead_time_s = max(0.2, float(dead_time_s))
-            tau_s = max(0.2, float(tau_s))
+            process_gain = delta_c / max(parameter_catalog.AUTOTUNE_PROCESS_GAIN_EPS, actual_step_percent)
+            dead_time_s = max(parameter_catalog.AUTOTUNE_DEAD_TIME_MIN_S, float(dead_time_s))
+            tau_s = max(parameter_catalog.AUTOTUNE_TAU_MIN_S, float(tau_s))
 
             # Ziegler-Nichols reaction-curve tuning in percent-duty domain.
-            kp = 1.2 * tau_s / (process_gain * dead_time_s)
-            ti_s = 2.0 * dead_time_s
-            td_s = 0.5 * dead_time_s
-            ki = kp / max(1e-3, ti_s)
+            kp = (
+                parameter_catalog.AUTOTUNE_ZN_KP_FACTOR
+                * tau_s
+                / (process_gain * dead_time_s)
+            )
+            ti_s = parameter_catalog.AUTOTUNE_ZN_TI_FACTOR * dead_time_s
+            td_s = parameter_catalog.AUTOTUNE_ZN_TD_FACTOR * dead_time_s
+            ki = kp / max(parameter_catalog.AUTOTUNE_PROCESS_GAIN_EPS, ti_s)
             kd = kp * td_s
 
             if not all(math.isfinite(v) and v > 0.0 for v in (kp, ki, kd)):
@@ -540,7 +576,7 @@ class RoasterController:
 
     @fan_speed.setter
     def fan_speed(self, value: int) -> None:
-        if value not in range(1, 10):
+        if value not in range(parameter_catalog.FAN_SPEED_MIN, parameter_catalog.FAN_SPEED_MAX + 1):
             raise ValueError("fan_speed must be 1-9")
         with self._lock:
             self._fan_speed = int(value)
@@ -552,7 +588,7 @@ class RoasterController:
 
     @heat_setting.setter
     def heat_setting(self, value: int) -> None:
-        if value not in range(0, 4):
+        if value not in range(parameter_catalog.HEAT_SETTING_MIN, parameter_catalog.HEAT_SETTING_MAX + 1):
             raise ValueError("heat_setting must be 0-3")
         with self._lock:
             self._heat_setting = int(value)
@@ -616,7 +652,10 @@ class RoasterController:
     def _set_heater_level(self, heater_level: int) -> bool:
         changed = False
         listeners: list[Callable[[int], None]] = []
-        heater_level = int(max(0, min(100, int(heater_level))))
+        if heater_level < parameter_catalog.HEATER_PERCENT_MIN:
+            heater_level = 0.0
+        else:
+            heater_level = int(min(parameter_catalog.HEATER_PERCENT_MAX, int(heater_level)))
         with self._lock:
             if self._heater_level != heater_level:
                 self._heater_level = heater_level
@@ -687,7 +726,7 @@ class RoasterController:
             return None
 
         # Cap fit cost for high-rate logs while preserving shape.
-        stride = max(1, len(response_samples) // 300)
+        stride = max(1, len(response_samples) // parameter_catalog.FOPDT_MAX_SAMPLES)
         samples = response_samples[::stride]
 
         times = [float(t) for t, _ in samples]
@@ -696,15 +735,21 @@ class RoasterController:
         if duration_s <= 0.0:
             return None
 
-        dead_time_min_s = 0.2
-        dead_time_max_s = max(dead_time_min_s, min(duration_s * 0.6, duration_s - 1e-3))
+        dead_time_min_s = parameter_catalog.FOPDT_DEAD_TIME_MIN_S
+        dead_time_max_s = max(
+            dead_time_min_s,
+            min(
+                duration_s * parameter_catalog.FOPDT_DEAD_TIME_MAX_DURATION_FACTOR,
+                duration_s - parameter_catalog.FOPDT_DURATION_EPS,
+            ),
+        )
         if dead_time_max_s <= dead_time_min_s:
             return None
 
-        tau_min_s = 0.2
-        tau_max_s = max(0.25, duration_s * 3.0)
-        dead_time_steps = 40
-        tau_steps = 40
+        tau_min_s = parameter_catalog.FOPDT_TAU_MIN_S
+        tau_max_s = max(0.25, duration_s * parameter_catalog.FOPDT_TAU_MAX_DURATION_FACTOR)
+        dead_time_steps = parameter_catalog.FOPDT_DEAD_TIME_STEPS
+        tau_steps = parameter_catalog.FOPDT_TAU_STEPS
 
         best: tuple[float, float, float, float] | None = None
         for i in range(dead_time_steps):
@@ -727,7 +772,7 @@ class RoasterController:
                     den += g * g
                     num += g * y
 
-                if den <= 1e-9:
+                if den <= parameter_catalog.FOPDT_DEN_EPS:
                     continue
 
                 delta_c = num / den
@@ -772,8 +817,8 @@ class RoasterController:
 
                 # Over-temperature safety: force heater off regardless of mode.
                 if cutoff_enabled and current_temp_k > max_temp_k:
-                    new_heater_level = 0
-                    self._heat_setting = 0
+                    new_heater_level = parameter_catalog.HEATER_PERCENT_MIN
+                    self._heat_setting = parameter_catalog.HEAT_SETTING_MIN
                     if self._fault is None:
                         self._fault = RoasterFault.OVER_TEMPERATURE
                     logging.warning(
@@ -787,19 +832,19 @@ class RoasterController:
                         target_temp_c = self._kelvin_to_celsius(target_temp_k)
                         pid_percent = self._pid.update(current_temp_c, target_temp_c, dt=self.config.sample_period_s)
                         new_heater_level = int(round(pid_percent))
-                        self._heat_setting = 3
+                        self._heat_setting = parameter_catalog.HEAT_SETTING_MAX
                     else:
-                        new_heater_level = 0
-                        self._heat_setting = 0
+                        new_heater_level = parameter_catalog.HEATER_PERCENT_MIN
+                        self._heat_setting = parameter_catalog.HEAT_SETTING_MIN
                 else:
                     # Non-thermostat: only heat when actively roasting.
                     if state == RoasterState.ROASTING:
-                        duty_percent = (heat_setting * 100.0) / 3.0
+                        duty_percent = (heat_setting * 100.0) / float(parameter_catalog.HEAT_SETTING_MAX)
                         new_heater_level = int(round(duty_percent))
                     else:
-                        new_heater_level = 0
+                        new_heater_level = parameter_catalog.HEATER_PERCENT_MIN
 
-                heater_should_off = new_heater_level <= 0
+                heater_should_off = new_heater_level <= parameter_catalog.HEATER_PERCENT_MIN
 
             self._set_heater_level(new_heater_level)
 
@@ -861,7 +906,7 @@ class RoasterController:
             with self._lock:
                 state = self._state
             if state in (RoasterState.ROASTING, RoasterState.COOLING):
-                if self._stop_event.wait(1.0):
+                if self._stop_event.wait(parameter_catalog.TIMER_ACTIVE_TICK_S):
                     break
                 with self._lock:
                     self._total_time_s += 1
@@ -880,6 +925,6 @@ class RoasterController:
                     else:
                         self.idle()
             else:
-                if self._stop_event.wait(0.05):
+                if self._stop_event.wait(parameter_catalog.TIMER_IDLE_POLL_S):
                     break
 

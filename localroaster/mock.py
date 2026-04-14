@@ -4,6 +4,7 @@ import time
 
 from localroaster.api import ControllerConfig
 from localroaster.controller import HardwareDriver, RoasterController
+from localroaster import parameter_catalog
 
 
 class MockHardwareDriver(HardwareDriver):
@@ -16,14 +17,15 @@ class MockHardwareDriver(HardwareDriver):
         self._lock = threading.Lock()
         self._temp_k = self.config.ambient_temp_k
         self._heater_on = False
-        self._heater_level = 0.0
+        self._heater_level = float(parameter_catalog.HEATER_PERCENT_MIN)
         self._use_level_control = False
-        self._tau = 30.0
+        self._tau = max(0.1, float(self.config.mock_tau_s))
         self._thermal_max_temp_k = max(
             float(self.config.ambient_temp_k),
             float(self.config.mock_thermal_max_temp_k),
         )
-        self._fan_speed = 1
+        self._fan_cooling_k_per_step = max(0.0, float(self.config.mock_fan_cooling_k_per_step))
+        self._fan_speed = parameter_catalog.FAN_SPEED_MIN
         self._last_update_s = float(self._time_fn())
 
     def read_temperature_k(self) -> float:
@@ -32,10 +34,15 @@ class MockHardwareDriver(HardwareDriver):
             dt_s = max(0.0, now_s - self._last_update_s)
             self._last_update_s = now_s
 
-            fan_cooling = (self._fan_speed - 1) * 2.0
+            fan_cooling = (
+                self._fan_speed - parameter_catalog.FAN_SPEED_MIN
+            ) * self._fan_cooling_k_per_step
             hot_target_k = max(self._thermal_max_temp_k - fan_cooling, self.config.ambient_temp_k)
             if self._use_level_control:
-                duty = max(0.0, min(100.0, float(self._heater_level))) / 100.0
+                if self._heater_level < parameter_catalog.HEATER_PERCENT_MIN:
+                    duty = 0.0
+                else:
+                    duty = min(float(parameter_catalog.HEATER_PERCENT_MAX), float(self._heater_level)) / 100.0
             else:
                 duty = 1.0 if self._heater_on else 0.0
             target_k = self.config.ambient_temp_k + duty * (hot_target_k - self.config.ambient_temp_k)
@@ -48,20 +55,27 @@ class MockHardwareDriver(HardwareDriver):
         with self._lock:
             self._heater_on = bool(on)
             if not self._use_level_control:
-                self._heater_level = 100.0 if self._heater_on else 0.0
+                self._heater_level = (
+                    float(parameter_catalog.HEATER_PERCENT_MAX)
+                    if self._heater_on
+                    else float(parameter_catalog.HEATER_PERCENT_MIN)
+                )
 
     def set_heater_level(self, level_percent: int) -> None:
         with self._lock:
             self._use_level_control = True
-            self._heater_level = max(0.0, min(100.0, float(level_percent)))
+            if level_percent < parameter_catalog.HEATER_PERCENT_MIN:
+                self._heater_level = 0.0
+            else:
+                self._heater_level = min(float(parameter_catalog.HEATER_PERCENT_MAX), float(level_percent))
 
     def reset_simulation(self) -> None:
         with self._lock:
             self._temp_k = self.config.ambient_temp_k
             self._heater_on = False
-            self._heater_level = 0.0
+            self._heater_level = float(parameter_catalog.HEATER_PERCENT_MIN)
             self._use_level_control = False
-            self._fan_speed = 1
+            self._fan_speed = parameter_catalog.FAN_SPEED_MIN
             self._last_update_s = float(self._time_fn())
 
     def set_fan_speed(self, speed: int) -> None:

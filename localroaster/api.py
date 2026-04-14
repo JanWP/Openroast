@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from localroaster import parameter_catalog
+
 
 class RoasterState(StrEnum):
     DISCONNECTED = "disconnected"
@@ -27,23 +29,18 @@ class RoasterFault(StrEnum):
 @dataclass(slots=True)
 class ControllerConfig:
     thermostat: bool = True
-    # kp: float = 0.06
-    # ki: float = 0.0075
-    # kd: float = 0.01
-    # Defaults migrated from Fahrenheit-tuned values to Celsius-domain PID.
-    # Scale factor is 9/5 because error_F = error_C * 9/5.
-    kp: float = 0.108
-    ki: float = 0.0135
-    kd: float = 0.018
-    sample_period_s: float = 0.5
-    pwm_cycle_s: float = 1.0
-    pwm_tick_s: float = 0.05
-    ambient_temp_k: float = 295.15
-    max_temp_k: float = 560.93
-    # Mock-only plant capability ceiling (decoupled from safety cutoff max_temp_k).
-    mock_thermal_max_temp_k: float = 560.93
-    min_display_temp_k: float = 338.71
-    heater_cutoff_enabled: bool = True
+    kp: float = parameter_catalog.PID_DEFAULT_KP
+    ki: float = parameter_catalog.PID_DEFAULT_KI
+    kd: float = parameter_catalog.PID_DEFAULT_KD
+    sample_period_s: float = parameter_catalog.SAMPLE_PERIOD_DEFAULT_S
+    pwm_cycle_s: float = parameter_catalog.PWM_CYCLE_DEFAULT_S
+    ambient_temp_k: float = parameter_catalog.AMBIENT_DEFAULT_K
+    max_temp_k: float = parameter_catalog.SAFETY_MAX_TEMP_DEFAULT_K
+    mock_thermal_max_temp_k: float = parameter_catalog.MOCK_THERMAL_MAX_DEFAULT_K
+    mock_tau_s: float = parameter_catalog.MOCK_TAU_DEFAULT_S
+    mock_fan_cooling_k_per_step: float = parameter_catalog.MOCK_FAN_COOLING_DEFAULT_K_PER_STEP
+    min_display_temp_k: float = parameter_catalog.MIN_DISPLAY_TEMP_DEFAULT_K
+    heater_cutoff_enabled: bool = parameter_catalog.HEATER_CUTOFF_DEFAULT_ENABLED
 
 
 @dataclass(slots=True)

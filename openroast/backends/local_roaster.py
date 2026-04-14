@@ -37,7 +37,6 @@ class LocalRoaster:
         kd=0.01,
         heater_segments=8,
         force_mock=False,
-        pwm_tick_s=None,
         sample_period_s=None,
         pwm_cycle_s=None,
         max_temp_c=None,
@@ -53,8 +52,6 @@ class LocalRoaster:
             max_temp_k=max_temp_k,
             heater_cutoff_enabled=bool(heater_cutoff_enabled),
         )
-        if pwm_tick_s is not None:
-            config_kwargs["pwm_tick_s"] = float(pwm_tick_s)
         if sample_period_s is not None:
             config_kwargs["sample_period_s"] = float(sample_period_s)
         if pwm_cycle_s is not None:
