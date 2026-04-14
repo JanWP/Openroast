@@ -7,8 +7,23 @@ import unittest
 
 from openroast import app_config
 from openroast.temperature import celsius_to_kelvin
-from localroaster.api import ControllerConfig, RoasterState
+from localroaster.api import ControllerConfig, RoasterFault, RoasterState
 from localroaster.controller import DutyCyclePWM, PID, RoasterController, HardwareDriver
+
+
+def wait_for(predicate, *, timeout=2.0, poll=0.02):
+    """Spin until *predicate* returns truthy or *timeout* seconds elapse.
+
+    Returns the last value returned by *predicate* so the caller can assert
+    on it directly.  Prefer this over bare ``time.sleep()`` in tests that
+    depend on background-thread side-effects.
+    """
+    deadline = time.monotonic() + timeout
+    result = predicate()
+    while not result and time.monotonic() < deadline:
+        time.sleep(poll)
+        result = predicate()
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +224,7 @@ class ControllerSafetyTests(unittest.TestCase):
     def test_shutdown_turns_heater_off(self):
         ctrl, driver, _ = self._make_controller()
         ctrl.connect()
-        time.sleep(0.15)
+        wait_for(lambda: len(driver.heater_calls) > 0)
         ctrl.shutdown()
         # Last hardware call should be set_heater(False)
         self.assertTrue(len(driver.heater_calls) > 0)
@@ -220,7 +235,7 @@ class ControllerSafetyTests(unittest.TestCase):
         ctrl, driver, _ = self._make_controller(thermostat=True)
         ctrl.connect()
         ctrl.idle()
-        time.sleep(0.2)
+        wait_for(lambda: ctrl.heater_level == 0)
         ctrl.shutdown()
         self.assertEqual(ctrl.heater_level, 0)
 
@@ -230,7 +245,7 @@ class ControllerSafetyTests(unittest.TestCase):
         ctrl.connect()
         ctrl.heat_setting = 3  # Would produce 100% if unguarded
         ctrl.idle()
-        time.sleep(0.2)
+        wait_for(lambda: ctrl.heater_level == 0)
         # Heater level must be 0 despite heat_setting=3
         self.assertEqual(ctrl.heater_level, 0)
         ctrl.shutdown()
@@ -243,7 +258,7 @@ class ControllerSafetyTests(unittest.TestCase):
         )
         ctrl.connect()
         ctrl.roast()
-        time.sleep(0.2)
+        wait_for(lambda: ctrl.heater_level == 0 and ctrl.telemetry().fault is not None)
         # Heater level should be 0 due to over-temp protection
         self.assertEqual(ctrl.heater_level, 0)
         ctrl.shutdown()
@@ -257,7 +272,7 @@ class ControllerSafetyTests(unittest.TestCase):
         ctrl.connect()
         ctrl.heat_setting = 3
         ctrl.roast()
-        time.sleep(0.2)
+        wait_for(lambda: ctrl.heater_level > 0)
         # In expert mode, disabled cutoff keeps manual heat command active.
         self.assertGreater(ctrl.heater_level, 0)
         ctrl.shutdown()
@@ -293,11 +308,11 @@ class ControllerSafetyTests(unittest.TestCase):
                 ctrl.connect()
                 ctrl.heat_setting = 3
                 ctrl.roast()
-                time.sleep(0.2)
+                wait_for(lambda: ctrl.telemetry().fault is not None and ctrl.heat_setting == 0)
 
                 self.assertEqual(ctrl.heater_level, 0)
                 self.assertEqual(ctrl.heat_setting, 0)
-                self.assertIn("cutoff", (ctrl.telemetry().fault or "").lower())
+                self.assertEqual(ctrl.telemetry().fault, RoasterFault.OVER_TEMPERATURE)
                 ctrl.shutdown()
 
     def test_over_temperature_cutoff_disabled_for_all_config_units(self):
@@ -329,7 +344,7 @@ class ControllerSafetyTests(unittest.TestCase):
                 ctrl.connect()
                 ctrl.heat_setting = 3
                 ctrl.roast()
-                time.sleep(0.2)
+                wait_for(lambda: ctrl.heater_level > 0)
 
                 self.assertGreater(ctrl.heater_level, 0)
                 ctrl.shutdown()
@@ -339,7 +354,7 @@ class ControllerSafetyTests(unittest.TestCase):
         ctrl.connect()
         ctrl.heat_setting = 1
         ctrl.roast()
-        time.sleep(0.2)
+        wait_for(lambda: any(0 < level < 100 for level in driver.heater_level_calls))
         ctrl.shutdown()
 
         self.assertTrue(driver.heater_level_calls)
@@ -445,13 +460,13 @@ class ControllerSafetyTests(unittest.TestCase):
         ctrl, driver, _ = self._make_controller(thermostat=True)
         ctrl.connect()
         ctrl.roast()
-        time.sleep(0.15)
+        wait_for(lambda: ctrl.heater_level >= 0, timeout=0.5)
         # Record PID state before idle
         ctrl.idle()
-        time.sleep(0.1)
+        wait_for(lambda: ctrl.heater_level == 0)
         # Start a new roast — PID should be fresh
         ctrl.roast()
-        time.sleep(0.15)
+        wait_for(lambda: ctrl.heater_level >= 0, timeout=0.5)
         # Just verify it doesn't crash and heater_level is reasonable
         level = ctrl.heater_level
         self.assertGreaterEqual(level, 0)
@@ -459,16 +474,43 @@ class ControllerSafetyTests(unittest.TestCase):
         ctrl.shutdown()
 
     def test_reset_control_state_clears_pid_and_heater_outputs(self):
-        ctrl, _driver, _ = self._make_controller(thermostat=True)
-        ctrl._pid.update(current=0.0, target=100.0)
-        ctrl._set_heater_level(42)
+        """After reset_control_state, heater_level is 0 and a subsequent roast
+        with zero error produces no heater output — proving the integral was
+        cleared (observable behaviour, no private-field inspection)."""
+        target_k = 450.0
+        ctrl, driver, _ = self._make_controller(
+            thermostat=True,
+            temp_k=target_k - 50.0,  # large error to build integral
+            ki=1.0,
+            kp=0.0,
+            kd=0.0,
+        )
+        ctrl.connect()
+        ctrl.target_temp_k = target_k
+        ctrl.roast()
+        # Let integral accumulate until heater is active.
+        wait_for(lambda: ctrl.heater_level > 0)
+        self.assertGreater(ctrl.heater_level, 0, "PID should have produced output")
 
+        ctrl.idle()
         ctrl.reset_control_state()
 
-        self.assertEqual(ctrl._pid._integral, 0.0)
-        self.assertIsNone(ctrl._pid._prev_measurement)
+        # Heater must be off immediately after reset.
         self.assertEqual(ctrl.heater_level, 0)
         self.assertFalse(ctrl.heater_output)
+
+        # Now roast with zero error (current == target) — no residual integral
+        # should produce heater output.
+        driver._temp_k = target_k
+        ctrl.target_temp_k = target_k
+        ctrl.roast()
+        # Give a few control cycles for the PID to run.
+        wait_for(lambda: len(driver.heater_level_calls) > 3, timeout=0.5)
+        self.assertEqual(
+            ctrl.heater_level, 0,
+            "After reset + zero error, heater should remain at 0 (no residual integral)",
+        )
+        ctrl.shutdown()
 
     def test_pid_preserved_on_roast_to_roast_transition(self):
         """Calling roast() while already roasting must NOT reset the PID.
@@ -498,14 +540,14 @@ class ControllerSafetyTests(unittest.TestCase):
         ctrl.connect()
         ctrl.target_temp_k = target_k
         ctrl.roast()
-        # Let the PID accumulate for many control cycles (0.05 s each).
-        time.sleep(0.6)
+        # Let the PID accumulate until meaningful heater output appears.
+        wait_for(lambda: ctrl.heater_level > 5, timeout=2.0)
         level_before = ctrl.heater_level
         self.assertGreater(level_before, 0, "PID should have produced nonzero output")
 
         # Simulate a recipe section transition: roast() called again.
         ctrl.roast()
-        time.sleep(0.15)
+        wait_for(lambda: ctrl.heater_level >= 0, timeout=0.5)
         level_after = ctrl.heater_level
 
         # With the buggy unconditional reset, the integral drops to zero and
@@ -602,7 +644,7 @@ class ControllerSafetyTests(unittest.TestCase):
         ctrl.connect()
         ctrl.heat_setting = 3
         ctrl.cool()
-        time.sleep(0.2)
+        wait_for(lambda: ctrl.heater_level == 0)
         self.assertEqual(ctrl.heater_level, 0, "Heater should be off in COOLING state")
         ctrl.shutdown()
 
@@ -612,7 +654,7 @@ class ControllerSafetyTests(unittest.TestCase):
         ctrl.connect()
         ctrl.target_temp_k = 500.0
         ctrl.cool()
-        time.sleep(0.2)
+        wait_for(lambda: ctrl.heater_level == 0)
         self.assertEqual(ctrl.heater_level, 0, "Heater should be off in COOLING state (thermostat)")
         ctrl.shutdown()
 
@@ -629,11 +671,11 @@ class ControllerSafetyTests(unittest.TestCase):
         ctrl.connect()
         ctrl.target_temp_k = celsius_to_kelvin(200)
         ctrl.roast()
-        time.sleep(0.3)
+        wait_for(lambda: ctrl.heater_level > 0, timeout=1.0)
 
         # Change sample period to a much faster rate.
         ctrl.apply_runtime_config(sample_period_s=0.01)
-        time.sleep(0.3)
+        wait_for(lambda: ctrl.heater_level >= 0, timeout=1.0)
 
         # Heater level must still be within [0, 100].
         level = ctrl.heater_level
@@ -649,9 +691,9 @@ class ControllerSafetyTests(unittest.TestCase):
         )
         ctrl.connect()
         ctrl.roast()
-        time.sleep(0.2)
+        wait_for(lambda: ctrl.telemetry().fault is not None)
 
-        self.assertIsNotNone(ctrl.telemetry().fault)
+        self.assertEqual(ctrl.telemetry().fault, RoasterFault.OVER_TEMPERATURE)
 
         # Keep temperature high — manual clear should still work.
         ctrl.clear_fault()

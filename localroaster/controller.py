@@ -8,7 +8,7 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-from localroaster.api import ControllerConfig, RoasterState, Telemetry
+from localroaster.api import ControllerConfig, RoasterFault, RoasterState, Telemetry
 
 
 class HardwareDriver(ABC):
@@ -673,7 +673,7 @@ class RoasterController:
             except Exception as exc:
                 logging.warning("localroaster: read_temperature_k failed: %s", exc)
                 with self._lock:
-                    self._fault = str(exc)
+                    self._fault = RoasterFault.SENSOR_ERROR
 
             with self._lock:
                 self._current_temp_k = current_temp_k
@@ -690,7 +690,7 @@ class RoasterController:
                     new_heater_level = 0
                     self._heat_setting = 0
                     if self._fault is None:
-                        self._fault = "over-temperature safety cutoff"
+                        self._fault = RoasterFault.OVER_TEMPERATURE
                     logging.warning(
                         "localroaster: over-temperature cutoff at %.1f K (max %.1f K)",
                         current_temp_k,

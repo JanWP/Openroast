@@ -201,6 +201,9 @@ class RoastGraphWidget():
         if self._graph_timer is not None:
             self._graph_timer.setInterval(self._refresh_interval_ms)
 
+    def get_refresh_interval_ms(self):
+        return self._refresh_interval_ms
+
     def apply_plot_preferences(self, *, y_axis_headroom_c=None, y_axis_step_c=None,
                                show_grid=None, line_width=None):
         if y_axis_headroom_c is not None:

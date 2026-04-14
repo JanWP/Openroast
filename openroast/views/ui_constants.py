@@ -136,6 +136,14 @@ class RoastTabUI:
         "font-weight: bold; border-radius: 3px;"
     )
 
+    DIALOG_GRAPH_BOUNDS_TITLE = "Graph capacity notice"
+    DIALOG_GRAPH_BOUNDS_MESSAGE = (
+        "This recipe is {total_minutes:.1f} min long. At the current plot "
+        "refresh rate, the graph can display up to {max_minutes:.1f} min of data.\n\n"
+        "The roast will proceed normally, but the earliest ~{lost_seconds} s of "
+        "graph data will be dropped once the buffer fills."
+    )
+
 
 class PreferencesUI:
     LEFT_COLUMN_MAX_WIDTH = 520

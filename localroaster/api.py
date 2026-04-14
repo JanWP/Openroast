@@ -11,6 +11,19 @@ class RoasterState(StrEnum):
     FAULT = "fault"
 
 
+class RoasterFault(StrEnum):
+    """Known fault conditions for the roaster controller.
+
+    Over-temperature faults are *latching*: once set, they persist until the
+    user explicitly calls ``clear_fault()``.  There is no automatic recovery,
+    even if the measured temperature drops below the configured limit.  This
+    ensures the operator is always aware that a safety event occurred.
+    """
+
+    OVER_TEMPERATURE = "over-temperature safety cutoff"
+    SENSOR_ERROR = "sensor-error"
+
+
 @dataclass(slots=True)
 class ControllerConfig:
     thermostat: bool = True
@@ -42,5 +55,5 @@ class Telemetry:
     heater_level: int
     time_remaining_s: int
     total_time_s: int
-    fault: str | None = None
+    fault: RoasterFault | str | None = None
 

@@ -244,6 +244,36 @@ class RoastTab(QtWidgets.QWidget):
 
         return max(1, elapsed_s)
 
+    def _check_graph_bounds(self):
+        """Warn the user if total recipe duration exceeds graph deque capacity.
+
+        This is a non-blocking informational check — the roast will proceed
+        normally, but the earliest graph data points will be silently dropped
+        once the deque is full.
+        """
+        if not self.recipes.check_recipe_loaded():
+            return
+        total_s = 0
+        for idx in range(self.recipes.get_num_recipe_sections()):
+            total_s += int(self.recipes.get_section_duration(idx))
+        if total_s <= 0:
+            return
+        refresh_ms = self.graphWidget.get_refresh_interval_ms()
+        seconds_per_sample = max(0.001, refresh_ms / 1000.0)
+        estimated_samples = total_s / seconds_per_sample
+        max_len = customqtwidgets.RoastGraphWidget.GRAPH_DATA_MAX_LEN
+        if estimated_samples > max_len:
+            lost_s = int((estimated_samples - max_len) * seconds_per_sample)
+            QtWidgets.QMessageBox.information(
+                self,
+                RoastTabUI.DIALOG_GRAPH_BOUNDS_TITLE,
+                RoastTabUI.DIALOG_GRAPH_BOUNDS_MESSAGE.format(
+                    total_minutes=total_s / 60.0,
+                    max_minutes=max_len * seconds_per_sample / 60.0,
+                    lost_seconds=lost_s,
+                ),
+            )
+
     def _get_roaster_current_temp_c(self):
         if self._has_temp_k:
             return clamp_temperature_c(
