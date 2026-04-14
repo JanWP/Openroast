@@ -7,7 +7,8 @@ from localroaster.controller import HardwareDriver, RoasterController
 
 
 class MockHardwareDriver(HardwareDriver):
-    """Simple thermal model for development without physical hardware."""
+    """Simple thermal model for development without physical hardware.
+    """
 
     def __init__(self, config: ControllerConfig | None = None, time_fn=None):
         self.config = config or ControllerConfig()
@@ -18,6 +19,10 @@ class MockHardwareDriver(HardwareDriver):
         self._heater_level = 0.0
         self._use_level_control = False
         self._tau = 30.0
+        self._thermal_max_temp_k = max(
+            float(self.config.ambient_temp_k),
+            float(self.config.mock_thermal_max_temp_k),
+        )
         self._fan_speed = 1
         self._last_update_s = float(self._time_fn())
 
@@ -28,7 +33,7 @@ class MockHardwareDriver(HardwareDriver):
             self._last_update_s = now_s
 
             fan_cooling = (self._fan_speed - 1) * 2.0
-            hot_target_k = max(self.config.max_temp_k - fan_cooling, self.config.ambient_temp_k)
+            hot_target_k = max(self._thermal_max_temp_k - fan_cooling, self.config.ambient_temp_k)
             if self._use_level_control:
                 duty = max(0.0, min(100.0, float(self._heater_level))) / 100.0
             else:

@@ -40,6 +40,8 @@ class ControllerConfig:
     pwm_tick_s: float = 0.05
     ambient_temp_k: float = 295.15
     max_temp_k: float = 560.93
+    # Mock-only plant capability ceiling (decoupled from safety cutoff max_temp_k).
+    mock_thermal_max_temp_k: float = 560.93
     min_display_temp_k: float = 338.71
     heater_cutoff_enabled: bool = True
 

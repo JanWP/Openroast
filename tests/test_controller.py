@@ -9,6 +9,7 @@ from openroast import app_config
 from openroast.temperature import celsius_to_kelvin
 from localroaster.api import ControllerConfig, RoasterFault, RoasterState
 from localroaster.controller import DutyCyclePWM, PID, RoasterController, HardwareDriver
+from localroaster.mock import create_mock_controller
 
 
 def wait_for(predicate, *, timeout=2.0, poll=0.02):
@@ -698,6 +699,36 @@ class ControllerSafetyTests(unittest.TestCase):
         # Keep temperature high — manual clear should still work.
         ctrl.clear_fault()
         self.assertIsNone(ctrl.telemetry().fault)
+        ctrl.shutdown()
+
+    def test_mock_backend_overtemp_can_be_triggered_after_runtime_safety_change(self):
+        """Lowering safety max_temp_k at runtime should trip cutoff in mock mode.
+
+        This verifies mock thermal power is decoupled from safety threshold,
+        allowing interactive over-temperature protection testing.
+        """
+        cfg = ControllerConfig(
+            thermostat=False,
+            sample_period_s=0.05,
+            pwm_cycle_s=0.2,
+            pwm_tick_s=0.02,
+            ambient_temp_k=295.15,
+            max_temp_k=560.93,
+            mock_thermal_max_temp_k=560.93,
+            min_display_temp_k=295.15,
+            heater_cutoff_enabled=True,
+        )
+        ctrl = create_mock_controller(cfg)
+        ctrl.connect()
+        ctrl.heat_setting = 3
+        ctrl.roast()
+
+        # Lower runtime safety threshold close to ambient to force an over-temp trip.
+        ctrl.apply_runtime_config(max_temp_k=300.0)
+        wait_for(lambda: ctrl.telemetry().fault is not None, timeout=15.0)
+
+        self.assertEqual(ctrl.telemetry().fault, RoasterFault.OVER_TEMPERATURE)
+        self.assertEqual(ctrl.heater_level, 0)
         ctrl.shutdown()
 
 
