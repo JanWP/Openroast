@@ -5,6 +5,7 @@ import os
 import json
 import time
 import math
+from collections import deque
 from dataclasses import dataclass
 
 from PyQt5 import QtCore
@@ -93,10 +94,12 @@ class RoastGraphWidget():
     DIALOG_SAVE_GRAPH_CSV_FILTER = GraphUI.SAVE_GRAPH_CSV_FILTER
     CSV_HEADER = GraphUI.CSV_HEADER
 
+    GRAPH_DATA_MAX_LEN = 10240
+
     def __init__(self, graphXValueList=None, graphYValueList=None,
             animated=False, updateMethod=None, animatingMethod=None):
-        self.graphXValueList = graphXValueList or []
-        self.graphYValueList = graphYValueList or []
+        self.graphXValueList = deque(graphXValueList or [], maxlen=self.GRAPH_DATA_MAX_LEN)
+        self.graphYValueList = deque(graphYValueList or [], maxlen=self.GRAPH_DATA_MAX_LEN)
         self.counter = 0
         self.updateMethod = updateMethod
         self.animated = animated
@@ -115,6 +118,7 @@ class RoastGraphWidget():
         self._x_window_max_s = None
         self._graph_timer = None
         self._display_temp_unit = TEMP_UNIT_C
+        self._last_x_range = None
 
         self.widget = self.create_graph()
 
@@ -239,7 +243,7 @@ class RoastGraphWidget():
             if last_y > self._ymax_seen:
                 self._ymax_seen = last_y
 
-        self.graphLine.setData(self.graphXValueList, self.graphYValueList)
+        self.graphLine.setData(list(self.graphXValueList), list(self.graphYValueList))
         if current_len > 1:
             xmin = float(self.graphXValueList[0])
             elapsed_samples = float(self.counter)
@@ -249,11 +253,13 @@ class RoastGraphWidget():
                 # Convert section-window seconds to sample-index units.
                 window_samples = math.ceil(float(self._x_window_max_s) / self._seconds_per_sample)
                 x_limit_samples = max(elapsed_samples, float(window_samples))
-            self.plotWidget.setXRange(xmin, max(xmin + 1.0, x_limit_samples), padding=0)
+            new_x_range = (xmin, max(xmin + 1.0, x_limit_samples))
+            if self._last_x_range != new_x_range:
+                self._last_x_range = new_x_range
+                self.plotWidget.setXRange(*new_x_range, padding=0)
         # Keep graph baseline at room temperature (20 C) without flipping axis.
         self._apply_temperature_axis_limits()
         self._last_drawn_len = current_len
-        self.plotWidget.repaint()
 
     def append_x(self, temp_c):
         self.counter += 1
@@ -261,18 +267,18 @@ class RoastGraphWidget():
         self.graphYValueList.append(temp_c)
 
     def clear_graph(self):
-        self.graphXValueList = []
-        self.graphYValueList = []
+        self.graphXValueList = deque(maxlen=self.GRAPH_DATA_MAX_LEN)
+        self.graphYValueList = deque(maxlen=self.GRAPH_DATA_MAX_LEN)
         self.counter = 0
         self._ymax_seen = float(MIN_TEMPERATURE_C)
         self._y_reference_c = float(MIN_TEMPERATURE_C)
         self._y_axis_top = None
         self._x_window_max_s = None
+        self._last_x_range = None
         self.graphLine.setData([], [])
         self._apply_temperature_axis_limits()
         self.plotWidget.setXRange(0, 1, padding=0)
         self._last_drawn_len = 0
-        self.plotWidget.repaint()
 
     def set_time_window_max_seconds(self, max_seconds):
         if max_seconds is None:

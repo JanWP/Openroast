@@ -24,13 +24,13 @@ class RoastGraphWidgetTests(unittest.TestCase):
         widget.graph_draw(force=True)
 
         self.assertEqual(widget.counter, 2)
-        self.assertEqual(widget.graphXValueList, [1, 2])
-        self.assertEqual(widget.graphYValueList, [21, 22])
+        self.assertEqual(list(widget.graphXValueList), [1, 2])
+        self.assertEqual(list(widget.graphYValueList), [21, 22])
 
         widget.clear_graph()
         self.assertEqual(widget.counter, 0)
-        self.assertEqual(widget.graphXValueList, [])
-        self.assertEqual(widget.graphYValueList, [])
+        self.assertEqual(list(widget.graphXValueList), [])
+        self.assertEqual(list(widget.graphYValueList), [])
 
     def test_save_roast_graph_csv_writes_elapsed_seconds(self):
         widget = RoastGraphWidget(animated=False)
@@ -52,6 +52,20 @@ class RoastGraphWidgetTests(unittest.TestCase):
             self.assertEqual(rows[3], "2,30")
         finally:
             os.remove(path)
+
+    def test_save_roast_graph_csv_empty_graph_no_crash(self):
+        """save_roast_graph_csv with no data should not raise IndexError."""
+        widget = RoastGraphWidget(animated=False)
+        # Simulate the dialog returning a path even though data is empty.
+        fd, path = tempfile.mkstemp(suffix=".csv")
+        os.close(fd)
+        try:
+            with patch("openroast.views.customqtwidgets.QtWidgets.QFileDialog.getSaveFileName", return_value=(path, "CSV (*.csv)")):
+                # Should not crash — the function should handle empty data gracefully.
+                widget.save_roast_graph_csv()
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
 
     def test_display_unit_updates_axis_label(self):
         widget = RoastGraphWidget(animated=False)
