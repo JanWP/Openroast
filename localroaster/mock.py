@@ -1,5 +1,6 @@
 import math
 import threading
+import time
 
 from localroaster.api import ControllerConfig
 from localroaster.controller import HardwareDriver, RoasterController
@@ -8,20 +9,24 @@ from localroaster.controller import HardwareDriver, RoasterController
 class MockHardwareDriver(HardwareDriver):
     """Simple thermal model for development without physical hardware."""
 
-    def __init__(self, config: ControllerConfig | None = None):
+    def __init__(self, config: ControllerConfig | None = None, time_fn=None):
         self.config = config or ControllerConfig()
+        self._time_fn = time_fn or time.monotonic
         self._lock = threading.Lock()
         self._temp_k = self.config.ambient_temp_k
         self._heater_on = False
         self._heater_level = 0.0
         self._use_level_control = False
         self._tau = 30.0
-        self._a = math.exp(-self.config.sample_period_s / self._tau)
-        self._b = 1.0 - self._a
         self._fan_speed = 1
+        self._last_update_s = float(self._time_fn())
 
     def read_temperature_k(self) -> float:
         with self._lock:
+            now_s = float(self._time_fn())
+            dt_s = max(0.0, now_s - self._last_update_s)
+            self._last_update_s = now_s
+
             fan_cooling = (self._fan_speed - 1) * 2.0
             hot_target_k = max(self.config.max_temp_k - fan_cooling, self.config.ambient_temp_k)
             if self._use_level_control:
@@ -29,7 +34,9 @@ class MockHardwareDriver(HardwareDriver):
             else:
                 duty = 1.0 if self._heater_on else 0.0
             target_k = self.config.ambient_temp_k + duty * (hot_target_k - self.config.ambient_temp_k)
-            self._temp_k = self._a * self._temp_k + self._b * target_k
+            a = math.exp(-dt_s / self._tau) if dt_s > 0.0 else 1.0
+            b = 1.0 - a
+            self._temp_k = a * self._temp_k + b * target_k
             return self._temp_k
 
     def set_heater(self, on: bool) -> None:
@@ -50,6 +57,7 @@ class MockHardwareDriver(HardwareDriver):
             self._heater_level = 0.0
             self._use_level_control = False
             self._fan_speed = 1
+            self._last_update_s = float(self._time_fn())
 
     def set_fan_speed(self, speed: int) -> None:
         with self._lock:
