@@ -140,6 +140,9 @@ class RoasterController:
         self._autotune_cancel_event = threading.Event()
         self._pwm_wake_event = threading.Event()
         self._threads_started = False
+        self._control_thread: threading.Thread | None = None
+        self._pwm_thread: threading.Thread | None = None
+        self._timer_thread: threading.Thread | None = None
 
         self._state = RoasterState.DISCONNECTED
         self._connected = False
@@ -222,19 +225,27 @@ class RoasterController:
         if not self._threads_started:
             self._threads_started = True
             self._stop_event.clear()
-            threading.Thread(target=self._control_loop, name="localroaster-control", daemon=True).start()
-            threading.Thread(target=self._pwm_loop, name="localroaster-pwm", daemon=True).start()
-            threading.Thread(target=self._timer_loop, name="localroaster-timer", daemon=True).start()
+            self._control_thread = threading.Thread(target=self._control_loop, name="localroaster-control", daemon=True)
+            self._pwm_thread = threading.Thread(target=self._pwm_loop, name="localroaster-pwm", daemon=True)
+            self._timer_thread = threading.Thread(target=self._timer_loop, name="localroaster-timer", daemon=True)
+            self._control_thread.start()
+            self._pwm_thread.start()
+            self._timer_thread.start()
         self._emit_telemetry()
 
     def shutdown(self) -> None:
         self._stop_event.set()
+        self._pwm_wake_event.set()
         with self._lock:
             self._connected = False
             self._state = RoasterState.DISCONNECTED
         self._set_heater_level(0)
         self._set_heater_output(False, emit_telemetry=False)
-        self._pwm_wake_event.set()
+        # Join daemon threads before tearing down hardware to avoid
+        # set_heater() racing with close() on real GPIO/SSR pins.
+        for thread in (self._pwm_thread, self._control_thread, self._timer_thread):
+            if thread is not None and thread.is_alive():
+                thread.join(timeout=2.0)
         try:
             self.hardware.set_heater(False)
             self.hardware.close()

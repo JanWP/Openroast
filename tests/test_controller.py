@@ -596,6 +596,25 @@ class ControllerSafetyTests(unittest.TestCase):
         self.assertEqual(ctrl._stop_event.wait_calls, 1)
 
 
+    def test_heater_off_when_cooling_non_thermostat(self):
+        """Heater must stay off when the state is COOLING, even if heat_setting > 0."""
+        ctrl, driver, _ = self._make_controller(thermostat=False)
+        ctrl.connect()
+        ctrl.heat_setting = 3
+        ctrl.cool()
+        time.sleep(0.2)
+        self.assertEqual(ctrl.heater_level, 0, "Heater should be off in COOLING state")
+        ctrl.shutdown()
+
+    def test_heater_off_when_cooling_thermostat(self):
+        """Heater must stay off when the state is COOLING in thermostat mode."""
+        ctrl, driver, _ = self._make_controller(thermostat=True, temp_k=400.0)
+        ctrl.connect()
+        ctrl.target_temp_k = 500.0
+        ctrl.cool()
+        time.sleep(0.2)
+        self.assertEqual(ctrl.heater_level, 0, "Heater should be off in COOLING state (thermostat)")
+        ctrl.shutdown()
 if __name__ == "__main__":
     unittest.main()
 
