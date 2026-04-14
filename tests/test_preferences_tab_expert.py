@@ -142,6 +142,63 @@ class PreferencesTabExpertTests(unittest.TestCase):
             widget.close()
             self._app.processEvents()
 
+    def test_numeric_controls_use_unified_editor_style_ids(self):
+        widget = self._build_widget()
+        try:
+            expected = widget.NUMERIC_EDITOR_OBJECT_NAME
+            self.assertEqual(widget.refreshIntervalMs.editorObjectName(), expected)
+            self.assertEqual(widget.plotYAxisHeadroomC.editorObjectName(), expected)
+            self.assertEqual(widget.pidKp.editorObjectName(), expected)
+        finally:
+            widget.close()
+            self._app.processEvents()
+
+    def test_compact_numeric_controls_use_unified_compact_style_ids(self):
+        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, compact_ui=True)
+        try:
+            expected = widget.NUMERIC_EDITOR_COMPACT_OBJECT_NAME
+            self.assertEqual(widget.refreshIntervalMs.editorObjectName(), expected)
+            self.assertEqual(widget.plotYAxisStepC.editorObjectName(), expected)
+            self.assertEqual(widget.safetyMaxTempC.editorObjectName(), expected)
+        finally:
+            widget.close()
+            self._app.processEvents()
+
+    def test_numeric_controls_have_uniform_height_in_default_layout(self):
+        widget = self._build_widget()
+        try:
+            expected = widget.NUMERIC_EDITOR_HEIGHT_DEFAULT
+            self.assertEqual(widget.refreshIntervalMs.height(), expected)
+            self.assertEqual(widget.plotYAxisHeadroomC.height(), expected)
+            self.assertEqual(widget.plotYAxisStepC.height(), expected)
+        finally:
+            widget.close()
+            self._app.processEvents()
+
+    def test_numeric_controls_have_uniform_height_in_compact_layout(self):
+        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, compact_ui=True)
+        try:
+            expected = widget.NUMERIC_EDITOR_HEIGHT_COMPACT
+            self.assertEqual(widget.refreshIntervalMs.height(), expected)
+            self.assertEqual(widget.plotYAxisHeadroomC.height(), expected)
+            self.assertEqual(widget.plotYAxisStepC.height(), expected)
+        finally:
+            widget.close()
+            self._app.processEvents()
+
+    def test_pid_editors_use_requested_step_sizes(self):
+        widget = self._build_widget()
+        try:
+            self.assertAlmostEqual(widget.pidKp._spec.step_small, 0.01, places=6)
+            self.assertAlmostEqual(widget.pidKp._spec.step_large, 0.1, places=6)
+            self.assertAlmostEqual(widget.pidKi._spec.step_small, 0.01, places=6)
+            self.assertAlmostEqual(widget.pidKi._spec.step_large, 0.1, places=6)
+            self.assertAlmostEqual(widget.pidKd._spec.step_small, 0.01, places=6)
+            self.assertAlmostEqual(widget.pidKd._spec.step_large, 0.1, places=6)
+        finally:
+            widget.close()
+            self._app.processEvents()
+
     def test_autotune_worker_is_cleaned_up_after_finish(self):
         class DummyRoaster:
             connected = True

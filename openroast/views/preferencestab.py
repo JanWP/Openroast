@@ -3,6 +3,7 @@ from PyQt5 import QtWidgets
 
 from openroast import app_config
 from openroast.controllers.autotune import autotune_pid_for_backend
+from openroast.views import customqtwidgets
 from openroast.temperature import (
     RECIPE_UNIT_CELSIUS,
     RECIPE_UNIT_FAHRENHEIT,
@@ -49,6 +50,14 @@ class PreferencesTab(QtWidgets.QWidget):
     DIALOG_RESTORE_EXPERT_MESSAGE = PreferencesUI.DIALOG_RESTORE_EXPERT_MESSAGE
     DIALOG_RESTORE_USER_TITLE = PreferencesUI.DIALOG_RESTORE_USER_TITLE
     DIALOG_RESTORE_USER_MESSAGE = PreferencesUI.DIALOG_RESTORE_USER_MESSAGE
+    NUMERIC_EDITOR_OBJECT_NAME = PreferencesUI.NUMERIC_EDITOR_OBJECT_NAME
+    NUMERIC_EDITOR_COMPACT_OBJECT_NAME = PreferencesUI.NUMERIC_EDITOR_COMPACT_OBJECT_NAME
+    NUMERIC_EDITOR_HEIGHT_DEFAULT = PreferencesUI.NUMERIC_EDITOR_HEIGHT_DEFAULT
+    NUMERIC_EDITOR_HEIGHT_COMPACT = PreferencesUI.NUMERIC_EDITOR_HEIGHT_COMPACT
+    REFRESH_INTERVAL_STEP_SMALL_MS = PreferencesUI.REFRESH_INTERVAL_STEP_SMALL_MS
+    REFRESH_INTERVAL_STEP_LARGE_MS = PreferencesUI.REFRESH_INTERVAL_STEP_LARGE_MS
+    PID_STEP_SMALL = PreferencesUI.PID_STEP_SMALL
+    PID_STEP_LARGE = PreferencesUI.PID_STEP_LARGE
 
     class _AutotuneWorker(QtCore.QThread):
         resultReady = QtCore.pyqtSignal(object, object)
@@ -65,7 +74,7 @@ class PreferencesTab(QtWidgets.QWidget):
             else:
                 self.resultReady.emit(result, None)
 
-    def __init__(self, config, on_save=None, roaster=None, pre_autotune_hook=None):
+    def __init__(self, config, on_save=None, roaster=None, pre_autotune_hook=None, compact_ui=False):
         super().__init__()
         self._on_save = on_save
         self._roaster = roaster
@@ -77,6 +86,7 @@ class PreferencesTab(QtWidgets.QWidget):
         self._suppress_heater_cutoff_prompt = False
         self._active_display_unit = TEMP_UNIT_C
         self._autotune_worker = None
+        self._compact_ui = bool(compact_ui)
         self._unit_options = [
             (RECIPE_UNIT_CELSIUS, TEMP_UNIT_C),
             (RECIPE_UNIT_FAHRENHEIT, TEMP_UNIT_F),
@@ -175,6 +185,15 @@ class PreferencesTab(QtWidgets.QWidget):
         form_right.setLabelAlignment(QtCore.Qt.AlignLeft)
         form_right.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
 
+        def make_numeric(spec):
+            editor = customqtwidgets.AdaptiveValueEditor(
+                spec,
+                compact=self._compact_ui,
+                parent=self,
+            )
+            self._configure_numeric_editor(editor)
+            return editor
+
         self.temperatureUnitSelect = QtWidgets.QComboBox()
         self.temperatureUnitSelect.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         for label, unit in self._unit_options:
@@ -189,14 +208,21 @@ class PreferencesTab(QtWidgets.QWidget):
         self.fullscreenDefault = QtWidgets.QCheckBox()
         self.expertModeEnabled = QtWidgets.QCheckBox()
 
-        self.refreshIntervalMs = QtWidgets.QSpinBox()
+        self.refreshIntervalMs = make_numeric(
+            customqtwidgets.ValueSpec(
+                kind="int",
+                decimals=0,
+                step_small=self.REFRESH_INTERVAL_STEP_SMALL_MS,
+                step_large=self.REFRESH_INTERVAL_STEP_LARGE_MS,
+            )
+        )
         self.refreshIntervalMs.setRange(
             app_config.MIN_REFRESH_INTERVAL_MS,
             app_config.MAX_REFRESH_INTERVAL_MS,
         )
         self.refreshIntervalMs.setSuffix(" ms")
 
-        self.plotYAxisHeadroomC = QtWidgets.QDoubleSpinBox()
+        self.plotYAxisHeadroomC = make_numeric(customqtwidgets.ValueSpec(kind="float", decimals=2))
         self.plotYAxisHeadroomC.setRange(
             app_config.MIN_Y_AXIS_HEADROOM_C,
             app_config.MAX_Y_AXIS_HEADROOM_C,
@@ -204,7 +230,7 @@ class PreferencesTab(QtWidgets.QWidget):
         self.plotYAxisHeadroomC.setSingleStep(0.5)
         self.plotYAxisHeadroomC.setSuffix(" C")
 
-        self.plotYAxisStepC = QtWidgets.QDoubleSpinBox()
+        self.plotYAxisStepC = make_numeric(customqtwidgets.ValueSpec(kind="float", decimals=2))
         self.plotYAxisStepC.setRange(
             app_config.MIN_Y_AXIS_STEP_C,
             app_config.MAX_Y_AXIS_STEP_C,
@@ -214,7 +240,7 @@ class PreferencesTab(QtWidgets.QWidget):
 
         self.plotShowGrid = QtWidgets.QCheckBox()
 
-        self.plotLineWidth = QtWidgets.QDoubleSpinBox()
+        self.plotLineWidth = make_numeric(customqtwidgets.ValueSpec(kind="float", decimals=2))
         self.plotLineWidth.setRange(
             app_config.MIN_PLOT_LINE_WIDTH,
             app_config.MAX_PLOT_LINE_WIDTH,
@@ -269,22 +295,57 @@ class PreferencesTab(QtWidgets.QWidget):
         safety_form.setLabelAlignment(QtCore.Qt.AlignLeft)
         safety_form.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
 
-        self.pidKp = QtWidgets.QDoubleSpinBox()
+        self.pidKp = customqtwidgets.AdaptiveValueEditor(
+            customqtwidgets.ValueSpec(
+                kind="float",
+                decimals=4,
+                step_small=self.PID_STEP_SMALL,
+                step_large=self.PID_STEP_LARGE,
+            ),
+            compact=self._compact_ui,
+            parent=self,
+        )
+        self._configure_numeric_editor(self.pidKp)
         self.pidKp.setDecimals(4)
         self.pidKp.setRange(app_config.MIN_PID_KP, app_config.MAX_PID_KP)
-        self.pidKp.setSingleStep(0.001)
+        self.pidKp.setSingleStep(self.PID_STEP_SMALL)
 
-        self.pidKi = QtWidgets.QDoubleSpinBox()
+        self.pidKi = customqtwidgets.AdaptiveValueEditor(
+            customqtwidgets.ValueSpec(
+                kind="float",
+                decimals=4,
+                step_small=self.PID_STEP_SMALL,
+                step_large=self.PID_STEP_LARGE,
+            ),
+            compact=self._compact_ui,
+            parent=self,
+        )
+        self._configure_numeric_editor(self.pidKi)
         self.pidKi.setDecimals(4)
         self.pidKi.setRange(app_config.MIN_PID_KI, app_config.MAX_PID_KI)
-        self.pidKi.setSingleStep(0.001)
+        self.pidKi.setSingleStep(self.PID_STEP_SMALL)
 
-        self.pidKd = QtWidgets.QDoubleSpinBox()
+        self.pidKd = customqtwidgets.AdaptiveValueEditor(
+            customqtwidgets.ValueSpec(
+                kind="float",
+                decimals=4,
+                step_small=self.PID_STEP_SMALL,
+                step_large=self.PID_STEP_LARGE,
+            ),
+            compact=self._compact_ui,
+            parent=self,
+        )
+        self._configure_numeric_editor(self.pidKd)
         self.pidKd.setDecimals(4)
         self.pidKd.setRange(app_config.MIN_PID_KD, app_config.MAX_PID_KD)
-        self.pidKd.setSingleStep(0.001)
+        self.pidKd.setSingleStep(self.PID_STEP_SMALL)
 
-        self.pwmCycleSeconds = QtWidgets.QDoubleSpinBox()
+        self.pwmCycleSeconds = customqtwidgets.AdaptiveValueEditor(
+            customqtwidgets.ValueSpec(kind="float", decimals=2, step_small=0.1, step_large=1.0),
+            compact=self._compact_ui,
+            parent=self,
+        )
+        self._configure_numeric_editor(self.pwmCycleSeconds)
         self.pwmCycleSeconds.setDecimals(2)
         self.pwmCycleSeconds.setRange(
             app_config.MIN_PWM_CYCLE_SECONDS,
@@ -293,7 +354,12 @@ class PreferencesTab(QtWidgets.QWidget):
         self.pwmCycleSeconds.setSingleStep(0.1)
         self.pwmCycleSeconds.setSuffix(" s")
 
-        self.samplePeriodSeconds = QtWidgets.QDoubleSpinBox()
+        self.samplePeriodSeconds = customqtwidgets.AdaptiveValueEditor(
+            customqtwidgets.ValueSpec(kind="float", decimals=2, step_small=0.05, step_large=0.5),
+            compact=self._compact_ui,
+            parent=self,
+        )
+        self._configure_numeric_editor(self.samplePeriodSeconds)
         self.samplePeriodSeconds.setDecimals(2)
         self.samplePeriodSeconds.setRange(
             app_config.MIN_SAMPLE_PERIOD_SECONDS,
@@ -302,7 +368,12 @@ class PreferencesTab(QtWidgets.QWidget):
         self.samplePeriodSeconds.setSingleStep(0.05)
         self.samplePeriodSeconds.setSuffix(" s")
 
-        self.safetyMaxTempC = QtWidgets.QDoubleSpinBox()
+        self.safetyMaxTempC = customqtwidgets.AdaptiveValueEditor(
+            customqtwidgets.ValueSpec(kind="float", decimals=1, step_small=1.0, step_large=10.0),
+            compact=self._compact_ui,
+            parent=self,
+        )
+        self._configure_numeric_editor(self.safetyMaxTempC)
         self.safetyMaxTempC.setDecimals(1)
         self.safetyMaxTempC.setRange(
             app_config.MIN_SAFETY_MAX_TEMP_C,
@@ -334,6 +405,18 @@ class PreferencesTab(QtWidgets.QWidget):
         layout.addWidget(right_column, 0)
         layout.addStretch(1)
         return page
+
+    def _configure_numeric_editor(self, editor):
+        editor.setEditorObjectName(
+            self.NUMERIC_EDITOR_COMPACT_OBJECT_NAME
+            if self._compact_ui
+            else self.NUMERIC_EDITOR_OBJECT_NAME
+        )
+        editor.set_uniform_height(
+            self.NUMERIC_EDITOR_HEIGHT_COMPACT
+            if self._compact_ui
+            else self.NUMERIC_EDITOR_HEIGHT_DEFAULT
+        )
 
     def _load_from_config(self, config):
         self._load_user_tab_from_config(config)

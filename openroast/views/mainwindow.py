@@ -247,6 +247,7 @@ class MainWindow(QtWidgets.QMainWindow):
             on_save=self.on_preferences_saved,
             roaster=roaster,
             pre_autotune_hook=self.prepare_autotune_run,
+            compact_ui=self.compact_ui,
         )
         apply_prefs = getattr(self.roast, "apply_preferences", None)
         if callable(apply_prefs):

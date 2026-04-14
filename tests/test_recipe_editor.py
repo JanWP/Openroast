@@ -108,7 +108,10 @@ class RecipeEditorTests(unittest.TestCase):
     def test_steps_table_uses_named_geometry_constants(self):
         editor = RecipeEditor(compact_ui=True)
         try:
-            self.assertGreaterEqual(editor.recipeSteps.columnWidth(0), editor.COLUMN_WIDTH_TEMP)
+            self.assertGreaterEqual(
+                editor.recipeSteps.columnWidth(0),
+                editor.COLUMN_WIDTH_TEMP_COMPACT,
+            )
             self.assertGreaterEqual(editor.recipeSteps.columnWidth(1), editor.COLUMN_WIDTH_FAN)
             self.assertGreaterEqual(
                 editor.recipeSteps.columnWidth(2),
@@ -119,7 +122,7 @@ class RecipeEditorTests(unittest.TestCase):
                 editor.COLUMN_WIDTH_MODIFY_COMPACT,
             )
             expected_min_width = (
-                editor.COLUMN_WIDTH_TEMP
+                editor.COLUMN_WIDTH_TEMP_COMPACT
                 + editor.COLUMN_WIDTH_FAN
                 + editor.COLUMN_WIDTH_DURATION_COMPACT
                 + editor.COLUMN_WIDTH_MODIFY_COMPACT
@@ -169,9 +172,9 @@ class RecipeEditorTests(unittest.TestCase):
     def test_compact_temp_picker_updates_cell_value(self):
         editor = RecipeEditor(compact_ui=True)
         try:
-            editor._prompt_compact_temperature_selection = lambda _current: editor.COOLING_LABEL
-            editor.open_compact_temp_picker(0)
-            self.assertEqual(editor.recipeSteps.cellWidget(0, 0).currentText(), editor.COOLING_LABEL)
+            temp_widget = editor.recipeSteps.cellWidget(0, 0)
+            temp_widget.setCurrentText(editor.COOLING_LABEL)
+            self.assertEqual(temp_widget.currentText(), editor.COOLING_LABEL)
         finally:
             editor.close()
             self._app.processEvents()
@@ -179,10 +182,10 @@ class RecipeEditorTests(unittest.TestCase):
     def test_compact_duration_picker_updates_cell_value(self):
         editor = RecipeEditor(compact_ui=True)
         try:
-            editor._prompt_compact_duration_selection = lambda _seconds: 95
-            editor.open_compact_duration_picker(0)
-            duration = QtCore.QTime(0, 0, 0).secsTo(editor.recipeSteps.cellWidget(0, 2).time())
-            self.assertEqual(duration, 95)
+            duration_widget = editor.recipeSteps.cellWidget(0, 2)
+            duration_widget.setValue(95)
+            self.assertEqual(duration_widget.value(), 95)
+            self.assertEqual(duration_widget.currentText(), "01:35")
         finally:
             editor.close()
             self._app.processEvents()

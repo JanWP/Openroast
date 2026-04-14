@@ -654,6 +654,109 @@ QLabel#recipeSelectionLabel {
 }
 
 /* Recipe editor definitions. */
+QSpinBox#inlineValueEditor,
+QDoubleSpinBox#inlineValueEditor {
+    background-color: transparent;
+    border: none;
+    border-radius: 5px;
+    color: #fff;
+    font-family: "Asap";
+    font: bold;
+    min-width: 0px;
+    padding-left: 2px;
+}
+
+QSpinBox#inlineValueEditor::up-button,
+QDoubleSpinBox#inlineValueEditor::up-button {
+    background-color: transparent;
+    border: none;
+    image: url(static/images/upArrow.png);
+    width: 12px;
+}
+
+QSpinBox#inlineValueEditor::down-button,
+QDoubleSpinBox#inlineValueEditor::down-button {
+    background-color: transparent;
+    border: none;
+    image: url(static/images/downArrow.png);
+    width: 12px;
+}
+
+QComboBox#inlineValueEditorCompact {
+    background-color: transparent;
+    border: none;
+    color: #fff;
+    font-family: "Asap";
+    font: bold;
+    font-size: 12px;
+    min-width: 0px;
+    padding-left: 2px;
+}
+
+QComboBox#inlineValueEditorCompact::drop-down {
+    background-color: transparent;
+    border: none;
+    width: 0px;
+}
+
+QComboBox#inlineValueEditorCompact::down-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+}
+
+QSpinBox#recipeEditTemp {
+    background-color: transparent;
+    border: none;
+    border-radius: 5px;
+    color: #fff;
+    font-family: "Asap";
+    font: bold;
+    min-width: 0px;
+    max-width: 56px;
+    width: 56px;
+    padding-left: 2px;
+}
+
+QSpinBox#recipeEditTemp::up-button {
+    background-color: transparent;
+    border: none;
+    image: url(static/images/upArrow.png);
+    width: 12px;
+}
+
+QSpinBox#recipeEditTemp::down-button {
+    background-color: transparent;
+    border: none;
+    image: url(static/images/downArrow.png);
+    width: 12px;
+}
+
+QComboBox#recipeEditTempCompact {
+    background-color: transparent;
+    border: none;
+    color: #fff;
+    font-family: "Asap";
+    font: bold;
+    font-size: 12px;
+    min-width: 0px;
+    max-width: 44px;
+    width: 44px;
+    padding-left: 2px;
+}
+
+QComboBox#recipeEditTempCompact::drop-down {
+    background-color: transparent;
+    border: none;
+    width: 0px;
+}
+
+QComboBox#recipeEditTempCompact::down-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+}
+
 QComboBox#recipeEditCombo {
     background-color: transparent;
     selection-background-color: #2aa1d3;

@@ -29,7 +29,7 @@ from openroast.temperature import (
     TEMP_UNIT_K,
     TEMPERATURE_STEP_C,
     celsius_to_temperature_unit,
-            get_default_display_temperature_unit,
+    get_default_display_temperature_unit,
     clamp_temperature_c,
     normalize_temperature_unit,
     temperature_to_celsius,
@@ -48,54 +48,22 @@ class _TimeAxis(pg.AxisItem):
         return labels
 
 
-class CompactTempPickerCombo(customqtwidgets.ComboBoxNoWheel):
-    """Combo that opens a compact touch picker instead of a long dropdown."""
-
-    def __init__(self, on_pick, *args, **kwargs):
-        super(CompactTempPickerCombo, self).__init__(*args, **kwargs)
-        self._on_pick = on_pick
-
-    def showPopup(self):
-        if callable(self._on_pick):
-            self._on_pick()
-
-
-class CompactDurationEdit(customqtwidgets.TimeEditNoWheel):
-    """Time edit that opens a touch picker in compact mode."""
-
-    def __init__(self, on_pick, *args, **kwargs):
-        super(CompactDurationEdit, self).__init__(*args, **kwargs)
-        self._on_pick = on_pick
-        self.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
-        self.installEventFilter(self)
-        line_edit = self.lineEdit()
-        if line_edit is not None:
-            line_edit.installEventFilter(self)
-
-    def eventFilter(self, watched, event):
-        if event.type() == QtCore.QEvent.MouseButtonRelease:
-            if callable(self._on_pick):
-                self._on_pick()
-            return True
-        return super(CompactDurationEdit, self).eventFilter(watched, event)
-
-
 class RecipeEditor(QtWidgets.QDialog):
-    # Centralized UI constants (kept as class aliases for compatibility/tests).
+    # Centralized UI constants.
     WINDOW_MIN_WIDTH = RecipeEditorUI.WINDOW_MIN_WIDTH
     WINDOW_MIN_HEIGHT_COMPACT = RecipeEditorUI.WINDOW_MIN_HEIGHT_COMPACT
     WINDOW_MIN_HEIGHT_DEFAULT = RecipeEditorUI.WINDOW_MIN_HEIGHT_DEFAULT
     WINDOW_RESIZE_WIDTH_DEFAULT = RecipeEditorUI.WINDOW_RESIZE_WIDTH_DEFAULT
     WINDOW_RESIZE_HEIGHT_DEFAULT = RecipeEditorUI.WINDOW_RESIZE_HEIGHT_DEFAULT
 
-    COLUMN_WIDTH_TEMP = RecipeEditorUI.COLUMN_WIDTH_TEMP
+    COLUMN_WIDTH_TEMP_COMPACT = RecipeEditorUI.COLUMN_WIDTH_TEMP_COMPACT
+    COLUMN_WIDTH_TEMP_DEFAULT = RecipeEditorUI.COLUMN_WIDTH_TEMP_DEFAULT
     COLUMN_WIDTH_FAN = RecipeEditorUI.COLUMN_WIDTH_FAN
     COLUMN_WIDTH_DURATION_COMPACT = RecipeEditorUI.COLUMN_WIDTH_DURATION_COMPACT
     COLUMN_WIDTH_DURATION_DEFAULT = RecipeEditorUI.COLUMN_WIDTH_DURATION_DEFAULT
     COLUMN_WIDTH_MODIFY_COMPACT = RecipeEditorUI.COLUMN_WIDTH_MODIFY_COMPACT
     COLUMN_WIDTH_MODIFY_DEFAULT = RecipeEditorUI.COLUMN_WIDTH_MODIFY_DEFAULT
     TABLE_MIN_EXTRA_WIDTH = RecipeEditorUI.TABLE_MIN_EXTRA_WIDTH
-    TABLE_MIN_WIDTH = RecipeEditorUI.TABLE_MIN_WIDTH
     TABLE_ROW_HEIGHT_COMPACT = RecipeEditorUI.TABLE_ROW_HEIGHT_COMPACT
 
     TEMP_EDITOR_WIDTH_COMPACT = RecipeEditorUI.TEMP_EDITOR_WIDTH_COMPACT
@@ -110,6 +78,7 @@ class RecipeEditor(QtWidgets.QDialog):
     DURATION_MAX_S = RecipeEditorUI.DURATION_MAX_S
 
     COOLING_LABEL = RecipeEditorUI.COOLING_LABEL
+    COOLING_SENTINEL_OFFSET = 1
 
     TAB_WIDGET_OBJECT_NAME = RecipeEditorUI.TAB_WIDGET_OBJECT_NAME
     TAB_PAGE_OBJECT_NAME_INFO = RecipeEditorUI.TAB_PAGE_OBJECT_NAME_INFO
@@ -186,7 +155,6 @@ class RecipeEditor(QtWidgets.QDialog):
     PLOT_AXIS_TEMPERATURE = RecipeEditorUI.PLOT_AXIS_TEMPERATURE
 
     PICKER_TEMPERATURE_TITLE = RecipeEditorUI.PICKER_TEMPERATURE_TITLE
-    PICKER_TEMPERATURE_COOLING_TOGGLE = RecipeEditorUI.PICKER_TEMPERATURE_COOLING_TOGGLE
     PICKER_DURATION_TITLE = RecipeEditorUI.PICKER_DURATION_TITLE
 
     ALERT_MIN_STEPS_TITLE = RecipeEditorUI.ALERT_MIN_STEPS_TITLE
@@ -525,19 +493,24 @@ class RecipeEditor(QtWidgets.QDialog):
             if self.compact_ui
             else self.COLUMN_WIDTH_DURATION_DEFAULT
         )
+        temp_width = (
+            self.COLUMN_WIDTH_TEMP_COMPACT
+            if self.compact_ui
+            else self.COLUMN_WIDTH_TEMP_DEFAULT
+        )
         modify_width = (
             self.COLUMN_WIDTH_MODIFY_COMPACT
             if self.compact_ui
             else self.COLUMN_WIDTH_MODIFY_DEFAULT
         )
 
-        self.recipeSteps.setColumnWidth(0, self.COLUMN_WIDTH_TEMP)
+        self.recipeSteps.setColumnWidth(0, temp_width)
         self.recipeSteps.setColumnWidth(1, self.COLUMN_WIDTH_FAN)
         self.recipeSteps.setColumnWidth(2, duration_width)
         self.recipeSteps.setColumnWidth(3, modify_width)
         # Keep a little extra width beyond column sum for a vertical scroll bar and padding.
         self.recipeSteps.setMinimumWidth(
-            self.COLUMN_WIDTH_TEMP
+            temp_width
             + self.COLUMN_WIDTH_FAN
             + duration_width
             + modify_width
@@ -582,10 +555,45 @@ class RecipeEditor(QtWidgets.QDialog):
                 choices.append(str(display_value))
         return [self.COOLING_LABEL] + choices
 
+    def _temp_display_range(self):
+        min_display = int(round(celsius_to_temperature_unit(MIN_TEMPERATURE_C, self._display_temp_unit)))
+        max_display = int(round(celsius_to_temperature_unit(MAX_TEMPERATURE_C, self._display_temp_unit)))
+        return min_display, max_display
+
+    def _temp_sentinel_display_value(self):
+        min_display, _ = self._temp_display_range()
+        return int(min_display - self.COOLING_SENTINEL_OFFSET)
+
     def load_recipe_steps(self, recipeStepsTable, steps):
         """Populate a recipe steps table from normalized Celsius step values."""
         fanSpeedChoices = [str(x) for x in range(1, 10)]
-        targetTempChoices = self._display_temp_choices()
+        min_display, max_display = self._temp_display_range()
+        temp_spec = customqtwidgets.ValueSpec(
+            kind="int",
+            minimum=min_display,
+            maximum=max_display,
+            step_small=self.TEMP_PICKER_STEP_SMALL,
+            step_large=self.TEMP_PICKER_STEP_LARGE,
+            decimals=0,
+            suffix="",
+            dialog_title=self.PICKER_TEMPERATURE_TITLE,
+            dialog_width=self.PICKER_DIALOG_WIDTH_COMPACT if self.compact_ui else self.PICKER_DIALOG_WIDTH_DEFAULT,
+            cancel_text=self.PICKER_CANCEL_TEXT,
+            apply_text=self.PICKER_APPLY_TEXT,
+            sentinel_value=self._temp_sentinel_display_value(),
+            sentinel_label=self.COOLING_LABEL,
+        )
+        duration_spec = customqtwidgets.ValueSpec(
+            kind="duration",
+            minimum=0,
+            maximum=self.DURATION_MAX_S,
+            step_small=self.DURATION_STEP_SMALL_S,
+            step_large=self.DURATION_STEP_LARGE_S,
+            dialog_title=self.PICKER_DURATION_TITLE,
+            dialog_width=self.PICKER_DIALOG_WIDTH_COMPACT if self.compact_ui else self.PICKER_DIALOG_WIDTH_DEFAULT,
+            cancel_text=self.PICKER_CANCEL_TEXT,
+            apply_text=self.PICKER_APPLY_TEXT,
+        )
         if self._row_action_icons is None:
             self._row_action_icons = {
                 "delete": QtGui.QIcon(utils.get_resource_filename('static/images/delete.png')),
@@ -599,52 +607,42 @@ class RecipeEditor(QtWidgets.QDialog):
             for row in range(len(steps)):
                 recipeStepsTable.insertRow(recipeStepsTable.rowCount())
 
-                if self.compact_ui:
-                    sectionTempWidget = CompactTempPickerCombo(
-                        functools.partial(self.open_compact_temp_picker, row)
-                    )
-                else:
-                    sectionTempWidget = customqtwidgets.ComboBoxNoWheel()
-                sectionTempWidget.setObjectName("recipeEditCombo")
+                sectionTempWidget = customqtwidgets.AdaptiveValueEditor(
+                    temp_spec,
+                    compact=self.compact_ui,
+                    parent=self,
+                )
+                sectionTempWidget.setObjectName("recipeEditTempContainer")
+                sectionTempWidget.setEditorObjectName(
+                    "recipeEditTempCompact" if self.compact_ui else "recipeEditTemp"
+                )
                 sectionTempWidget.setFixedWidth(
                     self.TEMP_EDITOR_WIDTH_COMPACT if self.compact_ui else self.TEMP_EDITOR_WIDTH_DEFAULT
                 )
-                sectionTempWidget.addItems(targetTempChoices)
-                sectionTempWidget.insertSeparator(1)
 
                 if 'targetTemp' in steps[row]:
                     temp_display = int(round(
                         celsius_to_temperature_unit(steps[row]["targetTemp"], self._display_temp_unit)
                     ))
-                    temp_display_text = str(temp_display)
-                    if temp_display_text in targetTempChoices:
-                        sectionTempWidget.setCurrentIndex(targetTempChoices.index(temp_display_text) + 1)
-                    else:
-                        sectionTempWidget.addItem(temp_display_text)
-                        sectionTempWidget.setCurrentIndex(sectionTempWidget.count() - 1)
+                    sectionTempWidget.setValue(temp_display)
                 elif 'cooling' in steps[row]:
-                    sectionTempWidget.setCurrentIndex(targetTempChoices.index(self.COOLING_LABEL))
+                    sectionTempWidget.setValue(self._temp_sentinel_display_value())
 
                 if not self.compact_ui:
-                    sectionTempWidget.currentIndexChanged.connect(self.on_steps_changed)
+                    sectionTempWidget.valueChanged.connect(self.on_steps_changed)
 
-                if self.compact_ui:
-                    sectionDurationWidget = CompactDurationEdit(
-                        functools.partial(self.open_compact_duration_picker, row)
-                    )
-                else:
-                    sectionDurationWidget = customqtwidgets.TimeEditNoWheel()
+                sectionDurationWidget = customqtwidgets.AdaptiveValueEditor(
+                    duration_spec,
+                    compact=self.compact_ui,
+                    parent=self,
+                )
                 sectionDurationWidget.setObjectName("recipeEditTime")
+                sectionDurationWidget.setEditorObjectName("recipeEditTime")
                 sectionDurationWidget.setFixedWidth(
                     self.TIME_EDITOR_WIDTH_COMPACT if self.compact_ui else self.TIME_EDITOR_WIDTH_DEFAULT
                 )
-                sectionDurationWidget.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
-                sectionDurationWidget.setDisplayFormat("mm:ss")
-                sectionDurationStr = time.strftime("%M:%S", time.gmtime(steps[row]["sectionTime"]))
-                sectionDuration = QtCore.QTime().fromString(sectionDurationStr, "mm:ss")
-                sectionDurationWidget.setTime(sectionDuration)
-                if not self.compact_ui:
-                    sectionDurationWidget.timeChanged.connect(self.on_steps_changed)
+                sectionDurationWidget.setValue(int(steps[row]["sectionTime"]))
+                sectionDurationWidget.valueChanged.connect(self.on_steps_changed)
 
                 sectionFanSpeedWidget = customqtwidgets.ComboBoxNoWheel()
                 sectionFanSpeedWidget.setObjectName("recipeEditCombo")
@@ -732,182 +730,7 @@ class RecipeEditor(QtWidgets.QDialog):
             return
         self.request_update_recipe_curve()
 
-    def open_compact_temp_picker(self, row):
-        """Open touch picker for temperature selection in compact mode."""
-        widget = self.recipeSteps.cellWidget(row, 0)
-        if widget is None:
-            return
-        selected_text = self._prompt_compact_temperature_selection(widget.currentText())
-        if selected_text is None:
-            return
 
-        selected_index = widget.findText(selected_text)
-        if selected_index < 0:
-            widget.addItem(selected_text)
-            selected_index = widget.findText(selected_text)
-
-        widget.blockSignals(True)
-        widget.setCurrentIndex(selected_index)
-        widget.blockSignals(False)
-        self.on_steps_changed()
-
-    def open_compact_duration_picker(self, row):
-        """Open touch picker for duration selection in compact mode."""
-        widget = self.recipeSteps.cellWidget(row, 2)
-        if widget is None:
-            return
-        current_seconds = QtCore.QTime(0, 0, 0).secsTo(widget.time())
-        selected_seconds = self._prompt_compact_duration_selection(current_seconds)
-        if selected_seconds is None:
-            return
-
-        widget.blockSignals(True)
-        widget.setTime(QtCore.QTime(0, 0, 0).addSecs(int(selected_seconds)))
-        widget.blockSignals(False)
-        self.on_steps_changed()
-
-    def _prompt_compact_temperature_selection(self, current_text):
-        """Return selected display-unit temperature text or None if canceled."""
-        min_display = int(round(celsius_to_temperature_unit(MIN_TEMPERATURE_C, self._display_temp_unit)))
-        max_display = int(round(celsius_to_temperature_unit(MAX_TEMPERATURE_C, self._display_temp_unit)))
-
-        state = {
-            "cooling": current_text == self.COOLING_LABEL,
-            "value": min_display,
-        }
-        if not state["cooling"]:
-            try:
-                state["value"] = int(current_text)
-            except (TypeError, ValueError):
-                state["value"] = min_display
-
-        dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle(self.PICKER_TEMPERATURE_TITLE)
-        dialog.setModal(True)
-        dialog.setMinimumWidth(
-            self.PICKER_DIALOG_WIDTH_COMPACT if self.compact_ui else self.PICKER_DIALOG_WIDTH_DEFAULT
-        )
-
-        layout = QtWidgets.QVBoxLayout(dialog)
-        value_label = QtWidgets.QLabel()
-        value_label.setAlignment(QtCore.Qt.AlignCenter)
-        value_label.setObjectName("label")
-
-        def refresh_label():
-            if state["cooling"]:
-                value_label.setText(self.COOLING_LABEL)
-            else:
-                value_label.setText(f"{state['value']} {self._current_unit_display_label()}")
-
-        def set_cooling(enabled):
-            state["cooling"] = bool(enabled)
-            refresh_label()
-
-        def adjust(delta):
-            if state["cooling"]:
-                state["cooling"] = False
-            state["value"] = max(min_display, min(max_display, state["value"] + int(delta)))
-            refresh_label()
-
-        cooling_toggle = QtWidgets.QPushButton(self.PICKER_TEMPERATURE_COOLING_TOGGLE)
-        cooling_toggle.setCheckable(True)
-        cooling_toggle.setChecked(state["cooling"])
-        cooling_toggle.clicked.connect(set_cooling)
-
-        step_row = QtWidgets.QHBoxLayout()
-        minus_big = QtWidgets.QPushButton(f"-{self.TEMP_PICKER_STEP_LARGE}")
-        minus_small = QtWidgets.QPushButton(f"-{self.TEMP_PICKER_STEP_SMALL}")
-        plus_small = QtWidgets.QPushButton(f"+{self.TEMP_PICKER_STEP_SMALL}")
-        plus_big = QtWidgets.QPushButton(f"+{self.TEMP_PICKER_STEP_LARGE}")
-        minus_big.clicked.connect(lambda: adjust(-self.TEMP_PICKER_STEP_LARGE))
-        minus_small.clicked.connect(lambda: adjust(-self.TEMP_PICKER_STEP_SMALL))
-        plus_small.clicked.connect(lambda: adjust(self.TEMP_PICKER_STEP_SMALL))
-        plus_big.clicked.connect(lambda: adjust(self.TEMP_PICKER_STEP_LARGE))
-        step_row.addWidget(minus_big)
-        step_row.addWidget(minus_small)
-        step_row.addWidget(plus_small)
-        step_row.addWidget(plus_big)
-
-        action_row = QtWidgets.QHBoxLayout()
-        cancel_button = QtWidgets.QPushButton(self.PICKER_CANCEL_TEXT)
-        apply_button = QtWidgets.QPushButton(self.PICKER_APPLY_TEXT)
-        cancel_button.clicked.connect(dialog.reject)
-        apply_button.clicked.connect(dialog.accept)
-        action_row.addWidget(cancel_button)
-        action_row.addWidget(apply_button)
-
-        refresh_label()
-        layout.addWidget(value_label)
-        layout.addWidget(cooling_toggle)
-        layout.addLayout(step_row)
-        layout.addLayout(action_row)
-
-        dialog_exec = getattr(dialog, "exec", dialog.exec_)
-        if not dialog_exec():
-            return None
-        if state["cooling"]:
-            return self.COOLING_LABEL
-        return str(state["value"])
-
-    def _prompt_compact_duration_selection(self, current_seconds):
-        """Return selected duration in seconds, or None if canceled."""
-        state = {
-            "seconds": int(max(0, min(self.DURATION_MAX_S, int(current_seconds)))),
-        }
-
-        dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle(self.PICKER_DURATION_TITLE)
-        dialog.setModal(True)
-        dialog.setMinimumWidth(
-            self.PICKER_DIALOG_WIDTH_COMPACT if self.compact_ui else self.PICKER_DIALOG_WIDTH_DEFAULT
-        )
-
-        layout = QtWidgets.QVBoxLayout(dialog)
-        value_label = QtWidgets.QLabel()
-        value_label.setAlignment(QtCore.Qt.AlignCenter)
-        value_label.setObjectName("label")
-
-        def format_mmss(total_seconds):
-            return time.strftime("%M:%S", time.gmtime(max(0, int(total_seconds))))
-
-        def refresh_label():
-            value_label.setText(format_mmss(state["seconds"]))
-
-        def adjust(delta):
-            state["seconds"] = max(0, min(self.DURATION_MAX_S, state["seconds"] + int(delta)))
-            refresh_label()
-
-        step_row = QtWidgets.QHBoxLayout()
-        minus_big = QtWidgets.QPushButton(f"-{self.DURATION_STEP_LARGE_S}s")
-        minus_small = QtWidgets.QPushButton(f"-{self.DURATION_STEP_SMALL_S}s")
-        plus_small = QtWidgets.QPushButton(f"+{self.DURATION_STEP_SMALL_S}s")
-        plus_big = QtWidgets.QPushButton(f"+{self.DURATION_STEP_LARGE_S}s")
-        minus_big.clicked.connect(lambda: adjust(-self.DURATION_STEP_LARGE_S))
-        minus_small.clicked.connect(lambda: adjust(-self.DURATION_STEP_SMALL_S))
-        plus_small.clicked.connect(lambda: adjust(self.DURATION_STEP_SMALL_S))
-        plus_big.clicked.connect(lambda: adjust(self.DURATION_STEP_LARGE_S))
-        step_row.addWidget(minus_big)
-        step_row.addWidget(minus_small)
-        step_row.addWidget(plus_small)
-        step_row.addWidget(plus_big)
-
-        action_row = QtWidgets.QHBoxLayout()
-        cancel_button = QtWidgets.QPushButton(self.PICKER_CANCEL_TEXT)
-        apply_button = QtWidgets.QPushButton(self.PICKER_APPLY_TEXT)
-        cancel_button.clicked.connect(dialog.reject)
-        apply_button.clicked.connect(dialog.accept)
-        action_row.addWidget(cancel_button)
-        action_row.addWidget(apply_button)
-
-        refresh_label()
-        layout.addWidget(value_label)
-        layout.addLayout(step_row)
-        layout.addLayout(action_row)
-
-        dialog_exec = getattr(dialog, "exec", dialog.exec_)
-        if not dialog_exec():
-            return None
-        return int(state["seconds"])
 
     def move_recipe_step_up(self, row):
         """This method will take a row and swap it the row above it."""
@@ -949,15 +772,15 @@ class RecipeEditor(QtWidgets.QDialog):
         recipeSteps = []
         for row in range(0, self.recipeSteps.rowCount()):
             currentRow = {}
-            currentRow["sectionTime"] = QtCore.QTime(0, 0, 0).secsTo(
-                self.recipeSteps.cellWidget(row, 2).time()
-            )
+            duration_widget = self.recipeSteps.cellWidget(row, 2)
+            currentRow["sectionTime"] = int(duration_widget.value())
             currentRow["fanSpeed"] = int(self.recipeSteps.cellWidget(row, 1).currentText())
 
-            temp_text = self.recipeSteps.cellWidget(row, 0).currentText()
-            if temp_text == self.COOLING_LABEL:
+            temp_widget = self.recipeSteps.cellWidget(row, 0)
+            if temp_widget.is_sentinel_selected():
                 currentRow["cooling"] = True
             else:
+                temp_text = str(int(round(temp_widget.value())))
                 currentRow["targetTemp"] = self._parse_display_temperature(temp_text)
 
             recipeSteps.append(currentRow)
