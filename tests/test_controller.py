@@ -46,11 +46,27 @@ class PIDTests(unittest.TestCase):
         result = pid.update(current=0.0, target=100.0)
         self.assertAlmostEqual(result, 50.0)
 
-    def test_derivative_responds_to_error_change(self):
+    def test_derivative_responds_to_measurement_change(self):
+        """Derivative-on-measurement: derivative = -(current - prev_measurement) / dt.
+
+        When the measurement rises (current > prev), the derivative term is
+        negative, dampening the output.
+        """
         pid = PID(kp=0.0, ki=0.0, kd=1.0, output_max=100, output_min=0)
-        pid.update(current=90.0, target=100.0)  # error=10, deriv=10
-        result = pid.update(current=95.0, target=100.0)  # error=5, deriv=-5
-        self.assertAlmostEqual(result, 0.0)  # clamped to 0
+        # First call: prev_measurement is None → derivative = 0
+        pid.update(current=90.0, target=100.0)
+        # Second call: measurement rose from 90 → 95 → derivative = -(95-90)/1 = -5
+        result = pid.update(current=95.0, target=100.0)
+        self.assertAlmostEqual(result, 0.0)  # clamped to 0 (kd * -5 = -5)
+
+    def test_derivative_on_measurement_ignores_setpoint_change(self):
+        """Setpoint step should not cause derivative kick."""
+        pid = PID(kp=0.0, ki=0.0, kd=1.0, output_max=100, output_min=0)
+        pid.update(current=90.0, target=100.0)  # prime measurement
+        # Setpoint jumps from 100 → 200, but measurement stays at 90.
+        result = pid.update(current=90.0, target=200.0)
+        # derivative = -(90 - 90) / 1 = 0; no kick from setpoint change
+        self.assertAlmostEqual(result, 0.0)
 
     def test_reset_clears_state(self):
         pid = PID(kp=0.0, ki=1.0, kd=0.0, output_max=100, output_min=0)
@@ -58,6 +74,21 @@ class PIDTests(unittest.TestCase):
         pid.reset()
         result = pid.update(current=0.0, target=10.0)  # integral = 10
         self.assertAlmostEqual(result, 10.0)
+
+    def test_integral_scales_with_dt(self):
+        """Integral accumulates error * dt, so halving dt halves the accumulation rate."""
+        pid = PID(kp=0.0, ki=1.0, kd=0.0, output_max=200, output_min=0)
+        pid.update(current=0.0, target=10.0, dt=0.5)  # integral = 10 * 0.5 = 5
+        result = pid.update(current=0.0, target=10.0, dt=0.5)  # integral = 5 + 5 = 10
+        self.assertAlmostEqual(result, 10.0)
+
+    def test_derivative_scales_with_dt(self):
+        """Derivative divides by dt, so halving dt doubles the derivative response."""
+        pid = PID(kp=0.0, ki=0.0, kd=1.0, output_max=100, output_min=0)
+        pid.update(current=90.0, target=100.0, dt=0.5)  # primes measurement
+        # Measurement drops from 90 → 80: derivative = -(80 - 90) / 0.5 = 20
+        result = pid.update(current=80.0, target=100.0, dt=0.5)
+        self.assertAlmostEqual(result, 20.0)
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +466,7 @@ class ControllerSafetyTests(unittest.TestCase):
         ctrl.reset_control_state()
 
         self.assertEqual(ctrl._pid._integral, 0.0)
-        self.assertEqual(ctrl._pid._prev_error, 0.0)
+        self.assertIsNone(ctrl._pid._prev_measurement)
         self.assertEqual(ctrl.heater_level, 0)
         self.assertFalse(ctrl.heater_output)
 

@@ -53,23 +53,36 @@ class PID:
         self.output_max = output_max
         self.output_min = output_min
         self._integral = 0.0
-        self._prev_error = 0.0
+        self._prev_measurement: float | None = None
 
     def reset(self) -> None:
         """Clear accumulated state for a fresh control session."""
         self._integral = 0.0
-        self._prev_error = 0.0
+        self._prev_measurement = None
 
-    def update(self, current: float, target: float) -> float:
+    def update(self, current: float, target: float, dt: float = 1.0) -> float:
+        """Compute PID output.
+
+        *dt* is the elapsed time since the last call (seconds).  The integral
+        accumulates ``error * dt`` and the derivative divides by ``dt``, making
+        ki/kd true time-domain gains that are invariant to sample-rate changes.
+
+        Derivative is computed on *measurement* (not error) to avoid
+        "derivative kick" on setpoint changes.
+        """
         error = target - current
-        self._integral += error
+        self._integral += error * dt
         # Anti-windup: clamp integral so that ki * integral stays within output range.
         if self.ki != 0.0:
             integral_max = self.output_max / self.ki
             integral_min = self.output_min / self.ki
             self._integral = max(integral_min, min(integral_max, self._integral))
-        derivative = error - self._prev_error
-        self._prev_error = error
+        # Derivative-on-measurement: ignores setpoint step changes.
+        if self._prev_measurement is None:
+            derivative = 0.0
+        else:
+            derivative = -(current - self._prev_measurement) / dt
+        self._prev_measurement = current
         output = self.kp * error + self.ki * self._integral + self.kd * derivative
         return max(self.output_min, min(self.output_max, output))
 
@@ -665,7 +678,7 @@ class RoasterController:
                     if state == RoasterState.ROASTING:
                         current_temp_c = self._kelvin_to_celsius(self._current_temp_k)
                         target_temp_c = self._kelvin_to_celsius(target_temp_k)
-                        pid_percent = self._pid.update(current_temp_c, target_temp_c)
+                        pid_percent = self._pid.update(current_temp_c, target_temp_c, dt=self.config.sample_period_s)
                         new_heater_level = int(round(pid_percent))
                         self._heat_setting = 3
                     else:
