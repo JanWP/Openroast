@@ -410,25 +410,35 @@ class RoasterController:
                 raise RuntimeError("Autotune response sampling failed")
 
             peak_c = max(temp_c for _, temp_c in response_samples)
-            delta_c = peak_c - baseline_c
-            if delta_c < float(min_rise_c):
+            observed_delta_c = peak_c - baseline_c
+            if observed_delta_c < float(min_rise_c):
                 raise RuntimeError(
-                    f"Autotune rise too small ({delta_c:.2f} C); increase test duration"
+                    f"Autotune rise too small ({observed_delta_c:.2f} C); increase test duration"
                 )
 
-            rise_threshold_c = baseline_c + 0.5
-            dead_time_s = next((t for t, temp_c in response_samples if temp_c >= rise_threshold_c), None)
-            if dead_time_s is None:
-                dead_time_s = 0.5
+            fit = self._estimate_fopdt(response_samples, baseline_c)
+            if fit is not None:
+                delta_c, dead_time_s, tau_s, fit_rmse_c = fit
+            else:
+                # Fallback for unexpected fitting failures.
+                rise_threshold_c = baseline_c + 0.5
+                dead_time_s = next((t for t, temp_c in response_samples if temp_c >= rise_threshold_c), None)
+                if dead_time_s is None:
+                    dead_time_s = 0.5
 
-            tau_target_c = baseline_c + 0.632 * delta_c
-            tau_time_s = next((t for t, temp_c in response_samples if temp_c >= tau_target_c), None)
-            if tau_time_s is None:
-                raise RuntimeError("Autotune failed to estimate time constant")
+                tau_target_c = baseline_c + 0.632 * observed_delta_c
+                tau_time_s = next((t for t, temp_c in response_samples if temp_c >= tau_target_c), None)
+                if tau_time_s is None:
+                    raise RuntimeError("Autotune failed to estimate time constant")
+
+                delta_c = float(observed_delta_c)
+                dead_time_s = max(0.2, float(dead_time_s))
+                tau_s = max(0.2, float(tau_time_s - dead_time_s))
+                fit_rmse_c = float("nan")
 
             process_gain = delta_c / max(1e-3, actual_step_percent)
             dead_time_s = max(0.2, float(dead_time_s))
-            tau_s = max(0.2, float(tau_time_s - dead_time_s))
+            tau_s = max(0.2, float(tau_s))
 
             # Ziegler-Nichols reaction-curve tuning in percent-duty domain.
             kp = 1.2 * tau_s / (process_gain * dead_time_s)
@@ -447,8 +457,10 @@ class RoasterController:
                 "baseline_c": float(baseline_c),
                 "peak_c": float(peak_c),
                 "delta_c": float(delta_c),
+                "observed_delta_c": float(observed_delta_c),
                 "dead_time_s": float(dead_time_s),
                 "tau_s": float(tau_s),
+                "fit_rmse_c": float(fit_rmse_c),
                 "step_percent": float(actual_step_percent),
             }
         finally:
@@ -659,6 +671,79 @@ class RoasterController:
     @staticmethod
     def _kelvin_to_celsius(temp_k: float) -> float:
         return float(temp_k) - 273.15
+
+    @staticmethod
+    def _estimate_fopdt(
+        response_samples: list[tuple[float, float]],
+        baseline_c: float,
+    ) -> tuple[float, float, float, float] | None:
+        """Estimate FOPDT (delta_c, dead_time_s, tau_s, rmse_c).
+
+        Fit y(t)=delta_c*(1-exp(-(t-dead_time_s)/tau_s)) for t>dead_time_s,
+        with y(t)=0 beforehand. This model remains stable for short tuning
+        windows and avoids requiring a near-steady endpoint.
+        """
+        if not response_samples:
+            return None
+
+        # Cap fit cost for high-rate logs while preserving shape.
+        stride = max(1, len(response_samples) // 300)
+        samples = response_samples[::stride]
+
+        times = [float(t) for t, _ in samples]
+        values = [max(0.0, float(temp_c) - float(baseline_c)) for _, temp_c in samples]
+        duration_s = max(times)
+        if duration_s <= 0.0:
+            return None
+
+        dead_time_min_s = 0.2
+        dead_time_max_s = max(dead_time_min_s, min(duration_s * 0.6, duration_s - 1e-3))
+        if dead_time_max_s <= dead_time_min_s:
+            return None
+
+        tau_min_s = 0.2
+        tau_max_s = max(0.25, duration_s * 3.0)
+        dead_time_steps = 40
+        tau_steps = 40
+
+        best: tuple[float, float, float, float] | None = None
+        for i in range(dead_time_steps):
+            dead_time_s = dead_time_min_s + (dead_time_max_s - dead_time_min_s) * (
+                i / max(1, dead_time_steps - 1)
+            )
+            for j in range(tau_steps):
+                ratio = j / max(1, tau_steps - 1)
+                tau_s = tau_min_s * ((tau_max_s / tau_min_s) ** ratio)
+
+                den = 0.0
+                num = 0.0
+                gs: list[float] = []
+                for t, y in zip(times, values):
+                    if t <= dead_time_s:
+                        g = 0.0
+                    else:
+                        g = 1.0 - math.exp(-(t - dead_time_s) / tau_s)
+                    gs.append(g)
+                    den += g * g
+                    num += g * y
+
+                if den <= 1e-9:
+                    continue
+
+                delta_c = num / den
+                if delta_c <= 0.0 or not math.isfinite(delta_c):
+                    continue
+
+                err_sum = 0.0
+                for y, g in zip(values, gs):
+                    d = y - delta_c * g
+                    err_sum += d * d
+                rmse_c = math.sqrt(err_sum / max(1, len(values)))
+
+                if best is None or rmse_c < best[3]:
+                    best = (float(delta_c), float(dead_time_s), float(tau_s), float(rmse_c))
+
+        return best
 
     def _control_loop(self) -> None:
         while not self._stop_event.is_set():
