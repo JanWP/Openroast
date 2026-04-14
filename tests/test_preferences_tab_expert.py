@@ -67,7 +67,8 @@ class PreferencesTabExpertTests(unittest.TestCase):
 
             with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
                 widget.tabs.setCurrentIndex(0)
-                widget._on_restore_defaults_clicked()
+                widget.restoreDefaultsButton.click()
+                self._app.processEvents()
 
             self.assertEqual(widget.refreshIntervalMs.value(), app_config.DEFAULT_CONFIG["ui"]["refreshIntervalMs"])
             self.assertAlmostEqual(widget.pidKp.value(), 0.5, places=4)
@@ -76,7 +77,8 @@ class PreferencesTabExpertTests(unittest.TestCase):
             widget._expert_warning_ack = True
             with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
                 widget.tabs.setCurrentIndex(1)
-                widget._on_restore_defaults_clicked()
+                widget.restoreDefaultsButton.click()
+                self._app.processEvents()
 
             self.assertAlmostEqual(
                 widget.pidKp.value(),
@@ -96,7 +98,8 @@ class PreferencesTabExpertTests(unittest.TestCase):
 
             with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
                 widget.tabs.setCurrentIndex(0)
-                widget._on_revert_changes_clicked()
+                widget.revertChangesButton.click()
+                self._app.processEvents()
 
             self.assertEqual(widget.refreshIntervalMs.value(), app_config.DEFAULT_CONFIG["ui"]["refreshIntervalMs"])
             self.assertAlmostEqual(widget.pidKp.value(), 0.5, places=4)
@@ -105,7 +108,8 @@ class PreferencesTabExpertTests(unittest.TestCase):
             widget._expert_warning_ack = True
             with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
                 widget.tabs.setCurrentIndex(1)
-                widget._on_revert_changes_clicked()
+                widget.revertChangesButton.click()
+                self._app.processEvents()
 
             self.assertAlmostEqual(
                 widget.pidKp.value(),
@@ -122,7 +126,8 @@ class PreferencesTabExpertTests(unittest.TestCase):
             widget.refreshIntervalMs.setValue(1300)
             with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.No):
                 widget.tabs.setCurrentIndex(0)
-                widget._on_revert_changes_clicked()
+                widget.revertChangesButton.click()
+                self._app.processEvents()
             self.assertEqual(widget.refreshIntervalMs.value(), 1300)
         finally:
             widget.close()
@@ -190,12 +195,12 @@ class PreferencesTabExpertTests(unittest.TestCase):
     def test_pid_editors_use_requested_step_sizes(self):
         widget = self._build_widget()
         try:
-            self.assertAlmostEqual(widget.pidKp._spec.step_small, PreferencesUI.PID_STEP_SMALL, places=6)
-            self.assertAlmostEqual(widget.pidKp._spec.step_large, PreferencesUI.PID_STEP_LARGE, places=6)
-            self.assertAlmostEqual(widget.pidKi._spec.step_small, PreferencesUI.PID_STEP_SMALL, places=6)
-            self.assertAlmostEqual(widget.pidKi._spec.step_large, PreferencesUI.PID_STEP_LARGE, places=6)
-            self.assertAlmostEqual(widget.pidKd._spec.step_small, PreferencesUI.PID_STEP_SMALL, places=6)
-            self.assertAlmostEqual(widget.pidKd._spec.step_large, PreferencesUI.PID_STEP_LARGE, places=6)
+            self.assertAlmostEqual(widget.pidKp.step_small(), PreferencesUI.PID_STEP_SMALL, places=6)
+            self.assertAlmostEqual(widget.pidKp.step_large(), PreferencesUI.PID_STEP_LARGE, places=6)
+            self.assertAlmostEqual(widget.pidKi.step_small(), PreferencesUI.PID_STEP_SMALL, places=6)
+            self.assertAlmostEqual(widget.pidKi.step_large(), PreferencesUI.PID_STEP_LARGE, places=6)
+            self.assertAlmostEqual(widget.pidKd.step_small(), PreferencesUI.PID_STEP_SMALL, places=6)
+            self.assertAlmostEqual(widget.pidKd.step_large(), PreferencesUI.PID_STEP_LARGE, places=6)
         finally:
             widget.close()
             self._app.processEvents()
@@ -217,14 +222,15 @@ class PreferencesTabExpertTests(unittest.TestCase):
             widget.tabs.setCurrentIndex(1)
 
             with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
-                widget._on_autotune_clicked()
+                widget.autotuneButton.click()
+                self._app.processEvents()
 
             deadline = QtCore.QTime.currentTime().addMSecs(2000)
             while widget._autotune_worker is not None and QtCore.QTime.currentTime() < deadline:
                 self._app.processEvents()
 
             self.assertIsNone(widget._autotune_worker)
-            self.assertIn("Autotune", widget.statusLabel.text())
+            self.assertEqual(widget.statusLabel.text(), PreferencesUI.STATUS_AUTOTUNE_COMPLETE_AND_SAVED)
         finally:
             widget.close()
             self._app.processEvents()
@@ -247,7 +253,8 @@ class PreferencesTabExpertTests(unittest.TestCase):
             widget.tabs.setCurrentIndex(1)
 
             with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
-                widget._on_autotune_clicked()
+                widget.autotuneButton.click()
+                self._app.processEvents()
 
             widget.prepare_shutdown()
             self._app.processEvents()
@@ -279,11 +286,12 @@ class PreferencesTabExpertTests(unittest.TestCase):
         )
         try:
             with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
-                widget._on_autotune_clicked()
+                widget.autotuneButton.click()
+                self._app.processEvents()
 
             self.assertEqual(len(hook_calls), 1)
             self.assertIsNone(widget._autotune_worker)
-            self.assertEqual(widget.statusLabel.text(), "Autotune canceled")
+            self.assertEqual(widget.statusLabel.text(), PreferencesUI.STATUS_AUTOTUNE_CANCELED)
         finally:
             widget.close()
             self._app.processEvents()

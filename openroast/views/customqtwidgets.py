@@ -1050,6 +1050,18 @@ class AdaptiveValueEditor(QtWidgets.QWidget):
         self.setFixedHeight(fixed_height)
         self._editor.setFixedHeight(fixed_height)
 
+    def step_small(self):
+        """Return the configured small step size for this editor."""
+        if self._is_duration:
+            return float(self._duration_step_small_s)
+        return float(self._spec.step_small)
+
+    def step_large(self):
+        """Return the configured large step size for this editor."""
+        if self._is_duration:
+            return float(self._duration_step_large_s)
+        return float(self._spec.step_large)
+
 
 class TimeEditNoWheel(QtWidgets.QTimeEdit):
     """A time edit combobox with the wheel removed."""
