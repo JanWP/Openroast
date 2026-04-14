@@ -289,6 +289,17 @@ class RoasterController:
         self._set_heater_output(False, emit_telemetry=False)
         self._emit_telemetry()
 
+    def clear_fault(self) -> None:
+        """Clear a latched fault (e.g. over-temperature cutoff).
+
+        This is intended for user-initiated fault resets after temperature has
+        recovered.  It does NOT auto-recover; the caller (UI) must present
+        a confirmation action to the user.
+        """
+        with self._lock:
+            self._fault = None
+        self._emit_telemetry()
+
     def apply_runtime_config(
         self,
         *,

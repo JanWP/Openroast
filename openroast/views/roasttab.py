@@ -135,16 +135,31 @@ class RoastTab(QtWidgets.QWidget):
         self.rightPane = self.create_right_pane()
         self.layout.addLayout(self.rightPane, 0, 1)
 
+        # Create fault banner (hidden by default).
+        self._faultBannerWidget = QtWidgets.QWidget()
+        fault_banner_layout = QtWidgets.QHBoxLayout(self._faultBannerWidget)
+        fault_banner_layout.setContentsMargins(4, 2, 4, 2)
+        fault_banner_layout.setSpacing(8)
+        self._faultLabel = QtWidgets.QLabel(RoastTabUI.FAULT_BANNER_TEXT)
+        self._faultLabel.setStyleSheet(RoastTabUI.FAULT_BANNER_STYLE)
+        fault_banner_layout.addWidget(self._faultLabel, 1)
+        self._faultResetButton = QtWidgets.QPushButton(RoastTabUI.FAULT_RESET_BUTTON_TEXT)
+        self._faultResetButton.setStyleSheet(RoastTabUI.FAULT_RESET_BUTTON_STYLE)
+        self._faultResetButton.clicked.connect(self._on_fault_reset_clicked)
+        fault_banner_layout.addWidget(self._faultResetButton, 0)
+        self._faultBannerWidget.setHidden(True)
+        self.layout.addWidget(self._faultBannerWidget, 1, 0, 1, 2)
+
         # Create progress bar.
         self.progressBar = self.create_progress_bar()
-        self.layout.addLayout(self.progressBar, 1, 0, 1, 2, QtCore.Qt.AlignCenter)
+        self.layout.addLayout(self.progressBar, 2, 0, 1, 2, QtCore.Qt.AlignCenter)
         if self.compact_ui:
             self.layout.setRowStretch(0, 10)
-            self.layout.setRowStretch(1, 1)
+            self.layout.setRowStretch(2, 1)
         else:
             # Reserve progress-bar space from startup so graph/control bottoms
             # stay aligned before and after a recipe is loaded.
-            self.layout.setRowMinimumHeight(1, NON_COMPACT_PROGRESS_ROW_MIN_HEIGHT)
+            self.layout.setRowMinimumHeight(2, NON_COMPACT_PROGRESS_ROW_MIN_HEIGHT)
 
         # Create not connected label.
         self.connectionStatusLabel = QtWidgets.QLabel(self.CONNECT_TXT_PLEASE_CONNECT)
@@ -339,6 +354,27 @@ class RoastTab(QtWidgets.QWidget):
             self._flag_update_controllers.value = 0
             self.update_controllers()
 
+        # Update over-temperature fault banner.
+        self._update_fault_banner()
+
+    def _update_fault_banner(self):
+        fault = getattr(self.roaster, "fault", None)
+        banner = getattr(self, "_faultBannerWidget", None)
+        if banner is None:
+            return
+        if fault:
+            if banner.isHidden():
+                banner.setHidden(False)
+        else:
+            if not banner.isHidden():
+                banner.setHidden(True)
+
+    def _on_fault_reset_clicked(self):
+        clear_fault = getattr(self.roaster, "clear_fault", None)
+        if callable(clear_fault):
+            clear_fault()
+        self._update_fault_banner()
+
     def create_right_pane(self):
         rightPane = QtWidgets.QVBoxLayout()
         if self.compact_ui:
@@ -423,7 +459,7 @@ class RoastTab(QtWidgets.QWidget):
         self.layout.removeItem(self.progressBar)
         self._clear_layout_items(self.progressBar)
         self.progressBar = self.create_progress_bar()
-        self.layout.addLayout(self.progressBar, 1, 0, 1, 2, QtCore.Qt.AlignCenter)
+        self.layout.addLayout(self.progressBar, 2, 0, 1, 2, QtCore.Qt.AlignCenter)
 
     def _clear_layout_items(self, layout):
         while layout.count():

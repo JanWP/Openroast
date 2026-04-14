@@ -615,6 +615,24 @@ class ControllerSafetyTests(unittest.TestCase):
         time.sleep(0.2)
         self.assertEqual(ctrl.heater_level, 0, "Heater should be off in COOLING state (thermostat)")
         ctrl.shutdown()
+    def test_clear_fault_resets_latched_fault(self):
+        """Manual clear_fault() should reset a latched over-temperature fault."""
+        ctrl, driver, _ = self._make_controller(
+            thermostat=True,
+            temp_k=600.0,
+        )
+        ctrl.connect()
+        ctrl.roast()
+        time.sleep(0.2)
+
+        self.assertIsNotNone(ctrl.telemetry().fault)
+
+        # Keep temperature high — manual clear should still work.
+        ctrl.clear_fault()
+        self.assertIsNone(ctrl.telemetry().fault)
+        ctrl.shutdown()
+
+
 if __name__ == "__main__":
     unittest.main()
 

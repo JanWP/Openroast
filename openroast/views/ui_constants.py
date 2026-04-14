@@ -125,6 +125,17 @@ class RoastTabUI:
     DIALOG_STOP_TITLE = DialogText.ROAST_STOP_TITLE
     DIALOG_STOP_MESSAGE = DialogText.ROAST_STOP_MESSAGE
 
+    FAULT_BANNER_TEXT = "\u26a0 Over-temperature safety cutoff"
+    FAULT_RESET_BUTTON_TEXT = "RESET FAULT"
+    FAULT_BANNER_STYLE = (
+        "background-color: #b71c1c; color: #ffffff; padding: 4px 8px; "
+        "font-weight: bold; border-radius: 3px;"
+    )
+    FAULT_RESET_BUTTON_STYLE = (
+        "background-color: #d32f2f; color: #ffffff; padding: 2px 8px; "
+        "font-weight: bold; border-radius: 3px;"
+    )
+
 
 class PreferencesUI:
     LEFT_COLUMN_MAX_WIDTH = 520

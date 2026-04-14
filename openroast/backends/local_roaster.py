@@ -234,6 +234,17 @@ class LocalRoaster:
     def heater_output(self):
         return self._controller.heater_output
 
+    @property
+    def fault(self):
+        """Return the current fault string, or None if no fault is active."""
+        return self._controller.telemetry().fault
+
+    def clear_fault(self):
+        """User-initiated fault reset.  Only effective after temperature recovery."""
+        clear = getattr(self._controller, "clear_fault", None)
+        if callable(clear):
+            clear()
+
     def get_roaster_state(self):
         if self._connect_state == self.CS_CONNECTING and not self.connected:
             return "connecting"
