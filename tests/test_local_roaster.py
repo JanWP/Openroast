@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from localroaster import RoasterState
 from openroast.backends.local_roaster import LocalRoaster
-from openroast.temperature import MAX_TEMPERATURE_C, MIN_TEMPERATURE_C, celsius_to_kelvin
+from openroast.temperature import MAX_TEMPERATURE_C, MIN_TEMPERATURE_C, celsius_to_kelvin, kelvin_to_celsius
 
 
 class FakeController:
@@ -11,8 +11,8 @@ class FakeController:
         self.connected = False
         self.fan_speed = 1
         self.heat_setting = 0
-        self.target_temp_k = 473.15
-        self.current_temp_k = 373.15
+        self.target_temp_k = celsius_to_kelvin(200)
+        self.current_temp_k = celsius_to_kelvin(100)
         self.time_remaining_s = 0
         self.total_time_s = 0
         self.heater_level = 0
@@ -146,7 +146,7 @@ class LocalRoasterAdapterTests(unittest.TestCase):
 
     def test_target_temp_getter_setter_convert_between_c_and_k(self):
         fake_controller = FakeController()
-        fake_controller.target_temp_k = 478.15
+        fake_controller.target_temp_k = celsius_to_kelvin(205)
 
         with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
             roaster = LocalRoaster()
@@ -154,7 +154,7 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertEqual(roaster.target_temp, 205)
 
         roaster.target_temp = 100
-        self.assertAlmostEqual(fake_controller.target_temp_k, 373.15, places=2)
+        self.assertAlmostEqual(fake_controller.target_temp_k, celsius_to_kelvin(100), places=2)
 
     def test_get_roaster_state_maps_controller_states(self):
         fake_controller = FakeController()

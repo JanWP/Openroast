@@ -615,6 +615,32 @@ class ControllerSafetyTests(unittest.TestCase):
         time.sleep(0.2)
         self.assertEqual(ctrl.heater_level, 0, "Heater should be off in COOLING state (thermostat)")
         ctrl.shutdown()
+
+    def test_pid_integral_bounded_after_sample_period_change(self):
+        """Changing sample_period_s via apply_runtime_config must not cause
+        unbounded integral growth — the anti-windup clamp should still hold."""
+        ctrl, driver, _ = self._make_controller(
+            thermostat=True,
+            temp_k=celsius_to_kelvin(50),
+            ki=1.0,
+            kp=0.0,
+            kd=0.0,
+        )
+        ctrl.connect()
+        ctrl.target_temp_k = celsius_to_kelvin(200)
+        ctrl.roast()
+        time.sleep(0.3)
+
+        # Change sample period to a much faster rate.
+        ctrl.apply_runtime_config(sample_period_s=0.01)
+        time.sleep(0.3)
+
+        # Heater level must still be within [0, 100].
+        level = ctrl.heater_level
+        self.assertGreaterEqual(level, 0)
+        self.assertLessEqual(level, 100)
+        ctrl.shutdown()
+
     def test_clear_fault_resets_latched_fault(self):
         """Manual clear_fault() should reset a latched over-temperature fault."""
         ctrl, driver, _ = self._make_controller(
