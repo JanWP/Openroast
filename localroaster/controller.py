@@ -581,7 +581,7 @@ class RoasterController:
     @fan_speed.setter
     def fan_speed(self, value: int) -> None:
         if value not in range(1, parameter_catalog.FAN_SPEED_MAX + 1):
-            raise ValueError("fan_speed must be 1-9")
+            raise ValueError(f"fan_speed must be 1-{parameter_catalog.FAN_SPEED_MAX}")
         with self._lock:
             self._fan_speed = int(value)
 
