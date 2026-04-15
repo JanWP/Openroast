@@ -574,6 +574,10 @@ class RoasterController:
         with self._lock:
             return self._fan_speed
 
+    @property
+    def max_fan_speed(self) -> int:
+        return int(parameter_catalog.FAN_SPEED_MAX)
+
     @fan_speed.setter
     def fan_speed(self, value: int) -> None:
         if value not in range(parameter_catalog.FAN_SPEED_MIN, parameter_catalog.FAN_SPEED_MAX + 1):

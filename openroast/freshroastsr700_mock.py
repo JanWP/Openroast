@@ -12,7 +12,10 @@ import math
 
 from freshroastsr700 import pid
 from freshroastsr700 import exceptions
-from openroast import app_config
+
+
+USB_MOCK_FAN_SPEED_MIN = 1
+USB_MOCK_FAN_SPEED_MAX = 9
 
 class freshroastsr700(object):
     """A class to interface with a freshroastsr700 coffee roaster."""
@@ -145,10 +148,15 @@ class freshroastsr700(object):
         """A getter method for _fan_speed."""
         return self._fan_speed.value
 
+    @property
+    def max_fan_speed(self):
+        """Backend capability: maximum selectable fan speed."""
+        return int(USB_MOCK_FAN_SPEED_MAX)
+
     @fan_speed.setter
     def fan_speed(self, value):
         """Verifies the value is within configured fan-speed bounds."""
-        if value not in range(app_config.FAN_SPEED_MIN, app_config.FAN_SPEED_MAX + 1):
+        if value not in range(USB_MOCK_FAN_SPEED_MIN, USB_MOCK_FAN_SPEED_MAX + 1):
             raise exceptions.RoasterValueError
 
         self._fan_speed.value = value

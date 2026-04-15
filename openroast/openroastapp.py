@@ -28,6 +28,7 @@ except ImportError as exc:
 
 from openroast.controllers import recipe
 from openroast import app_config
+from openroast.backends.usb_roaster_adapter import USBRoasterAdapter
 from openroast.temperature import TEMP_UNIT_C, set_default_display_temperature_unit
 from openroast.views import mainwindow
 from openroast import utils as utils
@@ -72,6 +73,12 @@ def _parse_args():
 def _create_roaster(args, config_data=None):
     """Instantiate and return the appropriate roaster backend object."""
     config = app_config.normalize_config(config_data or {})
+
+    def _ensure_backend_capabilities(roaster_obj):
+        if hasattr(roaster_obj, "max_fan_speed"):
+            return roaster_obj
+        return USBRoasterAdapter(roaster_obj)
+
     if args.backend in ("local", "local-mock"):
         try:
             from openroast.backends.local_roaster import LocalRoaster
@@ -117,7 +124,7 @@ def _create_roaster(args, config_data=None):
                     "The 'freshroastsr700' package is required for the USB backend. "
                     "Install it or choose --backend local."
                 ) from exc
-        return freshroastsr700.freshroastsr700(thermostat=True)
+        return _ensure_backend_capabilities(freshroastsr700.freshroastsr700(thermostat=True))
 
 
 def _compact_style_overrides():

@@ -9,6 +9,7 @@ import logging
 import threading
 
 from localroaster import ControllerConfig, RoasterState, create_controller
+from localroaster import parameter_catalog
 from openroast.temperature import (
     MAX_TEMPERATURE_C,
     MIN_TEMPERATURE_C,
@@ -151,6 +152,10 @@ class LocalRoaster:
     @property
     def fan_speed(self):
         return self._controller.fan_speed
+
+    @property
+    def max_fan_speed(self):
+        return int(getattr(self._controller, "max_fan_speed", parameter_catalog.FAN_SPEED_MAX))
 
     @fan_speed.setter
     def fan_speed(self, value):

@@ -10,6 +10,7 @@ class FakeController:
     def __init__(self):
         self.connected = False
         self.fan_speed = 1
+        self.max_fan_speed = 9
         self.heat_setting = 0
         self.target_temp_k = celsius_to_kelvin(200)
         self.current_temp_k = celsius_to_kelvin(100)
@@ -155,6 +156,15 @@ class LocalRoasterAdapterTests(unittest.TestCase):
 
         roaster.target_temp = 100
         self.assertAlmostEqual(fake_controller.target_temp_k, celsius_to_kelvin(100), places=2)
+
+    def test_max_fan_speed_passthrough(self):
+        fake_controller = FakeController()
+        fake_controller.max_fan_speed = 7
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster()
+
+        self.assertEqual(roaster.max_fan_speed, 7)
 
     def test_get_roaster_state_maps_controller_states(self):
         fake_controller = FakeController()
