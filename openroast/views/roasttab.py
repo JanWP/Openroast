@@ -642,7 +642,7 @@ class RoastTab(QtWidgets.QWidget):
 
         # Create fan speed slider.
         self.fanSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.fanSlider.setRange(1, 9)  # set minimum and maximum fan speed
+        self.fanSlider.setRange(app_config.FAN_SPEED_MIN, app_config.FAN_SPEED_MAX)
         self.fanSlider.valueChanged.connect(self.update_fan_speed_slider)
         sliderPanel.addWidget(self.fanSlider, 5, 0)
 
@@ -650,7 +650,7 @@ class RoastTab(QtWidgets.QWidget):
         self.fanSpeedSpinBox = QtWidgets.QSpinBox()
         self.fanSpeedSpinBox.setObjectName("miniSpinBox")
         self.fanSpeedSpinBox.setButtonSymbols(2)      # Remove arrows.
-        self.fanSpeedSpinBox.setRange(1, 9)
+        self.fanSpeedSpinBox.setRange(app_config.FAN_SPEED_MIN, app_config.FAN_SPEED_MAX)
         self.fanSpeedSpinBox.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
         self.fanSpeedSpinBox.setAlignment(QtCore.Qt.AlignCenter)
         self.fanSpeedSpinBox.valueChanged.connect(self.update_fan_spin_box)

@@ -12,6 +12,7 @@ import math
 
 from freshroastsr700 import pid
 from freshroastsr700 import exceptions
+from openroast import app_config
 
 class freshroastsr700(object):
     """A class to interface with a freshroastsr700 coffee roaster."""
@@ -146,8 +147,8 @@ class freshroastsr700(object):
 
     @fan_speed.setter
     def fan_speed(self, value):
-        """Verifies the value is between 1 and 9 inclusively."""
-        if value not in range(1, 10):
+        """Verifies the value is within configured fan-speed bounds."""
+        if value not in range(app_config.FAN_SPEED_MIN, app_config.FAN_SPEED_MAX + 1):
             raise exceptions.RoasterValueError
 
         self._fan_speed.value = value

@@ -14,6 +14,7 @@ from PyQt5 import QtWidgets
 import pyqtgraph as pg
 
 from openroast import tools
+from openroast import app_config
 from openroast import utils as utils
 from openroast.controllers.recipe import build_default_recipe, normalize_recipe_for_runtime
 from openroast.temperature import (
@@ -557,7 +558,10 @@ class RecipeEditor(QtWidgets.QDialog):
 
     def load_recipe_steps(self, recipeStepsTable, steps):
         """Populate a recipe steps table from normalized Celsius step values."""
-        fanSpeedChoices = [str(x) for x in range(1, 10)]
+        fanSpeedChoices = [
+            str(x)
+            for x in range(app_config.FAN_SPEED_MIN, app_config.FAN_SPEED_MAX + 1)
+        ]
         min_display, max_display = self._temp_display_range()
         temp_spec = customqtwidgets.ValueSpec(
             kind="int",

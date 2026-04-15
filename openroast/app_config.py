@@ -14,6 +14,11 @@ from openroast.temperature import (
 
 VALID_BACKENDS = ("usb", "usb-mock", "local", "local-mock")
 
+# Openroast-level fan speed bounds. Backend-specific capability discovery
+# will be layered on top of these defaults in a follow-up step.
+FAN_SPEED_MIN = 1
+FAN_SPEED_MAX = 9
+
 MIN_REFRESH_INTERVAL_MS = 100
 MAX_REFRESH_INTERVAL_MS = 5000
 MIN_Y_AXIS_HEADROOM_C = 1.0
