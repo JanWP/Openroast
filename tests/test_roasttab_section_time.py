@@ -12,6 +12,8 @@ from openroast.views.roasttab import RoastTab
 class _FakeRoaster:
     def __init__(self, remaining_s=0):
         self.time_remaining_s = remaining_s
+        self.max_fan_speed = 9
+        self.fan_speed = 1
         self.cancel_autotune_calls = 0
         self.idle_calls = 0
         self.reset_control_state_calls = 0
@@ -194,6 +196,25 @@ class RoastTabSectionTimeTests(unittest.TestCase):
 
         self.assertEqual(pane.count(), 3)
         self.assertIsNotNone(pane.itemAt(2).layout())
+
+    def test_create_slider_panel_uses_backend_runtime_fan_max(self):
+        tab = RoastTab.__new__(RoastTab)
+        tab.compact_ui = False
+        tab.roaster = _FakeRoaster()
+        tab.roaster.max_fan_speed = 5
+        tab._min_temp_c = 20
+        tab._max_temp_c = 250
+
+        # Keep this test focused on fan control bounds.
+        tab.update_target_temp = lambda: None
+        tab.update_section_duration_setpoint = lambda: None
+
+        tab.create_slider_panel()
+
+        self.assertEqual(tab.fanSlider.minimum(), 1)
+        self.assertEqual(tab.fanSlider.maximum(), 5)
+        self.assertEqual(tab.fanSpeedSpinBox.minimum(), 1)
+        self.assertEqual(tab.fanSpeedSpinBox.maximum(), 5)
 
 
 if __name__ == "__main__":

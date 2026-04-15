@@ -29,6 +29,7 @@ class FakeApp:
 class FakeRoaster:
     def __init__(self, temperature_unit="F"):
         self.temperature_unit = temperature_unit
+        self.max_fan_speed = 9
         self.connected = True
         self.target_temp = None
         self.fan_speed = None
@@ -96,6 +97,42 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         self.assertEqual(roaster.time_remaining, 45)
         self.assertEqual(roaster.roast_calls, 1)
         self.assertEqual(roaster.cool_calls, 0)
+
+    def test_set_roaster_settings_maps_recipe_fan_to_runtime_scale(self):
+        roaster = FakeRoaster("F")
+        roaster.max_fan_speed = 5
+        recipe = Recipe(roaster=roaster, on_section_change=FakeApp())
+
+        recipe._storage.current_step = 1
+        recipe.set_roaster_settings(target_temp_c=100, fan_speed=9, section_duration_s=45, cooling=False)
+        self.assertEqual(roaster.fan_speed, 5)
+
+        recipe.set_roaster_settings(target_temp_c=100, fan_speed=1, section_duration_s=45, cooling=False)
+        self.assertEqual(roaster.fan_speed, 1)
+
+        recipe.set_roaster_settings(target_temp_c=100, fan_speed=5, section_duration_s=45, cooling=False)
+        self.assertEqual(roaster.fan_speed, 3)
+
+    def test_set_roaster_settings_maps_recipe_fan_off_to_runtime_off(self):
+        roaster = FakeRoaster("F")
+        roaster.max_fan_speed = 5
+        recipe = Recipe(roaster=roaster, on_section_change=FakeApp())
+
+        recipe._storage.current_step = 1
+        recipe.set_roaster_settings(target_temp_c=100, fan_speed=0, section_duration_s=45, cooling=False)
+        self.assertEqual(roaster.fan_speed, 0)
+
+    def test_set_roaster_settings_runtime_max_one_maps_all_nonzero_to_one(self):
+        roaster = FakeRoaster("F")
+        roaster.max_fan_speed = 1
+        recipe = Recipe(roaster=roaster, on_section_change=FakeApp())
+
+        recipe._storage.current_step = 1
+        recipe.set_roaster_settings(target_temp_c=100, fan_speed=9, section_duration_s=45, cooling=False)
+        self.assertEqual(roaster.fan_speed, 1)
+
+        recipe.set_roaster_settings(target_temp_c=100, fan_speed=0, section_duration_s=45, cooling=False)
+        self.assertEqual(roaster.fan_speed, 0)
 
     def test_set_roaster_settings_cooling_path_calls_cool(self):
         roaster = FakeRoaster("F")

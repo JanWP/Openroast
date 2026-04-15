@@ -560,7 +560,7 @@ class RecipeEditor(QtWidgets.QDialog):
         """Populate a recipe steps table from normalized Celsius step values."""
         fanSpeedChoices = [
             str(x)
-            for x in range(app_config.FAN_SPEED_MIN, app_config.FAN_SPEED_MAX + 1)
+            for x in range(1, app_config.FAN_SPEED_MAX + 1)
         ]
         min_display, max_display = self._temp_display_range()
         temp_spec = customqtwidgets.ValueSpec(

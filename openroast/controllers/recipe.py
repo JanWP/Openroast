@@ -18,6 +18,8 @@ from openroast.temperature import (
     normalize_temperature_unit,
     recipe_to_celsius,
 )
+from openroast import app_config
+from openroast.fan_speed import recipe_fan_to_runtime_fan
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +329,9 @@ class Recipe(object):
         self.roaster.fan_speed = 1
         self._set_roaster_time_remaining_s(0)
 
+    def _runtime_fan_max(self):
+        return int(max(1, getattr(self.roaster, "max_fan_speed", app_config.FAN_SPEED_MAX)))
+
     def _set_roaster_target_temp_c(self, target_temp_c):
         if hasattr(self.roaster, "target_temp_k"):
             self.roaster.target_temp_k = celsius_to_kelvin(target_temp_c)
@@ -354,7 +359,13 @@ class Recipe(object):
             self.roaster.roast()
 
         self._set_roaster_target_temp_c(target_temp_c)
-        self.roaster.fan_speed = fan_speed
+        recipe_fan_speed = int(fan_speed)
+        runtime_fan_speed = recipe_fan_to_runtime_fan(
+            recipe_fan_speed,
+            recipe_fan_max=app_config.FAN_SPEED_MAX,
+            runtime_fan_max=self._runtime_fan_max(),
+        )
+        self.roaster.fan_speed = int(runtime_fan_speed)
         self._set_roaster_time_remaining_s(section_duration_s)
 
     def load_current_section(self):
