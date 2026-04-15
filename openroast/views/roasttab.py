@@ -642,7 +642,7 @@ class RoastTab(QtWidgets.QWidget):
 
         # Create fan speed slider.
         self.fanSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.fanSlider.setRange(1, 9)
+        self.fanSlider.setRange(1, 9)  # set minimum and maximum fan speed
         self.fanSlider.valueChanged.connect(self.update_fan_speed_slider)
         sliderPanel.addWidget(self.fanSlider, 5, 0)
 
