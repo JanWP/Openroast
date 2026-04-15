@@ -153,7 +153,7 @@ class RoasterController:
         self._connected = False
         self._target_temp_k = float(self.config.min_display_temp_k)
         self._current_temp_k = float(self.config.ambient_temp_k)
-        self._fan_speed = parameter_catalog.FAN_SPEED_MIN
+        self._fan_speed = 1
         self._heat_setting = parameter_catalog.HEAT_SETTING_MIN
         self._heater_level = parameter_catalog.HEATER_PERCENT_MIN
         self._heater_output = False
@@ -402,7 +402,7 @@ class RoasterController:
                     )
                 )
 
-            self.fan_speed = max(parameter_catalog.FAN_SPEED_MIN, original_fan)
+            self.fan_speed = max(1, original_fan)
             self.heat_setting = 0
             self.roast()
 
@@ -580,7 +580,7 @@ class RoasterController:
 
     @fan_speed.setter
     def fan_speed(self, value: int) -> None:
-        if value not in range(parameter_catalog.FAN_SPEED_MIN, parameter_catalog.FAN_SPEED_MAX + 1):
+        if value not in range(1, parameter_catalog.FAN_SPEED_MAX + 1):
             raise ValueError("fan_speed must be 1-9")
         with self._lock:
             self._fan_speed = int(value)

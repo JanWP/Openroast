@@ -14,7 +14,6 @@ from freshroastsr700 import pid
 from freshroastsr700 import exceptions
 
 
-USB_MOCK_FAN_SPEED_MIN = 1
 USB_MOCK_FAN_SPEED_MAX = 9
 
 class freshroastsr700(object):
@@ -156,7 +155,7 @@ class freshroastsr700(object):
     @fan_speed.setter
     def fan_speed(self, value):
         """Verifies the value is within configured fan-speed bounds."""
-        if value not in range(USB_MOCK_FAN_SPEED_MIN, USB_MOCK_FAN_SPEED_MAX + 1):
+        if value not in range(1, USB_MOCK_FAN_SPEED_MAX + 1):
             raise exceptions.RoasterValueError
 
         self._fan_speed.value = value

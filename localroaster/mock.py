@@ -25,7 +25,7 @@ class MockHardwareDriver(HardwareDriver):
             float(self.config.mock_thermal_max_temp_k),
         )
         self._fan_cooling_k_per_step = max(0.0, float(self.config.mock_fan_cooling_k_per_step))
-        self._fan_speed = parameter_catalog.FAN_SPEED_MIN
+        self._fan_speed = 1
         self._last_update_s = float(self._time_fn())
 
     def read_temperature_k(self) -> float:
@@ -35,7 +35,7 @@ class MockHardwareDriver(HardwareDriver):
             self._last_update_s = now_s
 
             fan_cooling = (
-                self._fan_speed - parameter_catalog.FAN_SPEED_MIN
+                self._fan_speed - 1
             ) * self._fan_cooling_k_per_step
             hot_target_k = max(self._thermal_max_temp_k - fan_cooling, self.config.ambient_temp_k)
             if self._use_level_control:
@@ -75,7 +75,7 @@ class MockHardwareDriver(HardwareDriver):
             self._heater_on = False
             self._heater_level = float(parameter_catalog.HEATER_PERCENT_MIN)
             self._use_level_control = False
-            self._fan_speed = parameter_catalog.FAN_SPEED_MIN
+            self._fan_speed = 1
             self._last_update_s = float(self._time_fn())
 
     def set_fan_speed(self, speed: int) -> None:
