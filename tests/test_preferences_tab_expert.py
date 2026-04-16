@@ -26,7 +26,7 @@ class PreferencesTabExpertTests(unittest.TestCase):
         return bool(tab_widget.isTabEnabled(1))
 
     def _build_widget(self):
-        return PreferencesTab(config=app_config.DEFAULT_CONFIG)
+        return PreferencesTab(config=app_config.DEFAULT_CONFIG, runtime_backend="local-mock")
 
     def test_explicit_runtime_backend_context_is_preserved(self):
         cfg = app_config.update_config(app_config.DEFAULT_CONFIG, backend="usb")
@@ -37,6 +37,59 @@ class PreferencesTabExpertTests(unittest.TestCase):
         finally:
             widget.close()
             self._app.processEvents()
+
+    def test_pid_fan_selector_uses_runtime_backend_capabilities(self):
+        class DummyRoaster:
+            max_fan_speed = 5
+
+        widget = PreferencesTab(
+            config=app_config.DEFAULT_CONFIG,
+            runtime_backend="local-mock",
+            roaster=DummyRoaster(),
+        )
+        try:
+            self.assertEqual(widget.pidFanSpeedSelect.count(), 5)
+            self.assertEqual(widget.pidFanSpeedSelect.itemData(0), 1)
+            self.assertEqual(widget.pidFanSpeedSelect.itemData(4), 5)
+        finally:
+            widget.close()
+            self._app.processEvents()
+
+    def test_save_preferences_updates_only_runtime_backend_selected_fan_row(self):
+        base = app_config.normalize_config(app_config.DEFAULT_CONFIG)
+        base = app_config.set_pid_for_backend_speed(base, "local-mock", 2, 0.11, 0.012, 0.015)
+        base = app_config.set_pid_for_backend_speed(base, "usb", 2, 0.7, 0.08, 0.09)
+
+        saved_payloads = []
+
+        def _capture_save(cfg):
+            normalized = app_config.normalize_config(cfg)
+            saved_payloads.append(normalized)
+            return normalized
+
+        with patch("openroast.views.preferencestab.app_config.save_config", side_effect=_capture_save):
+            widget = PreferencesTab(config=base, runtime_backend="local-mock")
+            try:
+                idx = widget.pidFanSpeedSelect.findData(2)
+                widget.pidFanSpeedSelect.setCurrentIndex(idx)
+                widget.pidKp.setValue(0.22)
+                widget.pidKi.setValue(0.023)
+                widget.pidKd.setValue(0.024)
+                widget.save_preferences()
+            finally:
+                widget.close()
+                self._app.processEvents()
+
+        self.assertEqual(len(saved_payloads), 1)
+        saved = saved_payloads[0]
+        local_row = saved["control"]["pidProfiles"]["local-mock"]["2"]
+        usb_row = saved["control"]["pidProfiles"]["usb"]["2"]
+        self.assertAlmostEqual(local_row["kp"], 0.22, places=6)
+        self.assertAlmostEqual(local_row["ki"], 0.023, places=6)
+        self.assertAlmostEqual(local_row["kd"], 0.024, places=6)
+        self.assertAlmostEqual(usb_row["kp"], 0.7, places=6)
+        self.assertAlmostEqual(usb_row["ki"], 0.08, places=6)
+        self.assertAlmostEqual(usb_row["kd"], 0.09, places=6)
 
     def test_expert_toggle_controls_expert_tab_visibility(self):
         widget = self._build_widget()
@@ -170,7 +223,7 @@ class PreferencesTabExpertTests(unittest.TestCase):
             self._app.processEvents()
 
     def test_compact_numeric_controls_use_unified_compact_style_ids(self):
-        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, compact_ui=True)
+        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, compact_ui=True, runtime_backend="local-mock")
         try:
             expected = widget.NUMERIC_EDITOR_COMPACT_OBJECT_NAME
             self.assertEqual(widget.refreshIntervalMs.editorObjectName(), expected)
@@ -192,7 +245,7 @@ class PreferencesTabExpertTests(unittest.TestCase):
             self._app.processEvents()
 
     def test_numeric_controls_have_uniform_height_in_compact_layout(self):
-        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, compact_ui=True)
+        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, compact_ui=True, runtime_backend="local-mock")
         try:
             expected = widget.NUMERIC_EDITOR_HEIGHT_COMPACT
             self.assertEqual(widget.refreshIntervalMs.height(), expected)
@@ -225,7 +278,7 @@ class PreferencesTabExpertTests(unittest.TestCase):
             def autotune_pid(self, **_kwargs):
                 return {"kp": 0.2, "ki": 0.03, "kd": 0.04}
 
-        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, roaster=DummyRoaster())
+        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, roaster=DummyRoaster(), runtime_backend="local-mock")
         try:
             widget.expertModeEnabled.setChecked(True)
             widget._expert_warning_ack = True
@@ -256,7 +309,7 @@ class PreferencesTabExpertTests(unittest.TestCase):
                 time.sleep(0.05)
                 return {"kp": 0.2, "ki": 0.03, "kd": 0.04}
 
-        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, roaster=SlowRoaster())
+        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, roaster=SlowRoaster(), runtime_backend="local-mock")
         try:
             widget.expertModeEnabled.setChecked(True)
             widget._expert_warning_ack = True
@@ -293,6 +346,7 @@ class PreferencesTabExpertTests(unittest.TestCase):
             config=app_config.DEFAULT_CONFIG,
             roaster=DummyRoaster(),
             pre_autotune_hook=pre_hook,
+            runtime_backend="local-mock",
         )
         try:
             with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):

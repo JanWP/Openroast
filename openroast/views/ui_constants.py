@@ -178,6 +178,7 @@ class PreferencesUI:
     FORM_LABEL_PID_KP = "PID Kp:"
     FORM_LABEL_PID_KI = "PID Ki:"
     FORM_LABEL_PID_KD = "PID Kd:"
+    FORM_LABEL_PID_FAN_SPEED = "PID fan speed:"
     FORM_LABEL_PWM_CYCLE_PERIOD = "PWM cycle period:"
     FORM_LABEL_CONTROL_SAMPLE_PERIOD = "Control sample period:"
     FORM_LABEL_MAX_SAFE_TEMPERATURE = "Max safe temperature:"
@@ -185,6 +186,7 @@ class PreferencesUI:
 
     STATUS_UNSAVED_CHANGES = "Unsaved changes"
     STATUS_AUTOTUNE_UNAVAILABLE = "Autotune unavailable: no backend handle"
+    STATUS_PID_NOT_AVAILABLE = "PID tuning is unavailable for this runtime backend."
     STATUS_AUTOTUNE_CANCELED = "Autotune canceled"
     STATUS_AUTOTUNE_RUNNING = "Running autotune..."
     STATUS_AUTOTUNE_FAILED_TEMPLATE = "Autotune failed: {error}"

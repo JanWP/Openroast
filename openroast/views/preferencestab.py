@@ -86,6 +86,7 @@ class PreferencesTab(QtWidgets.QWidget):
         self._runtime_backend = (
             runtime_backend if runtime_backend in app_config.VALID_BACKENDS else backend_default
         )
+        self._selected_pid_fan_speed = 1
         self._saved_form_state = None
         self._expert_warning_ack = False
         self._tab_change_guard = False
@@ -378,6 +379,10 @@ class PreferencesTab(QtWidgets.QWidget):
 
         self.heaterCutoffEnabled = QtWidgets.QCheckBox()
 
+        self.pidFanSpeedSelect = QtWidgets.QComboBox()
+        self.pidFanSpeedSelect.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+
+        control_form.addRow(PreferencesUI.FORM_LABEL_PID_FAN_SPEED, self.pidFanSpeedSelect)
         control_form.addRow(PreferencesUI.FORM_LABEL_PID_KP, self.pidKp)
         control_form.addRow(PreferencesUI.FORM_LABEL_PID_KI, self.pidKi)
         control_form.addRow(PreferencesUI.FORM_LABEL_PID_KD, self.pidKd)
@@ -398,7 +403,60 @@ class PreferencesTab(QtWidgets.QWidget):
         layout.addWidget(left_column, 0)
         layout.addWidget(right_column, 0)
         layout.addStretch(1)
+        self._update_pid_editor_visibility()
         return page
+
+    def _pid_controls_supported(self):
+        return self._runtime_backend in ("local", "local-mock")
+
+    def _runtime_fan_max_for_pid(self):
+        if not self._pid_controls_supported():
+            return 0
+        runtime_max = getattr(self._roaster, "max_fan_speed", app_config.FAN_SPEED_MAX)
+        return max(1, int(runtime_max))
+
+    def _populate_pid_fan_selector(self):
+        max_fan = self._runtime_fan_max_for_pid()
+        blocker = QtCore.QSignalBlocker(self.pidFanSpeedSelect)
+        self.pidFanSpeedSelect.clear()
+        if max_fan > 0:
+            for fan_speed in range(1, max_fan + 1):
+                self.pidFanSpeedSelect.addItem(str(fan_speed), fan_speed)
+            idx = self.pidFanSpeedSelect.findData(self._selected_pid_fan_speed)
+            if idx < 0:
+                idx = 0
+            self.pidFanSpeedSelect.setCurrentIndex(idx)
+            selected = self.pidFanSpeedSelect.currentData()
+            self._selected_pid_fan_speed = int(selected) if selected is not None else 1
+        del blocker
+
+    def _update_pid_editor_visibility(self):
+        supported = self._pid_controls_supported()
+        widgets = [
+            self.pidFanSpeedSelect,
+            self.pidKp,
+            self.pidKi,
+            self.pidKd,
+            self.autotuneButton,
+        ]
+        for widget in widgets:
+            label = None
+            if hasattr(self, "pidKp"):
+                label = self._find_form_label_for_widget(widget)
+            if label is not None:
+                label.setVisible(supported)
+            widget.setVisible(supported)
+            widget.setEnabled(supported)
+
+    def _find_form_label_for_widget(self, field_widget):
+        parent = field_widget.parentWidget()
+        if parent is None:
+            return None
+        for form in parent.findChildren(QtWidgets.QFormLayout):
+            label = form.labelForField(field_widget)
+            if label is not None:
+                return label
+        return None
 
     def _create_numeric_editor(self, spec):
         editor = customqtwidgets.AdaptiveValueEditor(
@@ -461,9 +519,17 @@ class PreferencesTab(QtWidgets.QWidget):
             default=TEMP_UNIT_C,
         )
 
-        self.pidKp.setValue(float(config["control"]["pid"].get("kp", 0.108)))
-        self.pidKi.setValue(float(config["control"]["pid"].get("ki", 0.0135)))
-        self.pidKd.setValue(float(config["control"]["pid"].get("kd", 0.018)))
+        self._populate_pid_fan_selector()
+        self._update_pid_editor_visibility()
+
+        pid_values = app_config.get_pid_for_backend_speed(
+            config,
+            self._runtime_backend,
+            self._selected_pid_fan_speed,
+        )
+        self.pidKp.setValue(float(pid_values["kp"]))
+        self.pidKi.setValue(float(pid_values["ki"]))
+        self.pidKd.setValue(float(pid_values["kd"]))
         self.pwmCycleSeconds.setValue(float(config["control"].get("pwmCycleSeconds", 1.0)))
         self.samplePeriodSeconds.setValue(float(config["control"].get("samplePeriodSeconds", 0.5)))
         self.safetyMaxTempC.setValue(celsius_to_temperature_unit(app_config.get_safety_max_temp_c(config), unit))
@@ -471,6 +537,9 @@ class PreferencesTab(QtWidgets.QWidget):
         self.heaterCutoffEnabled.setChecked(bool(config["safety"].get("heaterCutoffEnabled", True)))
         self._suppress_heater_cutoff_prompt = False
         self._set_expert_tab_visible(self.expertModeEnabled.isChecked())
+
+        if not self._pid_controls_supported():
+            self.statusLabel.setText(PreferencesUI.STATUS_PID_NOT_AVAILABLE)
 
     def _wire_change_signals(self):
         self.temperatureUnitSelect.currentIndexChanged.connect(self._on_display_unit_changed)
@@ -489,6 +558,7 @@ class PreferencesTab(QtWidgets.QWidget):
         self.pidKp.valueChanged.connect(self._on_form_modified)
         self.pidKi.valueChanged.connect(self._on_form_modified)
         self.pidKd.valueChanged.connect(self._on_form_modified)
+        self.pidFanSpeedSelect.currentIndexChanged.connect(self._on_pid_fan_speed_changed)
         self.pwmCycleSeconds.valueChanged.connect(self._on_form_modified)
         self.samplePeriodSeconds.valueChanged.connect(self._on_form_modified)
         self.autotuneButton.clicked.connect(self._on_autotune_clicked)
@@ -535,6 +605,28 @@ class PreferencesTab(QtWidgets.QWidget):
 
     def _on_display_unit_changed(self, _index):
         self._set_temperature_field_unit(self.temperatureUnitSelect.currentData(), convert_existing=True)
+
+    def _on_pid_fan_speed_changed(self, _index):
+        selected = self.pidFanSpeedSelect.currentData()
+        if selected is None:
+            return
+        self._selected_pid_fan_speed = int(selected)
+        pid_values = app_config.get_pid_for_backend_speed(
+            self._config,
+            self._runtime_backend,
+            self._selected_pid_fan_speed,
+        )
+        blockers = [
+            QtCore.QSignalBlocker(self.pidKp),
+            QtCore.QSignalBlocker(self.pidKi),
+            QtCore.QSignalBlocker(self.pidKd),
+        ]
+        self.pidKp.setValue(float(pid_values["kp"]))
+        self.pidKi.setValue(float(pid_values["ki"]))
+        self.pidKd.setValue(float(pid_values["kd"]))
+        for blocker in blockers:
+            del blocker
+        self._on_form_modified()
 
     def _on_expert_mode_toggled(self, enabled):
         self._set_expert_tab_visible(bool(enabled))
@@ -747,9 +839,14 @@ class PreferencesTab(QtWidgets.QWidget):
     def _restore_expert_defaults(self, defaults):
         unit = normalize_temperature_unit(self.temperatureUnitSelect.currentData(), default=TEMP_UNIT_C)
         normalized_defaults = app_config.normalize_config(defaults)
-        self.pidKp.setValue(float(defaults["control"]["pid"].get("kp", 0.108)))
-        self.pidKi.setValue(float(defaults["control"]["pid"].get("ki", 0.0135)))
-        self.pidKd.setValue(float(defaults["control"]["pid"].get("kd", 0.018)))
+        pid_values = app_config.get_pid_for_backend_speed(
+            defaults,
+            self._runtime_backend,
+            self._selected_pid_fan_speed,
+        )
+        self.pidKp.setValue(float(pid_values["kp"]))
+        self.pidKi.setValue(float(pid_values["ki"]))
+        self.pidKd.setValue(float(pid_values["kd"]))
         self.pwmCycleSeconds.setValue(float(defaults["control"].get("pwmCycleSeconds", 1.0)))
         self.samplePeriodSeconds.setValue(float(defaults["control"].get("samplePeriodSeconds", 0.5)))
         self.safetyMaxTempC.setValue(
@@ -777,6 +874,8 @@ class PreferencesTab(QtWidgets.QWidget):
             "pid_kp": float(self.pidKp.value()),
             "pid_ki": float(self.pidKi.value()),
             "pid_kd": float(self.pidKd.value()),
+            "pid_fan_speed": int(self._selected_pid_fan_speed),
+            "runtime_backend": self._runtime_backend,
             "pwm_cycle_s": float(self.pwmCycleSeconds.value()),
             "sample_period_s": float(self.samplePeriodSeconds.value()),
             "safety_max_temp_c": float(self.safetyMaxTempC.value()),
@@ -816,14 +915,20 @@ class PreferencesTab(QtWidgets.QWidget):
             plot_line_width=self.plotLineWidth.value(),
             confirm_on_stop=self.confirmOnStop.isChecked(),
             confirm_on_clear=self.confirmOnClear.isChecked(),
-            pid_kp=self.pidKp.value(),
-            pid_ki=self.pidKi.value(),
-            pid_kd=self.pidKd.value(),
             pwm_cycle_seconds=self.pwmCycleSeconds.value(),
             sample_period_seconds=self.samplePeriodSeconds.value(),
             safety_max_temp_c=safety_max_temp_c,
             heater_cutoff_enabled=self.heaterCutoffEnabled.isChecked(),
         )
+        if self._pid_controls_supported():
+            updated = app_config.set_pid_for_backend_speed(
+                updated,
+                self._runtime_backend,
+                self._selected_pid_fan_speed,
+                self.pidKp.value(),
+                self.pidKi.value(),
+                self.pidKd.value(),
+            )
         saved = app_config.save_config(updated)
         self._config = saved
 
