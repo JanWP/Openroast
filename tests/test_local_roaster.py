@@ -401,6 +401,52 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertAlmostEqual(call["sample_period_s"], 0.2, places=4)
         self.assertTrue(call["heater_cutoff_enabled"])
 
+    def test_fan_speed_change_reapplies_pid_for_new_fan_after_runtime_preferences(self):
+        fake_controller = FakeController()
+        fake_controller.fan_speed = 1
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster(force_mock=True)
+
+        config = {
+            "control": {
+                "pidProfiles": {
+                    "local-mock": {
+                        "1": {"kp": 0.10, "ki": 0.01, "kd": 0.02},
+                        "3": {"kp": 0.30, "ki": 0.03, "kd": 0.06},
+                    }
+                },
+                "pwmCycleSeconds": 1.5,
+                "samplePeriodSeconds": 0.2,
+            },
+            "safety": {
+                "maxTemp": {"value": 287.8, "unit": "C"},
+                "heaterCutoffEnabled": True,
+            },
+        }
+
+        self.assertTrue(roaster.apply_runtime_preferences(config))
+        self.assertEqual(len(fake_controller.runtime_config_calls), 1)
+
+        roaster.fan_speed = 3
+        self.assertEqual(fake_controller.fan_speed, 3)
+        self.assertEqual(len(fake_controller.runtime_config_calls), 2)
+        pid_switch_call = fake_controller.runtime_config_calls[-1]
+        self.assertEqual(set(pid_switch_call.keys()), {"kp", "ki", "kd"})
+        self.assertAlmostEqual(pid_switch_call["kp"], 0.30, places=4)
+        self.assertAlmostEqual(pid_switch_call["ki"], 0.03, places=4)
+        self.assertAlmostEqual(pid_switch_call["kd"], 0.06, places=4)
+
+    def test_fan_speed_change_before_runtime_preferences_does_not_apply_pid(self):
+        fake_controller = FakeController()
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster(force_mock=True)
+
+        roaster.fan_speed = 4
+        self.assertEqual(fake_controller.fan_speed, 4)
+        self.assertEqual(fake_controller.runtime_config_calls, [])
+
     def test_autotune_pid_forwards_to_controller(self):
         fake_controller = FakeController()
 

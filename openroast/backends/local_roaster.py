@@ -80,6 +80,27 @@ class LocalRoaster:
         self._heater_level_func = None
         self._update_thread = None
         self._state_transition_thread = None
+        self._runtime_preferences_config = None
+
+    def _apply_pid_for_current_fan(self):
+        if self._runtime_preferences_config is None:
+            return False
+        apply_runtime_config = getattr(self._controller, "apply_runtime_config", None)
+        if not callable(apply_runtime_config):
+            return False
+
+        runtime_fan_speed = int(max(1, getattr(self._controller, "fan_speed", 1)))
+        pid_values = app_config.get_pid_for_backend_speed(
+            self._runtime_preferences_config,
+            self._profile_backend_key,
+            runtime_fan_speed,
+        )
+        apply_runtime_config(
+            kp=float(pid_values["kp"]),
+            ki=float(pid_values["ki"]),
+            kd=float(pid_values["kd"]),
+        )
+        return True
 
     def _register_controller_listeners(self):
         if self._listeners_registered:
@@ -166,6 +187,7 @@ class LocalRoaster:
     @fan_speed.setter
     def fan_speed(self, value):
         self._controller.fan_speed = value
+        self._apply_pid_for_current_fan()
 
     @property
     def heat_setting(self):
@@ -357,6 +379,7 @@ class LocalRoaster:
             max_temp_k=celsius_to_kelvin(app_config.get_safety_max_temp_c(config)),
             heater_cutoff_enabled=bool(config["safety"]["heaterCutoffEnabled"]),
         )
+        self._runtime_preferences_config = config
         return True
 
     def autotune_pid(self, **kwargs):
