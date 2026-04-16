@@ -11,9 +11,10 @@ from openroast import app_config
 from openroast.temperature import TEMP_UNIT_F
 from openroast.views.preferencestab import PreferencesTab
 from openroast.views.ui_constants import PreferencesUI
+from tests.config_sandbox import ConfigSandboxMixin
 
 
-class PreferencesTabExpertTests(unittest.TestCase):
+class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])

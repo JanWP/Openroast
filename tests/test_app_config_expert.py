@@ -5,9 +5,10 @@ from unittest import mock
 
 from openroast import app_config
 from openroast.temperature import TEMP_UNIT_C
+from tests.config_sandbox import ConfigSandboxMixin
 
 
-class AppConfigExpertTests(unittest.TestCase):
+class AppConfigExpertTests(ConfigSandboxMixin, unittest.TestCase):
     def test_normalize_populates_expert_defaults(self):
         cfg = app_config.normalize_config({})
         self.assertIn("control", cfg)
