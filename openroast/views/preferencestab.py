@@ -1,3 +1,5 @@
+import copy
+
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 
@@ -87,6 +89,7 @@ class PreferencesTab(QtWidgets.QWidget):
             runtime_backend if runtime_backend in app_config.VALID_BACKENDS else backend_default
         )
         self._selected_pid_fan_speed = 1
+        self._pid_draft_profiles = {}
         self._saved_form_state = None
         self._expert_warning_ack = False
         self._tab_change_guard = False
@@ -430,6 +433,37 @@ class PreferencesTab(QtWidgets.QWidget):
             self._selected_pid_fan_speed = int(selected) if selected is not None else 1
         del blocker
 
+    def _reset_pid_draft_from_config(self, config):
+        normalized = app_config.normalize_config(config)
+        self._pid_draft_profiles = copy.deepcopy(
+            normalized.get("control", {}).get("pidProfiles", {})
+        )
+
+    def _get_pid_value_from_draft(self, fan_speed):
+        temp_cfg = app_config.normalize_config(self._config)
+        temp_cfg["control"]["pidProfiles"] = copy.deepcopy(self._pid_draft_profiles)
+        return app_config.get_pid_for_backend_speed(
+            temp_cfg,
+            self._runtime_backend,
+            fan_speed,
+        )
+
+    def _store_current_pid_editor_values_to_draft(self):
+        if not self._pid_controls_supported():
+            return
+        current_fan = int(max(1, self._selected_pid_fan_speed))
+        temp_cfg = app_config.normalize_config(self._config)
+        temp_cfg["control"]["pidProfiles"] = copy.deepcopy(self._pid_draft_profiles)
+        updated = app_config.set_pid_for_backend_speed(
+            temp_cfg,
+            self._runtime_backend,
+            current_fan,
+            self.pidKp.value(),
+            self.pidKi.value(),
+            self.pidKd.value(),
+        )
+        self._pid_draft_profiles = copy.deepcopy(updated["control"]["pidProfiles"])
+
     def _update_pid_editor_visibility(self):
         supported = self._pid_controls_supported()
         widgets = [
@@ -519,14 +553,11 @@ class PreferencesTab(QtWidgets.QWidget):
             default=TEMP_UNIT_C,
         )
 
+        self._reset_pid_draft_from_config(config)
         self._populate_pid_fan_selector()
         self._update_pid_editor_visibility()
 
-        pid_values = app_config.get_pid_for_backend_speed(
-            config,
-            self._runtime_backend,
-            self._selected_pid_fan_speed,
-        )
+        pid_values = self._get_pid_value_from_draft(self._selected_pid_fan_speed)
         self.pidKp.setValue(float(pid_values["kp"]))
         self.pidKi.setValue(float(pid_values["ki"]))
         self.pidKd.setValue(float(pid_values["kd"]))
@@ -607,15 +638,12 @@ class PreferencesTab(QtWidgets.QWidget):
         self._set_temperature_field_unit(self.temperatureUnitSelect.currentData(), convert_existing=True)
 
     def _on_pid_fan_speed_changed(self, _index):
+        self._store_current_pid_editor_values_to_draft()
         selected = self.pidFanSpeedSelect.currentData()
         if selected is None:
             return
         self._selected_pid_fan_speed = int(selected)
-        pid_values = app_config.get_pid_for_backend_speed(
-            self._config,
-            self._runtime_backend,
-            self._selected_pid_fan_speed,
-        )
+        pid_values = self._get_pid_value_from_draft(self._selected_pid_fan_speed)
         blockers = [
             QtCore.QSignalBlocker(self.pidKp),
             QtCore.QSignalBlocker(self.pidKi),
@@ -894,6 +922,7 @@ class PreferencesTab(QtWidgets.QWidget):
             self.statusLabel.setText("")
 
     def save_preferences(self):
+        self._store_current_pid_editor_values_to_draft()
         selected_unit = self.temperatureUnitSelect.currentData()
         selected_backend = self.backendSelect.currentText()
 
@@ -921,16 +950,10 @@ class PreferencesTab(QtWidgets.QWidget):
             heater_cutoff_enabled=self.heaterCutoffEnabled.isChecked(),
         )
         if self._pid_controls_supported():
-            updated = app_config.set_pid_for_backend_speed(
-                updated,
-                self._runtime_backend,
-                self._selected_pid_fan_speed,
-                self.pidKp.value(),
-                self.pidKi.value(),
-                self.pidKd.value(),
-            )
+            updated["control"]["pidProfiles"] = copy.deepcopy(self._pid_draft_profiles)
         saved = app_config.save_config(updated)
         self._config = saved
+        self._reset_pid_draft_from_config(saved)
 
         if callable(self._on_save):
             self._on_save(saved)

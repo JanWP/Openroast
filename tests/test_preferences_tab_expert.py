@@ -91,6 +91,25 @@ class PreferencesTabExpertTests(unittest.TestCase):
         self.assertAlmostEqual(usb_row["ki"], 0.08, places=6)
         self.assertAlmostEqual(usb_row["kd"], 0.09, places=6)
 
+    def test_unsaved_pid_edits_are_preserved_when_switching_fan_speeds(self):
+        base = app_config.normalize_config(app_config.DEFAULT_CONFIG)
+        base = app_config.set_pid_for_backend_speed(base, "local-mock", 1, 0.11, 0.012, 0.015)
+        base = app_config.set_pid_for_backend_speed(base, "local-mock", 2, 0.21, 0.022, 0.025)
+
+        widget = PreferencesTab(config=base, runtime_backend="local-mock")
+        try:
+            idx1 = widget.pidFanSpeedSelect.findData(1)
+            idx2 = widget.pidFanSpeedSelect.findData(2)
+            widget.pidFanSpeedSelect.setCurrentIndex(idx1)
+            widget.pidKp.setValue(0.314)
+            widget.pidFanSpeedSelect.setCurrentIndex(idx2)
+            widget.pidFanSpeedSelect.setCurrentIndex(idx1)
+
+            self.assertAlmostEqual(widget.pidKp.value(), 0.314, places=6)
+        finally:
+            widget.close()
+            self._app.processEvents()
+
     def test_expert_toggle_controls_expert_tab_visibility(self):
         widget = self._build_widget()
         try:
