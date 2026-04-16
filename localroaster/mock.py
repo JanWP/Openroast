@@ -79,8 +79,11 @@ class MockHardwareDriver(HardwareDriver):
             self._last_update_s = float(self._time_fn())
 
     def set_fan_speed(self, speed: int) -> None:
+        speed = int(speed)
+        if speed not in range(1, parameter_catalog.FAN_SPEED_MAX + 1):
+            raise ValueError("fan_speed must be in range 1..FAN_SPEED_MAX")
         with self._lock:
-            self._fan_speed = int(speed)
+            self._fan_speed = speed
 
 
 def create_mock_controller(config: ControllerConfig | None = None) -> RoasterController:
