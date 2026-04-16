@@ -364,14 +364,24 @@ class LocalRoasterAdapterTests(unittest.TestCase):
 
     def test_apply_runtime_preferences_forwards_pid_and_safety_settings(self):
         fake_controller = FakeController()
+        fake_controller.fan_speed = 3
 
         with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
             roaster = LocalRoaster()
 
         config = {
             "display": {"temperatureUnitDefault": "F"},
+            "app": {"backendDefault": "usb"},
             "control": {
-                "pid": {"kp": 0.2, "ki": 0.03, "kd": 0.04},
+                "pidProfiles": {
+                    "local": {
+                        "1": {"kp": 0.11, "ki": 0.012, "kd": 0.015},
+                        "3": {"kp": 0.2, "ki": 0.03, "kd": 0.04},
+                    },
+                    "local-mock": {
+                        "3": {"kp": 0.4, "ki": 0.05, "kd": 0.08},
+                    },
+                },
                 "pwmCycleSeconds": 1.5,
                 "samplePeriodSeconds": 0.2,
             },

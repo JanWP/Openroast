@@ -82,15 +82,17 @@ def _create_roaster(args, config_data=None):
     if args.backend in ("local", "local-mock"):
         try:
             from openroast.backends.local_roaster import LocalRoaster
+            pid_values = app_config.get_pid_for_backend_speed(config, args.backend, 1)
             local_kwargs = dict(
                 thermostat=True,
-                kp=float(config["control"]["pid"]["kp"]),
-                ki=float(config["control"]["pid"]["ki"]),
-                kd=float(config["control"]["pid"]["kd"]),
+                kp=float(pid_values["kp"]),
+                ki=float(pid_values["ki"]),
+                kd=float(pid_values["kd"]),
                 pwm_cycle_s=float(config["control"]["pwmCycleSeconds"]),
                 sample_period_s=float(config["control"]["samplePeriodSeconds"]),
                 max_temp_c=float(app_config.get_safety_max_temp_c(config)),
                 heater_cutoff_enabled=bool(config["safety"]["heaterCutoffEnabled"]),
+                profile_backend_key=str(args.backend),
             )
             if args.backend == "local-mock":
                 logging.info("openroastapp: using LOCAL MOCK backend")

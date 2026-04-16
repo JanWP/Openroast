@@ -98,6 +98,14 @@ DEFAULT_CONFIG = {
 }
 
 
+def _to_serializable_config(config):
+    """Return normalized config in on-disk v2 shape (without legacy shim keys)."""
+    serialized = copy.deepcopy(normalize_config(config))
+    serialized.setdefault("control", {}).pop("pid", None)
+    serialized["configVersion"] = CONFIG_VERSION
+    return serialized
+
+
 def _default_pid_values():
     return {
         "kp": float(DEFAULT_CONFIG["control"]["pid"]["kp"]),
@@ -415,30 +423,48 @@ def normalize_config(raw_cfg):
 
     cfg["safety"]["heaterCutoffEnabled"] = bool(cfg["safety"].get("heaterCutoffEnabled", True))
 
-    cfg["configVersion"] = _clamp_int(cfg.get("configVersion", CONFIG_VERSION), 1, CONFIG_VERSION, CONFIG_VERSION)
+    cfg["configVersion"] = CONFIG_VERSION
     return cfg
 
 
 def load_config():
     config_path = get_config_path()
-    if not os.path.exists(config_path):
+    config_dir = os.path.dirname(config_path)
+
+    def _read_json_file(path):
+        try:
+            with open(path, encoding="utf-8") as handle:
+                return json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    loaded = _read_json_file(config_path) if os.path.exists(config_path) else None
+
+    if loaded is None:
         return normalize_config(copy.deepcopy(DEFAULT_CONFIG))
 
-    try:
-        with open(config_path, encoding="utf-8") as handle:
-            loaded = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return normalize_config(copy.deepcopy(DEFAULT_CONFIG))
+    normalized = normalize_config(loaded)
+    # Auto-migrate on read: preserve settings, upgrade schema, and remove
+    # legacy scalar control.pid from file contents.
+    serialized = _to_serializable_config(normalized)
+    if loaded != serialized:
+        try:
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            with open(config_path, "w", encoding="utf-8") as handle:
+                json.dump(serialized, handle, indent=4)
+        except OSError:
+            # Migration failure must not block startup; continue with normalized
+            # in-memory config.
+            pass
 
-    return normalize_config(loaded)
+    return normalized
 
 
 def save_config(config):
     config_path = get_config_path()
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     normalized = normalize_config(config)
-    serialized = copy.deepcopy(normalized)
-    serialized.setdefault("control", {}).pop("pid", None)
+    serialized = _to_serializable_config(normalized)
     with open(config_path, "w", encoding="utf-8") as handle:
         json.dump(serialized, handle, indent=4)
     return normalized

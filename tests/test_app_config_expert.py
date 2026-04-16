@@ -75,6 +75,43 @@ class AppConfigExpertTests(unittest.TestCase):
         self.assertNotIn("pid", saved["control"])
         self.assertIn("pidProfiles", saved["control"])
 
+    def test_load_config_auto_migrates_v1_and_preserves_startup_settings(self):
+        legacy_v1 = {
+            "configVersion": 1,
+            "ui": {
+                "compactModeDefault": True,
+                "fullscreenOnStart": True,
+            },
+            "app": {
+                "backendDefault": "local-mock",
+            },
+            "control": {
+                "pid": {"kp": 0.2, "ki": 0.03, "kd": 0.04},
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg_path = f"{tmpdir}/config.json"
+            with open(cfg_path, "w", encoding="utf-8") as handle:
+                json.dump(legacy_v1, handle, indent=2)
+
+            with mock.patch("openroast.app_config.get_config_path", return_value=cfg_path):
+                loaded = app_config.load_config()
+
+            with open(cfg_path, encoding="utf-8") as handle:
+                migrated_on_disk = json.load(handle)
+
+        self.assertTrue(loaded["ui"]["compactModeDefault"])
+        self.assertTrue(loaded["ui"]["fullscreenOnStart"])
+        self.assertEqual(loaded["app"]["backendDefault"], "local-mock")
+        self.assertEqual(loaded["configVersion"], app_config.CONFIG_VERSION)
+
+        self.assertEqual(migrated_on_disk["configVersion"], app_config.CONFIG_VERSION)
+        self.assertNotIn("pid", migrated_on_disk["control"])
+        self.assertIn("pidProfiles", migrated_on_disk["control"])
+
+
+
     def test_update_config_clamps_expert_values(self):
         cfg = app_config.update_config(
             app_config.DEFAULT_CONFIG,

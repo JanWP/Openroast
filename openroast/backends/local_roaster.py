@@ -42,6 +42,7 @@ class LocalRoaster:
         pwm_cycle_s=None,
         max_temp_c=None,
         heater_cutoff_enabled=True,
+        profile_backend_key=None,
     ):
         max_temp_k = celsius_to_kelvin(self.temperature_max_c if max_temp_c is None else float(max_temp_c))
         config_kwargs = dict(
@@ -59,6 +60,11 @@ class LocalRoaster:
             config_kwargs["pwm_cycle_s"] = float(pwm_cycle_s)
         self._config = ControllerConfig(**config_kwargs)
         self._controller = create_controller(config=self._config, force_mock=force_mock)
+        self._profile_backend_key = (
+            str(profile_backend_key)
+            if profile_backend_key is not None
+            else ("local-mock" if force_mock else "local")
+        )
         self._connect_state = 0
         self._listeners_registered = False
         self._callback_threads_started = False
@@ -335,10 +341,17 @@ class LocalRoaster:
         if not callable(apply_runtime_config):
             return False
 
+        runtime_fan_speed = int(max(1, getattr(self._controller, "fan_speed", 1)))
+        pid_values = app_config.get_pid_for_backend_speed(
+            config,
+            self._profile_backend_key,
+            runtime_fan_speed,
+        )
+
         apply_runtime_config(
-            kp=float(config["control"]["pid"]["kp"]),
-            ki=float(config["control"]["pid"]["ki"]),
-            kd=float(config["control"]["pid"]["kd"]),
+            kp=float(pid_values["kp"]),
+            ki=float(pid_values["ki"]),
+            kd=float(pid_values["kd"]),
             pwm_cycle_s=float(config["control"]["pwmCycleSeconds"]),
             sample_period_s=float(config["control"]["samplePeriodSeconds"]),
             max_temp_k=celsius_to_kelvin(app_config.get_safety_max_temp_c(config)),
