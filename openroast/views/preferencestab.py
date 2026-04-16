@@ -74,12 +74,18 @@ class PreferencesTab(QtWidgets.QWidget):
             else:
                 self.resultReady.emit(result, None)
 
-    def __init__(self, config, on_save=None, roaster=None, pre_autotune_hook=None, compact_ui=False):
+    def __init__(self, config, on_save=None, roaster=None, pre_autotune_hook=None, compact_ui=False,
+                 runtime_backend=None):
         super().__init__()
         self._on_save = on_save
         self._roaster = roaster
         self._pre_autotune_hook = pre_autotune_hook
         self._config = app_config.normalize_config(config)
+        backend_default = self._config.get("app", {}).get("backendDefault", "usb")
+        runtime_backend = runtime_backend if runtime_backend is not None else backend_default
+        self._runtime_backend = (
+            runtime_backend if runtime_backend in app_config.VALID_BACKENDS else backend_default
+        )
         self._saved_form_state = None
         self._expert_warning_ack = False
         self._tab_change_guard = False
@@ -96,6 +102,11 @@ class PreferencesTab(QtWidgets.QWidget):
         self._load_from_config(self._config)
         self._wire_change_signals()
         self._mark_saved_state()
+
+    @property
+    def runtime_backend(self):
+        """Effective backend in use for this running app session."""
+        return self._runtime_backend
 
     def _build_ui(self):
         root = QtWidgets.QVBoxLayout(self)

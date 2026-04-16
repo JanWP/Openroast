@@ -28,6 +28,16 @@ class PreferencesTabExpertTests(unittest.TestCase):
     def _build_widget(self):
         return PreferencesTab(config=app_config.DEFAULT_CONFIG)
 
+    def test_explicit_runtime_backend_context_is_preserved(self):
+        cfg = app_config.update_config(app_config.DEFAULT_CONFIG, backend="usb")
+        widget = PreferencesTab(config=cfg, runtime_backend="local-mock")
+        try:
+            self.assertEqual(widget.runtime_backend, "local-mock")
+            self.assertEqual(widget.backendSelect.currentText(), "usb")
+        finally:
+            widget.close()
+            self._app.processEvents()
+
     def test_expert_toggle_controls_expert_tab_visibility(self):
         widget = self._build_widget()
         try:

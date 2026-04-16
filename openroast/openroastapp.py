@@ -364,6 +364,7 @@ class OpenroastApp(object):
             fullscreen=self._effective_fullscreen,
             app_config_data=self._config,
             on_preferences_saved=self.on_preferences_saved,
+            runtime_backend=self._effective_backend,
         )
         # Apply mode after window creation and explicitly request fullscreen
         # to avoid backend/window-manager differences at startup.

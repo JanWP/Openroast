@@ -21,7 +21,7 @@ class MainWindow(QtWidgets.QMainWindow):
     heaterLevelChanged = QtCore.pyqtSignal(int)
 
     def __init__(self, recipes, roaster, compact_ui=False, fullscreen=False, app_config_data=None,
-                 on_preferences_saved=None):
+                 on_preferences_saved=None, runtime_backend=None):
         super(MainWindow, self).__init__()
         self._heaterLedOn = None
         self._heaterLevel = None
@@ -35,6 +35,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fullscreen = fullscreen
         self.app_config_data = app_config_data or {}
         self._on_preferences_saved = on_preferences_saved
+        self._runtime_backend = runtime_backend
 
         # keep a copy of roaster & recipes, needed here
         self.roaster = roaster
@@ -248,6 +249,7 @@ class MainWindow(QtWidgets.QMainWindow):
             roaster=roaster,
             pre_autotune_hook=self.prepare_autotune_run,
             compact_ui=self.compact_ui,
+            runtime_backend=self._runtime_backend,
         )
         apply_prefs = getattr(self.roast, "apply_preferences", None)
         if callable(apply_prefs):
