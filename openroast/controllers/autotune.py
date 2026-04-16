@@ -10,6 +10,7 @@ def autotune_pid_for_backend(
     settle_s=3.0,
     test_duration_s=45.0,
     min_rise_c=3.0,
+    reset_simulation=True,
 ):
     """Run PID autotune against any supported backend.
 
@@ -21,7 +22,8 @@ def autotune_pid_for_backend(
         raise RuntimeError("Autotune unavailable: no backend handle")
 
     _ensure_connected_idle(roaster)
-    _reset_simulation_if_available(roaster)
+    if reset_simulation:
+        _reset_simulation_if_available(roaster)
 
     backend_autotune = getattr(roaster, "autotune_pid", None)
     if callable(backend_autotune):
@@ -49,6 +51,97 @@ def autotune_pid_for_backend(
         test_duration_s=test_duration_s,
         min_rise_c=min_rise_c,
     )
+
+
+def autotune_pid_table_for_backend(
+    roaster,
+    *,
+    fan_speeds=None,
+    settle_s=20.0,
+    test_duration_s=30.0,
+    min_rise_c=3.0,
+):
+    """Run autotune across multiple runtime fan speeds.
+
+    - Fan speeds are normalized to unique low-to-high integer values.
+    - Stops on first failing speed.
+    - Returns partial successful rows plus failure context.
+    """
+    if roaster is None:
+        raise RuntimeError("Autotune unavailable: no backend handle")
+
+    speeds = _normalize_fan_speed_sequence(roaster, fan_speeds)
+    if not speeds:
+        raise RuntimeError("Autotune requires at least one valid fan speed")
+
+    original_fan_speed = getattr(roaster, "fan_speed", None)
+    results = {}
+    completed_speeds = []
+    failed_speed = None
+    error_text = None
+
+    for index, speed in enumerate(speeds):
+        try:
+            if original_fan_speed is not None:
+                roaster.fan_speed = int(speed)
+            tune = autotune_pid_for_backend(
+                roaster,
+                settle_s=settle_s,
+                test_duration_s=test_duration_s,
+                min_rise_c=min_rise_c,
+                # Reset once at the beginning, then keep thermal continuity.
+                reset_simulation=(index == 0),
+            )
+            results[str(int(speed))] = {
+                "kp": float(tune["kp"]),
+                "ki": float(tune["ki"]),
+                "kd": float(tune["kd"]),
+                "details": dict(tune),
+            }
+            completed_speeds.append(int(speed))
+        except Exception as exc:
+            failed_speed = int(speed)
+            error_text = str(exc)
+            break
+
+    if original_fan_speed is not None:
+        try:
+            roaster.fan_speed = int(original_fan_speed)
+        except Exception:
+            # Ignore restoration failures in orchestration summary.
+            pass
+
+    return {
+        "ok": failed_speed is None,
+        "results": results,
+        "completed_speeds": completed_speeds,
+        "failed_speed": failed_speed,
+        "error": error_text,
+        "fan_speeds": speeds,
+    }
+
+
+def _normalize_fan_speed_sequence(roaster, fan_speeds):
+    if fan_speeds is None:
+        runtime_max = getattr(roaster, "max_fan_speed", None)
+        if runtime_max is None:
+            runtime_max = max(1, int(getattr(roaster, "fan_speed", 1)))
+        fan_speeds = range(1, int(runtime_max) + 1)
+
+    normalized = []
+    seen = set()
+    for value in fan_speeds:
+        try:
+            speed = int(value)
+        except (TypeError, ValueError):
+            continue
+        if speed < 1 or speed in seen:
+            continue
+        seen.add(speed)
+        normalized.append(speed)
+
+    normalized.sort()
+    return normalized
 
 
 def _ensure_connected_idle(roaster):

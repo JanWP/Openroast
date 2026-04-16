@@ -4,7 +4,7 @@ from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 
 from openroast import app_config
-from openroast.controllers.autotune import autotune_pid_for_backend
+from openroast.controllers.autotune import autotune_pid_table_for_backend
 from openroast.views import customqtwidgets
 from openroast.temperature import (
     RECIPE_UNIT_CELSIUS,
@@ -683,17 +683,60 @@ class PreferencesTab(QtWidgets.QWidget):
         if answer != QtWidgets.QMessageBox.Yes:
             return
 
+        self._store_current_pid_editor_values_to_draft()
         self.autotuneButton.setEnabled(False)
         self.saveButton.setEnabled(False)
         self.statusLabel.setText(PreferencesUI.STATUS_AUTOTUNE_RUNNING)
 
+        fan_speeds = None
+        max_fan = self._runtime_fan_max_for_pid()
+        if max_fan > 0:
+            fan_speeds = list(range(1, max_fan + 1))
+
         self._autotune_worker = self._AutotuneWorker(
-            lambda: autotune_pid_for_backend(self._roaster),
+            lambda: autotune_pid_table_for_backend(self._roaster, fan_speeds=fan_speeds),
             parent=self,
         )
         self._autotune_worker.resultReady.connect(self._on_autotune_finished)
         self._autotune_worker.finished.connect(self._on_autotune_worker_finished)
         self._autotune_worker.start()
+
+    def _merge_autotune_results_into_pid_draft(self, results_by_fan):
+        if not self._pid_controls_supported() or not isinstance(results_by_fan, dict):
+            return 0
+
+        merged = 0
+        temp_cfg = app_config.normalize_config(self._config)
+        temp_cfg["control"]["pidProfiles"] = copy.deepcopy(self._pid_draft_profiles)
+
+        for fan_key, values in results_by_fan.items():
+            try:
+                fan_speed = int(fan_key)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(values, dict):
+                continue
+            if not all(k in values for k in ("kp", "ki", "kd")):
+                continue
+
+            temp_cfg = app_config.set_pid_for_backend_speed(
+                temp_cfg,
+                self._runtime_backend,
+                fan_speed,
+                values["kp"],
+                values["ki"],
+                values["kd"],
+            )
+            merged += 1
+
+        self._pid_draft_profiles = copy.deepcopy(temp_cfg["control"]["pidProfiles"])
+
+        # Refresh currently selected row in editors so UI reflects merged data.
+        pid_values = self._get_pid_value_from_draft(self._selected_pid_fan_speed)
+        self.pidKp.setValue(float(pid_values["kp"]))
+        self.pidKi.setValue(float(pid_values["ki"]))
+        self.pidKd.setValue(float(pid_values["kd"]))
+        return merged
 
     def _on_autotune_finished(self, result, error_text):
         self.autotuneButton.setEnabled(True)
@@ -703,11 +746,26 @@ class PreferencesTab(QtWidgets.QWidget):
             self.statusLabel.setText(PreferencesUI.STATUS_AUTOTUNE_FAILED_TEMPLATE.format(error=error_text))
             return
 
-        self.pidKp.setValue(float(result["kp"]))
-        self.pidKi.setValue(float(result["ki"]))
-        self.pidKd.setValue(float(result["kd"]))
-        self.save_preferences()
-        self.statusLabel.setText(PreferencesUI.STATUS_AUTOTUNE_COMPLETE_AND_SAVED)
+        if not isinstance(result, dict):
+            self.statusLabel.setText(
+                PreferencesUI.STATUS_AUTOTUNE_FAILED_TEMPLATE.format(error="invalid autotune result")
+            )
+            return
+
+        merged = self._merge_autotune_results_into_pid_draft(result.get("results", {}))
+        if merged > 0:
+            self.save_preferences()
+
+        if result.get("ok", False):
+            self.statusLabel.setText(PreferencesUI.STATUS_AUTOTUNE_COMPLETE_AND_SAVED)
+        else:
+            failed_speed = result.get("failed_speed")
+            fail_reason = result.get("error") or "unknown error"
+            self.statusLabel.setText(
+                PreferencesUI.STATUS_AUTOTUNE_FAILED_TEMPLATE.format(
+                    error=f"failed at fan {failed_speed} after saving {merged} row(s): {fail_reason}"
+                )
+            )
 
     def _on_autotune_worker_finished(self):
         worker = self._autotune_worker
@@ -960,4 +1018,3 @@ class PreferencesTab(QtWidgets.QWidget):
 
         self._mark_saved_state()
         self.statusLabel.setText(PreferencesUI.STATUS_PREFERENCES_SAVED)
-

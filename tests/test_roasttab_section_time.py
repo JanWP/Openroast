@@ -217,6 +217,3 @@ class RoastTabSectionTimeTests(unittest.TestCase):
         self.assertEqual(tab.fanSpeedSpinBox.maximum(), 5)
 
 
-if __name__ == "__main__":
-    unittest.main()
-

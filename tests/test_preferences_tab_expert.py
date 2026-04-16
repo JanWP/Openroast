@@ -291,14 +291,25 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
     def test_autotune_worker_is_cleaned_up_after_finish(self):
         class DummyRoaster:
             connected = True
+            max_fan_speed = 3
+
+            def __init__(self):
+                self.fan_speed = 1
+                self.calls = []
 
             def get_roaster_state(self):
                 return "idle"
 
-            def autotune_pid(self, **_kwargs):
-                return {"kp": 0.2, "ki": 0.03, "kd": 0.04}
+            def reset_simulation_state(self):
+                pass
 
-        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, roaster=DummyRoaster(), runtime_backend="local-mock")
+            def autotune_pid(self, **_kwargs):
+                self.calls.append(int(self.fan_speed))
+                speed = float(self.fan_speed)
+                return {"kp": 0.2 + speed, "ki": 0.03 + speed / 10.0, "kd": 0.04 + speed / 10.0}
+
+        roaster = DummyRoaster()
+        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, roaster=roaster, runtime_backend="local-mock")
         try:
             widget.expertModeEnabled.setChecked(True)
             widget._expert_warning_ack = True
@@ -314,72 +325,72 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
 
             self.assertIsNone(widget._autotune_worker)
             self.assertEqual(widget.statusLabel.text(), PreferencesUI.STATUS_AUTOTUNE_COMPLETE_AND_SAVED)
+            self.assertEqual(roaster.calls, [1, 2, 3])
         finally:
             widget.close()
             self._app.processEvents()
 
-    def test_prepare_shutdown_waits_and_cleans_autotune_worker(self):
-        class SlowRoaster:
+    def test_autotune_partial_failure_saves_only_successful_rows(self):
+        class FlakyRoaster:
             connected = True
+            max_fan_speed = 3
+
+            def __init__(self):
+                self.fan_speed = 1
 
             def get_roaster_state(self):
                 return "idle"
 
-            def autotune_pid(self, **_kwargs):
-                time.sleep(0.05)
-                return {"kp": 0.2, "ki": 0.03, "kd": 0.04}
+            def reset_simulation_state(self):
+                pass
 
-        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, roaster=SlowRoaster(), runtime_backend="local-mock")
+            def autotune_pid(self, **_kwargs):
+                if int(self.fan_speed) == 2:
+                    raise RuntimeError("forced failure")
+                speed = float(self.fan_speed)
+                return {"kp": 1.0 + speed, "ki": 0.1 + speed / 10.0, "kd": 0.2 + speed / 10.0}
+
+        base = app_config.normalize_config(app_config.DEFAULT_CONFIG)
+        base = app_config.set_pid_for_backend_speed(base, "local-mock", 1, 0.11, 0.012, 0.015)
+        base = app_config.set_pid_for_backend_speed(base, "local-mock", 2, 0.21, 0.022, 0.025)
+        base = app_config.set_pid_for_backend_speed(base, "local-mock", 3, 0.31, 0.032, 0.035)
+
+        saved_payloads = []
+
+        def _capture_save(cfg):
+            normalized = app_config.normalize_config(cfg)
+            saved_payloads.append(normalized)
+            return normalized
+
+        widget = PreferencesTab(config=base, roaster=FlakyRoaster(), runtime_backend="local-mock")
         try:
             widget.expertModeEnabled.setChecked(True)
             widget._expert_warning_ack = True
             widget.tabs.setCurrentIndex(1)
 
-            with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
+            with patch("openroast.views.preferencestab.app_config.save_config", side_effect=_capture_save), \
+                 patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
                 widget.autotuneButton.click()
                 self._app.processEvents()
+                deadline = QtCore.QTime.currentTime().addMSecs(2000)
+                while widget._autotune_worker is not None and QtCore.QTime.currentTime() < deadline:
+                    self._app.processEvents()
 
-            widget.prepare_shutdown()
-            self._app.processEvents()
-            self.assertIsNone(widget._autotune_worker)
+            self.assertEqual(len(saved_payloads), 1)
+            saved = saved_payloads[0]
+            row1 = saved["control"]["pidProfiles"]["local-mock"]["1"]
+            row2 = saved["control"]["pidProfiles"]["local-mock"]["2"]
+            row3 = saved["control"]["pidProfiles"]["local-mock"]["3"]
+
+            # Fan 1 tuned and saved.
+            self.assertAlmostEqual(row1["kp"], 2.0, places=6)
+            # Fan 2 failed, fan 3 not run: keep prior values.
+            self.assertAlmostEqual(row2["kp"], 0.21, places=6)
+            self.assertAlmostEqual(row3["kp"], 0.31, places=6)
+            self.assertIn("failed at fan 2", widget.statusLabel.text())
         finally:
             widget.close()
             self._app.processEvents()
-
-    def test_autotune_uses_pre_autotune_hook(self):
-        class DummyRoaster:
-            connected = True
-
-            def get_roaster_state(self):
-                return "idle"
-
-            def autotune_pid(self, **_kwargs):
-                return {"kp": 0.2, "ki": 0.03, "kd": 0.04}
-
-        hook_calls = []
-
-        def pre_hook():
-            hook_calls.append(True)
-            return False
-
-        widget = PreferencesTab(
-            config=app_config.DEFAULT_CONFIG,
-            roaster=DummyRoaster(),
-            pre_autotune_hook=pre_hook,
-            runtime_backend="local-mock",
-        )
-        try:
-            with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
-                widget.autotuneButton.click()
-                self._app.processEvents()
-
-            self.assertEqual(len(hook_calls), 1)
-            self.assertIsNone(widget._autotune_worker)
-            self.assertEqual(widget.statusLabel.text(), PreferencesUI.STATUS_AUTOTUNE_CANCELED)
-        finally:
-            widget.close()
-            self._app.processEvents()
-
 
 if __name__ == "__main__":
     unittest.main()

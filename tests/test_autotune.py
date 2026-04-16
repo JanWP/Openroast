@@ -1,6 +1,6 @@
 import unittest
 
-from openroast.controllers.autotune import autotune_pid_for_backend
+from openroast.controllers.autotune import autotune_pid_for_backend, autotune_pid_table_for_backend
 
 
 class _NativeAutotuneRoaster:
@@ -23,6 +23,49 @@ class _NativeAutotuneRoaster:
         self.autotune_calls += 1
         self.last_kwargs = kwargs
         return {"kp": 0.2, "ki": 0.03, "kd": 0.04}
+
+
+class _NativeMultiSpeedRoaster:
+    def __init__(self, *, max_fan_speed=4, initial_fan_speed=2, fail_on_fan=None):
+        self.connected = True
+        self._state = "idle"
+        self.max_fan_speed = int(max_fan_speed)
+        self._fan_speed = int(initial_fan_speed)
+        self.fail_on_fan = fail_on_fan
+        self.reset_calls = 0
+        self.autotune_calls = 0
+        self.fan_set_history = []
+        self.autotune_fan_history = []
+
+    def get_roaster_state(self):
+        return self._state
+
+    def idle(self):
+        self._state = "idle"
+
+    def reset_simulation_state(self):
+        self.reset_calls += 1
+
+    @property
+    def fan_speed(self):
+        return self._fan_speed
+
+    @fan_speed.setter
+    def fan_speed(self, value):
+        self._fan_speed = int(value)
+        self.fan_set_history.append(int(value))
+
+    def autotune_pid(self, **_kwargs):
+        self.autotune_calls += 1
+        self.autotune_fan_history.append(int(self._fan_speed))
+        if self.fail_on_fan is not None and int(self._fan_speed) == int(self.fail_on_fan):
+            raise RuntimeError(f"forced failure at fan {self._fan_speed}")
+        speed = float(self._fan_speed)
+        return {
+            "kp": 0.1 + speed,
+            "ki": 0.01 + speed / 10.0,
+            "kd": 0.02 + speed / 10.0,
+        }
 
 
 class _GenericFallbackRoaster:
@@ -103,6 +146,42 @@ class AutotuneTests(unittest.TestCase):
 
         self.assertEqual(roaster._controller.calls, 1)
         self.assertAlmostEqual(result["kp"], 0.3, places=4)
+
+    def test_multispeed_autotune_runs_low_to_high_and_resets_simulation_once(self):
+        roaster = _NativeMultiSpeedRoaster(max_fan_speed=4, initial_fan_speed=3)
+
+        result = autotune_pid_table_for_backend(roaster)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["fan_speeds"], [1, 2, 3, 4])
+        self.assertEqual(result["completed_speeds"], [1, 2, 3, 4])
+        self.assertEqual(roaster.autotune_fan_history, [1, 2, 3, 4])
+        # Reset is run once before the first speed, then thermal state is preserved.
+        self.assertEqual(roaster.reset_calls, 1)
+        # Final fan set restores the original fan speed.
+        self.assertEqual(roaster.fan_set_history[-1], 3)
+
+    def test_multispeed_autotune_aborts_on_failure_and_keeps_partial_results(self):
+        roaster = _NativeMultiSpeedRoaster(max_fan_speed=4, initial_fan_speed=2, fail_on_fan=3)
+
+        result = autotune_pid_table_for_backend(roaster)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["failed_speed"], 3)
+        self.assertEqual(result["completed_speeds"], [1, 2])
+        self.assertEqual(sorted(result["results"].keys()), ["1", "2"])
+        self.assertIn("forced failure", result["error"])
+        self.assertEqual(roaster.autotune_fan_history, [1, 2, 3])
+        self.assertEqual(roaster.fan_set_history[-1], 2)
+
+    def test_multispeed_autotune_normalizes_custom_speed_list(self):
+        roaster = _NativeMultiSpeedRoaster(max_fan_speed=9, initial_fan_speed=4)
+
+        result = autotune_pid_table_for_backend(roaster, fan_speeds=[3, 1, 2, 2, 0, "bad", 5])
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["fan_speeds"], [1, 2, 3, 5])
+        self.assertEqual(result["completed_speeds"], [1, 2, 3, 5])
 
 
 if __name__ == "__main__":

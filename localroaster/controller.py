@@ -384,9 +384,8 @@ class RoasterController:
         )
         sample_dt = max(parameter_catalog.AUTOTUNE_SAMPLE_DT_MIN_S, float(self.config.sample_period_s))
 
-        start_time = time.monotonic()
-        baseline_samples_c: list[float] = []
-        response_samples: list[tuple[float, float]] = []
+        cooling_samples: list[tuple[float, float]] = []
+        response_samples_raw: list[tuple[float, float]] = []
 
         try:
             with self._lock:
@@ -406,22 +405,29 @@ class RoasterController:
             self.heat_setting = 0
             self.roast()
 
-            settle_deadline = time.monotonic() + max(
+            settle_start = time.monotonic()
+            settle_deadline = settle_start + max(
                 parameter_catalog.AUTOTUNE_SETTLE_MIN_S,
                 float(settle_s),
             )
             while time.monotonic() < settle_deadline:
                 if self._autotune_cancel_event.is_set():
                     raise RuntimeError("Autotune canceled by user")
-                baseline_samples_c.append(self._kelvin_to_celsius(self.current_temp_k))
+                now = time.monotonic()
+                cooling_samples.append((now - settle_start, self._kelvin_to_celsius(self.current_temp_k)))
                 if self._stop_event.wait(sample_dt):
                     break
 
-            if not baseline_samples_c:
+            if not cooling_samples:
                 raise RuntimeError("Autotune baseline sampling failed")
-            baseline_c = sum(baseline_samples_c) / len(baseline_samples_c)
+            ambient_hint_c = self._kelvin_to_celsius(self.config.ambient_temp_k)
+            cooling_fit = self._fit_cooling_curve(cooling_samples, ambient_hint_c)
+            if cooling_fit is None:
+                raise RuntimeError("Autotune cooling-fit failed")
+            baseline_c = float(cooling_samples[-1][1])
 
             self.heat_setting = heat_setting
+            step_start = time.monotonic()
             test_deadline = time.monotonic() + max(
                 parameter_catalog.AUTOTUNE_TEST_DURATION_MIN_S,
                 float(test_duration_s),
@@ -431,42 +437,62 @@ class RoasterController:
                     raise RuntimeError("Autotune canceled by user")
                 now = time.monotonic()
                 temp_c = self._kelvin_to_celsius(self.current_temp_k)
-                response_samples.append((now - start_time, temp_c))
+                response_samples_raw.append((now - step_start, temp_c))
                 if self._stop_event.wait(sample_dt):
                     break
 
-            if not response_samples:
+            if not response_samples_raw:
                 raise RuntimeError("Autotune response sampling failed")
 
-            peak_c = max(temp_c for _, temp_c in response_samples)
+            response_samples_dev: list[tuple[float, float]] = []
+            for t_s, temp_c in response_samples_raw:
+                free_c = self._predict_cooling_temp_c(
+                    t_s,
+                    baseline_c,
+                    cooling_fit["ambient_c"],
+                    cooling_fit["k_per_s"],
+                )
+                response_samples_dev.append((t_s, temp_c - free_c))
+
+            peak_c = max(temp_c for _, temp_c in response_samples_raw)
             observed_delta_c = peak_c - baseline_c
+            observed_delta_dev_c = max(dev_c for _, dev_c in response_samples_dev)
             if observed_delta_c < float(min_rise_c):
                 raise RuntimeError(
                     f"Autotune rise too small ({observed_delta_c:.2f} C); increase test duration"
                 )
 
-            fit = self._estimate_fopdt(response_samples, baseline_c)
+            fit = self._estimate_fopdt(response_samples_dev, baseline_c=0.0)
             if fit is not None:
                 delta_c, dead_time_s, tau_s, fit_rmse_c = fit
             else:
                 # Fallback for unexpected fitting failures.
                 rise_threshold_c = (
-                    baseline_c
-                    + parameter_catalog.AUTOTUNE_FALLBACK_RISE_THRESHOLD_OFFSET_C
+                    parameter_catalog.AUTOTUNE_FALLBACK_RISE_THRESHOLD_OFFSET_C
                 )
-                dead_time_s = next((t for t, temp_c in response_samples if temp_c >= rise_threshold_c), None)
+                dead_time_s = next((t for t, dev_c in response_samples_dev if dev_c >= rise_threshold_c), None)
                 if dead_time_s is None:
                     dead_time_s = parameter_catalog.AUTOTUNE_FALLBACK_DEAD_TIME_DEFAULT_S
 
-                tau_target_c = baseline_c + 0.632 * observed_delta_c
-                tau_time_s = next((t for t, temp_c in response_samples if temp_c >= tau_target_c), None)
+                tau_target_c = 0.632 * observed_delta_dev_c
+                tau_time_s = next((t for t, dev_c in response_samples_dev if dev_c >= tau_target_c), None)
                 if tau_time_s is None:
                     raise RuntimeError("Autotune failed to estimate time constant")
 
-                delta_c = float(observed_delta_c)
+                delta_c = float(observed_delta_dev_c)
                 dead_time_s = max(parameter_catalog.AUTOTUNE_DEAD_TIME_MIN_S, float(dead_time_s))
                 tau_s = max(parameter_catalog.AUTOTUNE_TAU_MIN_S, float(tau_time_s - dead_time_s))
                 fit_rmse_c = float("nan")
+
+            cooling_rmse_c = float(cooling_fit["rmse_c"])
+            if math.isfinite(cooling_rmse_c) and cooling_rmse_c > parameter_catalog.AUTOTUNE_COOLING_RMSE_MAX_C:
+                raise RuntimeError(
+                    f"Autotune cooling-fit too weak (RMSE={cooling_rmse_c:.2f} C)"
+                )
+            if math.isfinite(fit_rmse_c) and fit_rmse_c > parameter_catalog.AUTOTUNE_FOPDT_RMSE_MAX_C:
+                raise RuntimeError(
+                    f"Autotune model-fit too weak (RMSE={fit_rmse_c:.2f} C)"
+                )
 
             process_gain = delta_c / max(parameter_catalog.AUTOTUNE_PROCESS_GAIN_EPS, actual_step_percent)
             dead_time_s = max(parameter_catalog.AUTOTUNE_DEAD_TIME_MIN_S, float(dead_time_s))
@@ -494,9 +520,13 @@ class RoasterController:
                 "peak_c": float(peak_c),
                 "delta_c": float(delta_c),
                 "observed_delta_c": float(observed_delta_c),
+                "observed_delta_dev_c": float(observed_delta_dev_c),
                 "dead_time_s": float(dead_time_s),
                 "tau_s": float(tau_s),
                 "fit_rmse_c": float(fit_rmse_c),
+                "cooling_rmse_c": float(cooling_rmse_c),
+                "cooling_k_per_s": float(cooling_fit["k_per_s"]),
+                "cooling_ambient_c": float(cooling_fit["ambient_c"]),
                 "step_percent": float(actual_step_percent),
             }
         finally:
@@ -710,6 +740,110 @@ class RoasterController:
                 listener(snapshot)
             except Exception as exc:  # pragma: no cover - listener safety
                 logging.warning("localroaster: telemetry listener failed: %s", exc)
+
+    @staticmethod
+    def _predict_cooling_temp_c(
+        t_s: float,
+        start_temp_c: float,
+        ambient_c: float,
+        k_per_s: float,
+    ) -> float:
+        return float(ambient_c) + (float(start_temp_c) - float(ambient_c)) * math.exp(
+            -max(parameter_catalog.AUTOTUNE_COOLING_K_MIN_PER_S, float(k_per_s)) * max(0.0, float(t_s))
+        )
+
+    @staticmethod
+    def _fit_cooling_curve(
+        cooling_samples: list[tuple[float, float]],
+        ambient_hint_c: float,
+    ) -> dict | None:
+        """Fit heater-off cooling as: T(t)=Tamb + (T0-Tamb)*exp(-k*t)."""
+        if len(cooling_samples) < parameter_catalog.AUTOTUNE_COOLING_FIT_MIN_SAMPLES:
+            return None
+
+        t0 = float(cooling_samples[0][0])
+        times = [max(0.0, float(t) - t0) for t, _ in cooling_samples]
+        temps = [float(temp_c) for _, temp_c in cooling_samples]
+
+        min_temp_c = min(temps)
+        max_ambient_c = min_temp_c - parameter_catalog.AUTOTUNE_COOLING_Y_EPS_C
+        low_c = min(
+            float(ambient_hint_c) + parameter_catalog.AUTOTUNE_COOLING_AMBIENT_SEARCH_LOW_OFFSET_C,
+            max_ambient_c - 1.0,
+        )
+        high_c = min(
+            max_ambient_c,
+            float(ambient_hint_c) + parameter_catalog.AUTOTUNE_COOLING_AMBIENT_SEARCH_HIGH_OFFSET_C,
+        )
+
+        candidates: list[float] = []
+        if high_c > low_c:
+            steps = max(2, int(parameter_catalog.AUTOTUNE_COOLING_AMBIENT_STEPS))
+            for i in range(steps):
+                frac = i / max(1, steps - 1)
+                candidates.append(low_c + frac * (high_c - low_c))
+
+        if float(ambient_hint_c) < max_ambient_c:
+            candidates.append(float(ambient_hint_c))
+
+        best: dict | None = None
+        for ambient_c in candidates:
+            eps = parameter_catalog.AUTOTUNE_COOLING_Y_EPS_C
+            ys = [temp_c - ambient_c for temp_c in temps]
+            if any(y <= eps for y in ys):
+                continue
+
+            logs = [math.log(y) for y in ys]
+            n = len(times)
+            sum_t = sum(times)
+            sum_tt = sum(t * t for t in times)
+            sum_l = sum(logs)
+            sum_tl = sum(t * l for t, l in zip(times, logs))
+            den = n * sum_tt - sum_t * sum_t
+            if den <= 0.0:
+                continue
+
+            slope = (n * sum_tl - sum_t * sum_l) / den
+            intercept = (sum_l - slope * sum_t) / n
+            k_per_s = -slope
+            if not math.isfinite(k_per_s):
+                continue
+            if k_per_s < parameter_catalog.AUTOTUNE_COOLING_K_MIN_PER_S:
+                continue
+            if k_per_s > parameter_catalog.AUTOTUNE_COOLING_K_MAX_PER_S:
+                continue
+
+            start_temp_c = temps[0]
+            err_sum = 0.0
+            for t_s, temp_c in zip(times, temps):
+                pred_c = RoasterController._predict_cooling_temp_c(
+                    t_s=t_s,
+                    start_temp_c=start_temp_c,
+                    ambient_c=ambient_c,
+                    k_per_s=k_per_s,
+                )
+                d = temp_c - pred_c
+                err_sum += d * d
+            rmse_c = math.sqrt(err_sum / max(1, len(times)))
+
+            if best is None or rmse_c < best["rmse_c"]:
+                best = {
+                    "ambient_c": float(ambient_c),
+                    "k_per_s": float(k_per_s),
+                    "rmse_c": float(rmse_c),
+                    "log_intercept": float(intercept),
+                }
+
+        if best is not None:
+            return best
+
+        # Conservative fallback: keep ambient at hint and use a small positive k.
+        return {
+            "ambient_c": float(ambient_hint_c),
+            "k_per_s": float(parameter_catalog.AUTOTUNE_COOLING_FALLBACK_K_PER_S),
+            "rmse_c": float("nan"),
+            "log_intercept": float("nan"),
+        }
 
     @staticmethod
     def _kelvin_to_celsius(temp_k: float) -> float:
