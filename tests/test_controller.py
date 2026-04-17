@@ -421,6 +421,52 @@ class ControllerSafetyTests(unittest.TestCase):
         self.assertEqual(transitions, [])
         ctrl.shutdown()
 
+    def test_autotune_zn_alpha_scales_zn_pid_outputs(self):
+        cfg_alpha_1 = ControllerConfig(
+            thermostat=True,
+            sample_period_s=0.05,
+            pwm_cycle_s=0.2,
+            max_temp_k=560.0,
+            min_display_temp_k=293.15,
+            autotune_zn_alpha=1.0,
+        )
+        cfg_alpha_half = ControllerConfig(
+            thermostat=True,
+            sample_period_s=0.05,
+            pwm_cycle_s=0.2,
+            max_temp_k=560.0,
+            min_display_temp_k=293.15,
+            autotune_zn_alpha=0.5,
+        )
+
+        ctrl_alpha_1 = RoasterController(_AutotuneDriver(ambient_k=295.0), config=cfg_alpha_1)
+        ctrl_alpha_half = RoasterController(_AutotuneDriver(ambient_k=295.0), config=cfg_alpha_half)
+
+        ctrl_alpha_1.connect()
+        ctrl_alpha_half.connect()
+        try:
+            tuned_alpha_1 = ctrl_alpha_1.autotune_pid(settle_s=0.5, test_duration_s=6.0, min_rise_c=2.0)
+            tuned_alpha_half = ctrl_alpha_half.autotune_pid(settle_s=0.5, test_duration_s=6.0, min_rise_c=2.0)
+
+            self.assertAlmostEqual(tuned_alpha_1["zn_alpha"], 1.0, places=4)
+            self.assertAlmostEqual(tuned_alpha_half["zn_alpha"], 0.5, places=4)
+
+            # Sampling/jitter can slightly change the identified plant between
+            # runs; verify alpha moderation is effective and roughly proportional.
+            self.assertLess(tuned_alpha_half["kp"], tuned_alpha_1["kp"])
+            self.assertLess(tuned_alpha_half["ki"], tuned_alpha_1["ki"])
+            self.assertLess(tuned_alpha_half["kd"], tuned_alpha_1["kd"])
+
+            kp_ratio = tuned_alpha_half["kp"] / max(1e-9, tuned_alpha_1["kp"])
+            ki_ratio = tuned_alpha_half["ki"] / max(1e-9, tuned_alpha_1["ki"])
+            kd_ratio = tuned_alpha_half["kd"] / max(1e-9, tuned_alpha_1["kd"])
+            self.assertTrue(0.3 <= kp_ratio <= 0.7)
+            self.assertTrue(0.3 <= ki_ratio <= 0.7)
+            self.assertTrue(0.3 <= kd_ratio <= 0.7)
+        finally:
+            ctrl_alpha_1.shutdown()
+            ctrl_alpha_half.shutdown()
+
     def test_cancel_autotune_aborts_autotune_run(self):
         cfg = ControllerConfig(
             thermostat=True,
@@ -653,6 +699,26 @@ class ControllerSafetyTests(unittest.TestCase):
         ctrl.cool()
         wait_for(lambda: ctrl.heater_level == 0)
         self.assertEqual(ctrl.heater_level, 0, "Heater should be off in COOLING state (thermostat)")
+        ctrl.shutdown()
+
+    def test_thermostat_uses_full_boost_for_large_step_up_error(self):
+        """Far below target, hybrid thermostat mode should command full heater."""
+        ctrl, _driver, _ = self._make_controller(thermostat=True, temp_k=celsius_to_kelvin(50.0))
+        ctrl.connect()
+        ctrl.target_temp_k = celsius_to_kelvin(200.0)
+        ctrl.roast()
+        wait_for(lambda: ctrl.heater_level == 100, timeout=1.0)
+        self.assertEqual(ctrl.heater_level, 100)
+        ctrl.shutdown()
+
+    def test_thermostat_uses_full_cut_for_large_step_down_error(self):
+        """Far above target, hybrid thermostat mode should command heater off."""
+        ctrl, _driver, _ = self._make_controller(thermostat=True, temp_k=celsius_to_kelvin(250.0))
+        ctrl.connect()
+        ctrl.target_temp_k = celsius_to_kelvin(100.0)
+        ctrl.roast()
+        wait_for(lambda: ctrl.heater_level == 0, timeout=1.0)
+        self.assertEqual(ctrl.heater_level, 0)
         ctrl.shutdown()
 
     def test_pid_integral_bounded_after_sample_period_change(self):

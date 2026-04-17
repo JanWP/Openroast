@@ -90,6 +90,12 @@ def _create_roaster(args, config_data=None):
                 kd=float(pid_values["kd"]),
                 pwm_cycle_s=float(config["control"]["pwmCycleSeconds"]),
                 sample_period_s=float(config["control"]["samplePeriodSeconds"]),
+                autotune_zn_alpha=float(
+                    config["control"].get(
+                        "autotuneZnAlpha",
+                        app_config.DEFAULT_CONFIG["control"]["autotuneZnAlpha"],
+                    )
+                ),
                 max_temp_c=float(app_config.get_safety_max_temp_c(config)),
                 heater_cutoff_enabled=bool(config["safety"]["heaterCutoffEnabled"]),
                 profile_backend_key=str(args.backend),

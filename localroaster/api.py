@@ -29,6 +29,8 @@ class RoasterFault(StrEnum):
 @dataclass(slots=True)
 class ControllerConfig:
     thermostat: bool = True
+    autotune_zn_alpha: float = parameter_catalog.AUTOTUNE_ZN_ALPHA_DEFAULT
+    autotune_sample_period_s: float = parameter_catalog.AUTOTUNE_TARGET_SAMPLE_DT_S
     kp: float = parameter_catalog.PID_DEFAULT_KP
     ki: float = parameter_catalog.PID_DEFAULT_KI
     kd: float = parameter_catalog.PID_DEFAULT_KD

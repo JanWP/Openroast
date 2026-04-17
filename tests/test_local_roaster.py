@@ -373,6 +373,7 @@ class LocalRoasterAdapterTests(unittest.TestCase):
             "display": {"temperatureUnitDefault": "F"},
             "app": {"backendDefault": "usb"},
             "control": {
+                "autotuneZnAlpha": 0.4,
                 "pidProfiles": {
                     "local": {
                         "1": {"kp": 0.11, "ki": 0.012, "kd": 0.015},
@@ -397,6 +398,7 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertAlmostEqual(call["kp"], 0.2, places=4)
         self.assertAlmostEqual(call["ki"], 0.03, places=4)
         self.assertAlmostEqual(call["kd"], 0.04, places=4)
+        self.assertAlmostEqual(call["autotune_zn_alpha"], 0.4, places=4)
         self.assertAlmostEqual(call["pwm_cycle_s"], 1.5, places=4)
         self.assertAlmostEqual(call["sample_period_s"], 0.2, places=4)
         self.assertTrue(call["heater_cutoff_enabled"])
@@ -410,6 +412,7 @@ class LocalRoasterAdapterTests(unittest.TestCase):
 
         config = {
             "control": {
+                "autotuneZnAlpha": 0.5,
                 "pidProfiles": {
                     "local-mock": {
                         "1": {"kp": 0.10, "ki": 0.01, "kd": 0.02},
@@ -432,7 +435,11 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertEqual(fake_controller.fan_speed, 3)
         self.assertEqual(len(fake_controller.runtime_config_calls), 2)
         pid_switch_call = fake_controller.runtime_config_calls[-1]
-        self.assertEqual(set(pid_switch_call.keys()), {"kp", "ki", "kd"})
+        self.assertEqual(
+            set(pid_switch_call.keys()),
+            {"autotune_zn_alpha", "kp", "ki", "kd"},
+        )
+        self.assertAlmostEqual(pid_switch_call["autotune_zn_alpha"], 0.5, places=4)
         self.assertAlmostEqual(pid_switch_call["kp"], 0.30, places=4)
         self.assertAlmostEqual(pid_switch_call["ki"], 0.03, places=4)
         self.assertAlmostEqual(pid_switch_call["kd"], 0.06, places=4)

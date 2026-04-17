@@ -61,6 +61,23 @@ class PID:
         self._integral = 0.0
         self._prev_measurement = None
 
+    def set_integral_for_output(self, current: float, target: float, desired_output: float) -> None:
+        """Initialize integral for bumpless transfer into PID mode.
+
+        This is used when transitioning from manual BOOST/CUT control to PID so
+        the first PID output starts near the current commanded heater level.
+        """
+        error = float(target) - float(current)
+        if self.ki == 0.0:
+            self._integral = 0.0
+        else:
+            integral = (float(desired_output) - self.kp * error) / self.ki
+            integral_max = self.output_max / self.ki
+            integral_min = self.output_min / self.ki
+            self._integral = max(integral_min, min(integral_max, integral))
+        # Prime derivative-on-measurement to avoid entry spikes.
+        self._prev_measurement = float(current)
+
     def update(self, current: float, target: float, dt: float = 1.0) -> float:
         """Compute PID output.
 
@@ -72,18 +89,25 @@ class PID:
         "derivative kick" on setpoint changes.
         """
         error = target - current
-        self._integral += error * dt
-        # Anti-windup: clamp integral so that ki * integral stays within output range.
-        if self.ki != 0.0:
-            integral_max = self.output_max / self.ki
-            integral_min = self.output_min / self.ki
-            self._integral = max(integral_min, min(integral_max, self._integral))
         # Derivative-on-measurement: ignores setpoint step changes.
         if self._prev_measurement is None:
             derivative = 0.0
         else:
             derivative = -(current - self._prev_measurement) / dt
         self._prev_measurement = current
+
+        # Conditional integration anti-windup: do not integrate further when
+        # output is saturated in the same direction as the error.
+        unsat_output = self.kp * error + self.ki * self._integral + self.kd * derivative
+        saturated_high = unsat_output >= self.output_max and error > 0.0
+        saturated_low = unsat_output <= self.output_min and error < 0.0
+        if not (saturated_high or saturated_low):
+            self._integral += error * dt
+            if self.ki != 0.0:
+                integral_max = self.output_max / self.ki
+                integral_min = self.output_min / self.ki
+                self._integral = max(integral_min, min(integral_max, self._integral))
+
         output = self.kp * error + self.ki * self._integral + self.kd * derivative
         return max(self.output_min, min(self.output_max, output))
 
@@ -137,6 +161,9 @@ class RoasterController:
     """
 
     def __init__(self, hardware: HardwareDriver, config: ControllerConfig | None = None):
+        self._mode_pid = "pid"
+        self._mode_boost = "boost"
+        self._mode_cut = "cut"
         self.hardware = hardware
         self.config = config or ControllerConfig()
 
@@ -160,6 +187,7 @@ class RoasterController:
         self._time_remaining_s = 0
         self._total_time_s = 0
         self._fault: str | None = None
+        self._control_mode = self._mode_pid
 
         self._telemetry_listeners: list[Callable[[Telemetry], None]] = []
         self._heater_output_listeners: list[Callable[[bool], None]] = []
@@ -308,6 +336,8 @@ class RoasterController:
     def apply_runtime_config(
         self,
         *,
+        autotune_zn_alpha: float | None = None,
+        autotune_sample_period_s: float | None = None,
         kp: float | None = None,
         ki: float | None = None,
         kd: float | None = None,
@@ -318,6 +348,13 @@ class RoasterController:
     ) -> None:
         """Apply controller tuning/safety changes while running."""
         with self._lock:
+            if autotune_zn_alpha is not None:
+                self.config.autotune_zn_alpha = self._clamp_autotune_zn_alpha(autotune_zn_alpha)
+            if autotune_sample_period_s is not None:
+                self.config.autotune_sample_period_s = max(
+                    parameter_catalog.AUTOTUNE_SAMPLE_DT_MIN_S,
+                    float(autotune_sample_period_s),
+                )
             if kp is not None:
                 self.config.kp = float(kp)
                 self._pid.kp = float(kp)
@@ -382,7 +419,17 @@ class RoasterController:
         actual_step_percent = (float(parameter_catalog.HEATER_PERCENT_MAX) *
             heat_setting / float(parameter_catalog.HEAT_SETTING_MAX)
         )
-        sample_dt = max(parameter_catalog.AUTOTUNE_SAMPLE_DT_MIN_S, float(self.config.sample_period_s))
+        sample_dt_requested = max(
+            parameter_catalog.AUTOTUNE_SAMPLE_DT_MIN_S,
+            float(self.config.autotune_sample_period_s),
+        )
+        # Ensure short settle windows still collect enough points for the
+        # cooling-fit minimum sample count.
+        sample_dt_for_settle = max(
+            parameter_catalog.AUTOTUNE_SAMPLE_DT_MIN_S,
+            float(settle_s) / float(max(1, parameter_catalog.AUTOTUNE_COOLING_FIT_MIN_SAMPLES)),
+        )
+        sample_dt = min(sample_dt_requested, sample_dt_for_settle)
 
         cooling_samples: list[tuple[float, float]] = []
         response_samples_raw: list[tuple[float, float]] = []
@@ -414,7 +461,7 @@ class RoasterController:
                 if self._autotune_cancel_event.is_set():
                     raise RuntimeError("Autotune canceled by user")
                 now = time.monotonic()
-                cooling_samples.append((now - settle_start, self._kelvin_to_celsius(self.current_temp_k)))
+                cooling_samples.append((now - settle_start, self._read_temperature_sample_c_for_autotune()))
                 if self._stop_event.wait(sample_dt):
                     break
 
@@ -436,7 +483,7 @@ class RoasterController:
                 if self._autotune_cancel_event.is_set():
                     raise RuntimeError("Autotune canceled by user")
                 now = time.monotonic()
-                temp_c = self._kelvin_to_celsius(self.current_temp_k)
+                temp_c = self._read_temperature_sample_c_for_autotune()
                 response_samples_raw.append((now - step_start, temp_c))
                 if self._stop_event.wait(sample_dt):
                     break
@@ -498,16 +545,20 @@ class RoasterController:
             dead_time_s = max(parameter_catalog.AUTOTUNE_DEAD_TIME_MIN_S, float(dead_time_s))
             tau_s = max(parameter_catalog.AUTOTUNE_TAU_MIN_S, float(tau_s))
 
+            zn_alpha = self._clamp_autotune_zn_alpha(self.config.autotune_zn_alpha)
             # Ziegler-Nichols reaction-curve tuning in percent-duty domain.
             kp = (
                 parameter_catalog.AUTOTUNE_ZN_KP_FACTOR
                 * tau_s
-                / (process_gain * dead_time_s)
+                / (max(parameter_catalog.AUTOTUNE_PROCESS_GAIN_EPS, process_gain) * dead_time_s)
             )
             ti_s = parameter_catalog.AUTOTUNE_ZN_TI_FACTOR * dead_time_s
             td_s = parameter_catalog.AUTOTUNE_ZN_TD_FACTOR * dead_time_s
             ki = kp / max(parameter_catalog.AUTOTUNE_PROCESS_GAIN_EPS, ti_s)
             kd = kp * td_s
+            kp *= zn_alpha
+            ki *= zn_alpha
+            kd *= zn_alpha
 
             if not all(math.isfinite(v) and v > 0.0 for v in (kp, ki, kd)):
                 raise RuntimeError("Autotune produced non-finite PID values")
@@ -523,6 +574,7 @@ class RoasterController:
                 "observed_delta_dev_c": float(observed_delta_dev_c),
                 "dead_time_s": float(dead_time_s),
                 "tau_s": float(tau_s),
+                "zn_alpha": float(zn_alpha),
                 "fit_rmse_c": float(fit_rmse_c),
                 "cooling_rmse_c": float(cooling_rmse_c),
                 "cooling_k_per_s": float(cooling_fit["k_per_s"]),
@@ -661,6 +713,8 @@ class RoasterController:
         with self._lock:
             if self._state != RoasterState.ROASTING:
                 self._pid.reset()
+                # Start large step responses with explicit full-on/full-off mode.
+                self._control_mode = self._mode_boost
             self._state = RoasterState.ROASTING
         self._emit_telemetry()
 
@@ -672,6 +726,7 @@ class RoasterController:
     def idle(self) -> None:
         with self._lock:
             self._state = RoasterState.IDLE
+            self._control_mode = self._mode_pid
         self._set_heater_level(0)
         self._set_heater_output(False, emit_telemetry=False)
         self._emit_telemetry()
@@ -679,6 +734,7 @@ class RoasterController:
     def sleep(self) -> None:
         with self._lock:
             self._state = RoasterState.SLEEPING
+            self._control_mode = self._mode_pid
         self._set_heater_level(0)
         self._set_heater_output(False, emit_telemetry=False)
         self._emit_telemetry()
@@ -687,9 +743,9 @@ class RoasterController:
         changed = False
         listeners: list[Callable[[int], None]] = []
         if heater_level < parameter_catalog.HEATER_PERCENT_MIN:
-            heater_level = 0.0
+            heater_level = int(parameter_catalog.HEATER_PERCENT_MIN)
         else:
-            heater_level = int(min(parameter_catalog.HEATER_PERCENT_MAX, int(heater_level)))
+            heater_level = int(round(min(float(parameter_catalog.HEATER_PERCENT_MAX), float(heater_level))))
         with self._lock:
             if self._heater_level != heater_level:
                 self._heater_level = heater_level
@@ -751,6 +807,25 @@ class RoasterController:
         return float(ambient_c) + (float(start_temp_c) - float(ambient_c)) * math.exp(
             -max(parameter_catalog.AUTOTUNE_COOLING_K_MIN_PER_S, float(k_per_s)) * max(0.0, float(t_s))
         )
+
+    def _read_temperature_sample_c_for_autotune(self) -> float:
+        """Read a fresh temperature sample for autotune.
+
+        Autotune can run at a faster sample period than the normal controller
+        loop, so it should not rely on the cached ``current_temp_k`` value that
+        is updated by `_control_loop` at `config.sample_period_s`.
+        """
+        try:
+            temp_k = float(self.hardware.read_temperature_k())
+        except Exception as exc:
+            logging.warning("localroaster: autotune read_temperature_k failed: %s", exc)
+            with self._lock:
+                self._fault = RoasterFault.SENSOR_ERROR
+                temp_k = float(self._current_temp_k)
+        else:
+            with self._lock:
+                self._current_temp_k = temp_k
+        return self._kelvin_to_celsius(temp_k)
 
     @staticmethod
     def _fit_cooling_curve(
@@ -848,6 +923,18 @@ class RoasterController:
     @staticmethod
     def _kelvin_to_celsius(temp_k: float) -> float:
         return float(temp_k) - 273.15
+
+
+    @staticmethod
+    def _clamp_autotune_zn_alpha(value: float | int | str | None) -> float:
+        try:
+            alpha = float(value)
+        except (TypeError, ValueError):
+            alpha = float(parameter_catalog.AUTOTUNE_ZN_ALPHA_DEFAULT)
+        return max(
+            float(parameter_catalog.AUTOTUNE_ZN_ALPHA_MIN),
+            min(float(parameter_catalog.AUTOTUNE_ZN_ALPHA_MAX), alpha),
+        )
 
     @staticmethod
     def _estimate_fopdt(
@@ -952,6 +1039,9 @@ class RoasterController:
                 fan_speed = self._fan_speed
                 max_temp_k = self.config.max_temp_k
                 cutoff_enabled = bool(self.config.heater_cutoff_enabled)
+                pid_enter_band_c = max(0.1, float(parameter_catalog.THERMOSTAT_PID_ENTER_BAND_C))
+                pid_exit_band_c = max(pid_enter_band_c, float(parameter_catalog.THERMOSTAT_PID_EXIT_BAND_C))
+                control_mode = self._control_mode
 
                 # Over-temperature safety: force heater off regardless of mode.
                 if cutoff_enabled and current_temp_k > max_temp_k:
@@ -968,11 +1058,49 @@ class RoasterController:
                     if state == RoasterState.ROASTING:
                         current_temp_c = self._kelvin_to_celsius(self._current_temp_k)
                         target_temp_c = self._kelvin_to_celsius(target_temp_k)
-                        pid_percent = self._pid.update(current_temp_c, target_temp_c, dt=self.config.sample_period_s)
-                        new_heater_level = int(round(pid_percent))
+                        error_c = target_temp_c - current_temp_c
+
+                        if control_mode == self._mode_pid:
+                            if error_c > pid_exit_band_c:
+                                next_mode = self._mode_boost
+                            elif error_c < -pid_exit_band_c:
+                                next_mode = self._mode_cut
+                            else:
+                                next_mode = self._mode_pid
+                        else:
+                            if error_c > pid_enter_band_c:
+                                next_mode = self._mode_boost
+                            elif error_c < -pid_enter_band_c:
+                                next_mode = self._mode_cut
+                            else:
+                                next_mode = self._mode_pid
+
+                        if next_mode == self._mode_boost:
+                            new_heater_level = float(parameter_catalog.HEATER_PERCENT_MAX)
+                        elif next_mode == self._mode_cut:
+                            new_heater_level = float(parameter_catalog.HEATER_PERCENT_MIN)
+                        else:
+                            # Enter PID with zero integral (no carry-over from
+                            # saturated boost/cut output) and derivative primed
+                            # at current measurement to avoid entry spikes.
+                            if control_mode != self._mode_pid:
+                                self._pid.set_integral_for_output(
+                                    current=current_temp_c,
+                                    target=target_temp_c,
+                                    desired_output=float(self._pid.kp * error_c),
+                                )
+                            pid_percent = self._pid.update(
+                                current_temp_c,
+                                target_temp_c,
+                                dt=self.config.sample_period_s,
+                            )
+                            new_heater_level = float(pid_percent)
+
+                        self._control_mode = next_mode
                         self._heat_setting = parameter_catalog.HEAT_SETTING_MAX
                     else:
                         new_heater_level = parameter_catalog.HEATER_PERCENT_MIN
+                        self._control_mode = self._mode_pid
                         self._heat_setting = parameter_catalog.HEAT_SETTING_MIN
                 else:
                     # Non-thermostat: only heat when actively roasting.
@@ -981,6 +1109,7 @@ class RoasterController:
                         new_heater_level = int(round(duty_percent))
                     else:
                         new_heater_level = parameter_catalog.HEATER_PERCENT_MIN
+                    self._control_mode = self._mode_pid
 
                 heater_should_off = new_heater_level <= parameter_catalog.HEATER_PERCENT_MIN
 

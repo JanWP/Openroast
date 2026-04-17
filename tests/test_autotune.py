@@ -7,7 +7,6 @@ class _NativeAutotuneRoaster:
     def __init__(self):
         self.connected = True
         self._state = "idle"
-        self.reset_calls = 0
         self.autotune_calls = 0
 
     def get_roaster_state(self):
@@ -15,9 +14,6 @@ class _NativeAutotuneRoaster:
 
     def idle(self):
         self._state = "idle"
-
-    def reset_simulation_state(self):
-        self.reset_calls += 1
 
     def autotune_pid(self, **kwargs):
         self.autotune_calls += 1
@@ -32,7 +28,6 @@ class _NativeMultiSpeedRoaster:
         self.max_fan_speed = int(max_fan_speed)
         self._fan_speed = int(initial_fan_speed)
         self.fail_on_fan = fail_on_fan
-        self.reset_calls = 0
         self.autotune_calls = 0
         self.fan_set_history = []
         self.autotune_fan_history = []
@@ -42,9 +37,6 @@ class _NativeMultiSpeedRoaster:
 
     def idle(self):
         self._state = "idle"
-
-    def reset_simulation_state(self):
-        self.reset_calls += 1
 
     @property
     def fan_speed(self):
@@ -108,7 +100,6 @@ class AutotuneTests(unittest.TestCase):
 
         result = autotune_pid_for_backend(roaster, settle_s=0.5, test_duration_s=2.0, min_rise_c=1.0)
 
-        self.assertEqual(roaster.reset_calls, 1)
         self.assertEqual(roaster.autotune_calls, 1)
         self.assertIn("settle_s", roaster.last_kwargs)
         self.assertAlmostEqual(result["kp"], 0.2, places=4)
@@ -147,7 +138,7 @@ class AutotuneTests(unittest.TestCase):
         self.assertEqual(roaster._controller.calls, 1)
         self.assertAlmostEqual(result["kp"], 0.3, places=4)
 
-    def test_multispeed_autotune_runs_low_to_high_and_resets_simulation_once(self):
+    def test_multispeed_autotune_runs_low_to_high(self):
         roaster = _NativeMultiSpeedRoaster(max_fan_speed=4, initial_fan_speed=3)
 
         result = autotune_pid_table_for_backend(roaster)
@@ -156,8 +147,6 @@ class AutotuneTests(unittest.TestCase):
         self.assertEqual(result["fan_speeds"], [1, 2, 3, 4])
         self.assertEqual(result["completed_speeds"], [1, 2, 3, 4])
         self.assertEqual(roaster.autotune_fan_history, [1, 2, 3, 4])
-        # Reset is run once before the first speed, then thermal state is preserved.
-        self.assertEqual(roaster.reset_calls, 1)
         # Final fan set restores the original fan speed.
         self.assertEqual(roaster.fan_set_history[-1], 3)
 

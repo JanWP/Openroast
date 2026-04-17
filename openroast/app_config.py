@@ -12,6 +12,17 @@ from openroast.temperature import (
     temperature_to_celsius,
 )
 
+try:
+    from localroaster import parameter_catalog as _local_parameter_catalog
+except Exception:  # pragma: no cover - local backend optional in some environments
+    _local_parameter_catalog = None
+
+_DEFAULT_AUTOTUNE_ZN_ALPHA = (
+    float(_local_parameter_catalog.AUTOTUNE_ZN_ALPHA_DEFAULT)
+    if _local_parameter_catalog is not None
+    else 0.5
+)
+
 VALID_BACKENDS = ("usb", "usb-mock", "local", "local-mock")
 CONFIG_VERSION = 2
 
@@ -29,15 +40,17 @@ MIN_PLOT_LINE_WIDTH = 1.0
 MAX_PLOT_LINE_WIDTH = 8.0
 
 MIN_PID_KP = 0.0
-MAX_PID_KP = 5.0
+MAX_PID_KP = 15.0
 MIN_PID_KI = 0.0
-MAX_PID_KI = 1.0
+MAX_PID_KI = 15.0
 MIN_PID_KD = 0.0
 MAX_PID_KD = 10.0
 MIN_PWM_CYCLE_SECONDS = 0.2
 MAX_PWM_CYCLE_SECONDS = 10.0
 MIN_SAMPLE_PERIOD_SECONDS = 0.05
 MAX_SAMPLE_PERIOD_SECONDS = 5.0
+MIN_AUTOTUNE_ZN_ALPHA = 0.0
+MAX_AUTOTUNE_ZN_ALPHA = 1.0
 MIN_SAFETY_MAX_TEMP_C = 120.0
 MAX_SAFETY_MAX_TEMP_C = 350.0
 
@@ -82,6 +95,7 @@ DEFAULT_CONFIG = {
         "confirmOnClear": False,
     },
     "control": {
+        "autotuneZnAlpha": _DEFAULT_AUTOTUNE_ZN_ALPHA,
         "pid": {
             "kp": 0.108,
             "ki": 0.0135,
@@ -420,6 +434,12 @@ def normalize_config(raw_cfg):
         MAX_SAMPLE_PERIOD_SECONDS,
         0.5,
     )
+    cfg["control"]["autotuneZnAlpha"] = _clamp_float(
+        cfg["control"].get("autotuneZnAlpha", _DEFAULT_AUTOTUNE_ZN_ALPHA),
+        MIN_AUTOTUNE_ZN_ALPHA,
+        MAX_AUTOTUNE_ZN_ALPHA,
+        _DEFAULT_AUTOTUNE_ZN_ALPHA,
+    )
 
     cfg["safety"]["heaterCutoffEnabled"] = bool(cfg["safety"].get("heaterCutoffEnabled", True))
 
@@ -476,6 +496,7 @@ def update_config(config, *, display_unit=None, compact_mode=None, fullscreen=No
                   plot_line_width=None, confirm_on_stop=None, confirm_on_clear=None,
                   expert_mode_enabled=None, pid_kp=None, pid_ki=None, pid_kd=None,
                   pwm_cycle_seconds=None, sample_period_seconds=None,
+                  autotune_zn_alpha=None,
                   safety_max_temp_c=None, heater_cutoff_enabled=None):
     next_cfg = normalize_config(config)
 
@@ -573,6 +594,13 @@ def update_config(config, *, display_unit=None, compact_mode=None, fullscreen=No
             MIN_SAMPLE_PERIOD_SECONDS,
             MAX_SAMPLE_PERIOD_SECONDS,
             next_cfg["control"].get("samplePeriodSeconds", 0.5),
+        )
+    if autotune_zn_alpha is not None:
+        next_cfg["control"]["autotuneZnAlpha"] = _clamp_float(
+            autotune_zn_alpha,
+            MIN_AUTOTUNE_ZN_ALPHA,
+            MAX_AUTOTUNE_ZN_ALPHA,
+            next_cfg["control"].get("autotuneZnAlpha", _DEFAULT_AUTOTUNE_ZN_ALPHA),
         )
     if safety_max_temp_c is not None:
         current_max_temp_c = _clamp_float(

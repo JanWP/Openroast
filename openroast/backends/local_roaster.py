@@ -42,6 +42,7 @@ class LocalRoaster:
         pwm_cycle_s=None,
         max_temp_c=None,
         heater_cutoff_enabled=True,
+        autotune_zn_alpha=parameter_catalog.AUTOTUNE_ZN_ALPHA_DEFAULT,
         profile_backend_key=None,
     ):
         max_temp_k = celsius_to_kelvin(self.temperature_max_c if max_temp_c is None else float(max_temp_c))
@@ -53,6 +54,7 @@ class LocalRoaster:
             min_display_temp_k=celsius_to_kelvin(self.temperature_min_c),
             max_temp_k=max_temp_k,
             heater_cutoff_enabled=bool(heater_cutoff_enabled),
+            autotune_zn_alpha=float(autotune_zn_alpha),
         )
         if sample_period_s is not None:
             config_kwargs["sample_period_s"] = float(sample_period_s)
@@ -96,6 +98,12 @@ class LocalRoaster:
             runtime_fan_speed,
         )
         apply_runtime_config(
+            autotune_zn_alpha=float(
+                self._runtime_preferences_config["control"].get(
+                    "autotuneZnAlpha",
+                    parameter_catalog.AUTOTUNE_ZN_ALPHA_DEFAULT,
+                )
+            ),
             kp=float(pid_values["kp"]),
             ki=float(pid_values["ki"]),
             kd=float(pid_values["kd"]),
@@ -371,6 +379,12 @@ class LocalRoaster:
         )
 
         apply_runtime_config(
+            autotune_zn_alpha=float(
+                config["control"].get(
+                    "autotuneZnAlpha",
+                    parameter_catalog.AUTOTUNE_ZN_ALPHA_DEFAULT,
+                )
+            ),
             kp=float(pid_values["kp"]),
             ki=float(pid_values["ki"]),
             kd=float(pid_values["kd"]),

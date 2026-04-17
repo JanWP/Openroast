@@ -10,7 +10,6 @@ def autotune_pid_for_backend(
     settle_s=3.0,
     test_duration_s=45.0,
     min_rise_c=3.0,
-    reset_simulation=True,
 ):
     """Run PID autotune against any supported backend.
 
@@ -22,8 +21,6 @@ def autotune_pid_for_backend(
         raise RuntimeError("Autotune unavailable: no backend handle")
 
     _ensure_connected_idle(roaster)
-    if reset_simulation:
-        _reset_simulation_if_available(roaster)
 
     backend_autotune = getattr(roaster, "autotune_pid", None)
     if callable(backend_autotune):
@@ -89,8 +86,6 @@ def autotune_pid_table_for_backend(
                 settle_s=settle_s,
                 test_duration_s=test_duration_s,
                 min_rise_c=min_rise_c,
-                # Reset once at the beginning, then keep thermal continuity.
-                reset_simulation=(index == 0),
             )
             results[str(int(speed))] = {
                 "kp": float(tune["kp"]),
@@ -161,12 +156,6 @@ def _ensure_connected_idle(roaster):
     if callable(idle):
         idle()
         time.sleep(0.1)
-
-
-def _reset_simulation_if_available(roaster):
-    reset_simulation_state = getattr(roaster, "reset_simulation_state", None)
-    if callable(reset_simulation_state):
-        reset_simulation_state()
 
 
 def _run_backend_autotune(backend_autotune, *, settle_s, test_duration_s, min_rise_c):

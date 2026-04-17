@@ -15,6 +15,7 @@ class AppConfigExpertTests(ConfigSandboxMixin, unittest.TestCase):
         self.assertIn("safety", cfg)
         self.assertIn("pid", cfg["control"])
         self.assertIn("pidProfiles", cfg["control"])
+        self.assertIn("autotuneZnAlpha", cfg["control"])
         self.assertTrue(cfg["safety"]["heaterCutoffEnabled"])
 
     def test_normalize_builds_pid_profiles_for_known_backends(self):
@@ -118,12 +119,20 @@ class AppConfigExpertTests(ConfigSandboxMixin, unittest.TestCase):
             app_config.DEFAULT_CONFIG,
             pid_kp=99.0,
             sample_period_seconds=0.001,
+            autotune_zn_alpha=99.0,
             safety_max_temp_c=999.0,
         )
         self.assertEqual(cfg["control"]["pid"]["kp"], app_config.MAX_PID_KP)
         self.assertEqual(cfg["control"]["samplePeriodSeconds"], app_config.MIN_SAMPLE_PERIOD_SECONDS)
+        self.assertEqual(cfg["control"]["autotuneZnAlpha"], app_config.MAX_AUTOTUNE_ZN_ALPHA)
         self.assertEqual(cfg["safety"]["maxTemp"]["unit"], TEMP_UNIT_C)
         self.assertEqual(cfg["safety"]["maxTemp"]["value"], app_config.MAX_SAFETY_MAX_TEMP_C)
+
+    def test_normalize_clamps_autotune_zn_alpha(self):
+        cfg_low = app_config.normalize_config({"control": {"autotuneZnAlpha": -1.0}})
+        cfg_high = app_config.normalize_config({"control": {"autotuneZnAlpha": 2.0}})
+        self.assertEqual(cfg_low["control"]["autotuneZnAlpha"], app_config.MIN_AUTOTUNE_ZN_ALPHA)
+        self.assertEqual(cfg_high["control"]["autotuneZnAlpha"], app_config.MAX_AUTOTUNE_ZN_ALPHA)
 
     def test_normalize_migrates_legacy_celsius_plot_keys(self):
         cfg = app_config.normalize_config(
