@@ -55,7 +55,7 @@ class RoastTabSectionTimeTests(unittest.TestCase):
     def _make_tab_for_section_duration(self, setpoint_s=0, remaining_s=0, recipes=None):
         tab = RoastTab.__new__(RoastTab)
         tab._section_duration_setpoint_s = int(setpoint_s)
-        tab._has_time_s = True
+        tab._is_local_roaster = True
         tab.roaster = _FakeRoaster(remaining_s)
         tab.recipes = recipes if recipes is not None else _FakeRecipes(False, 0)
 

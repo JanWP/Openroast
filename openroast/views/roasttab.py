@@ -24,6 +24,7 @@ from openroast.temperature import (
 from openroast.views import customqtwidgets
 from openroast.views.ui_constants import RoastTabUI
 from openroast import app_config
+from openroast.roaster_protocol import LocalRoasterProtocol
 
 
 NON_COMPACT_PROGRESS_ROW_MIN_HEIGHT = RoastTabUI.NON_COMPACT_PROGRESS_ROW_MIN_HEIGHT
@@ -87,10 +88,7 @@ class RoastTab(QtWidgets.QWidget):
         )
         self._min_temp_c = int(getattr(self.roaster, "temperature_min_c", MIN_TEMPERATURE_C))
         self._max_temp_c = int(getattr(self.roaster, "temperature_max_c", MAX_TEMPERATURE_C))
-        self._has_temp_k = hasattr(self.roaster, "current_temp_k")
-        self._has_target_temp_k = hasattr(self.roaster, "target_temp_k")
-        self._has_time_s = hasattr(self.roaster, "time_remaining_s")
-        self._has_total_time_s = hasattr(self.roaster, "total_time_s")
+        self._is_local_roaster = isinstance(self.roaster, LocalRoasterProtocol)
         self._section_duration_setpoint_s = 0
         self._confirm_on_stop = False
         self._confirm_on_clear = False
@@ -190,6 +188,10 @@ class RoastTab(QtWidgets.QWidget):
     def _get_display_temperature_unit(self):
         return get_default_display_temperature_unit()
 
+    def _uses_local_roaster_protocol(self):
+        # Keep __new__-constructed tests backward-compatible.
+        return bool(getattr(self, "_is_local_roaster", False))
+
     def _get_runtime_fan_max(self):
         return int(max(1, getattr(self.roaster, "max_fan_speed", app_config.FAN_SPEED_MAX)))
 
@@ -278,7 +280,7 @@ class RoastTab(QtWidgets.QWidget):
             )
 
     def _get_roaster_current_temp_c(self):
-        if self._has_temp_k:
+        if self._uses_local_roaster_protocol():
             return clamp_temperature_c(
                 kelvin_to_celsius(self.roaster.current_temp_k),
                 low=self._min_temp_c,
@@ -287,7 +289,7 @@ class RoastTab(QtWidgets.QWidget):
         return self._roaster_temp_to_c(self.roaster.current_temp)
 
     def _get_roaster_target_temp_c(self):
-        if self._has_target_temp_k:
+        if self._uses_local_roaster_protocol():
             return clamp_temperature_c(
                 kelvin_to_celsius(self.roaster.target_temp_k),
                 low=self._min_temp_c,
@@ -296,7 +298,7 @@ class RoastTab(QtWidgets.QWidget):
         return self._roaster_temp_to_c(self.roaster.target_temp)
 
     def _set_roaster_target_temp_c(self, value_c):
-        if self._has_target_temp_k:
+        if self._uses_local_roaster_protocol():
             target_temp_k = celsius_to_kelvin(value_c)
             if self.roaster.target_temp_k != target_temp_k:
                 self.roaster.target_temp_k = target_temp_k
@@ -306,12 +308,12 @@ class RoastTab(QtWidgets.QWidget):
             self.roaster.target_temp = roaster_value
 
     def _get_roaster_time_remaining_s(self):
-        if self._has_time_s:
+        if self._uses_local_roaster_protocol():
             return self.roaster.time_remaining_s
         return self.roaster.time_remaining
 
     def _set_roaster_time_remaining_s(self, value_s):
-        if self._has_time_s:
+        if self._uses_local_roaster_protocol():
             if self.roaster.time_remaining_s != value_s:
                 self.roaster.time_remaining_s = value_s
             return
@@ -319,12 +321,12 @@ class RoastTab(QtWidgets.QWidget):
             self.roaster.time_remaining = value_s
 
     def _get_roaster_total_time_s(self):
-        if self._has_total_time_s:
+        if self._uses_local_roaster_protocol():
             return self.roaster.total_time_s
         return self.roaster.total_time
 
     def _set_roaster_total_time_s(self, value_s):
-        if self._has_total_time_s:
+        if self._uses_local_roaster_protocol():
             self.roaster.total_time_s = value_s
             return
         self.roaster.total_time = value_s
