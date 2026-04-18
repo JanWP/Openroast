@@ -69,3 +69,7 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# Internal planning docs
+.internal/planning/
+
