@@ -189,6 +189,7 @@ class PreferencesUI:
     STATUS_CONTROL_TUNING_NOT_AVAILABLE = "Control tuning is unavailable for this runtime backend."
     STATUS_AUTOTUNE_CANCELED = "Autotune canceled"
     STATUS_AUTOTUNE_RUNNING = "Running autotune..."
+    STATUS_AUTOTUNE_PROGRESS_TEMPLATE = "Running autotune... Fan setting {index}/{total} ({progress_percent}% total)"
     STATUS_AUTOTUNE_FAILED_TEMPLATE = "Autotune failed: {error}"
     STATUS_AUTOTUNE_COMPLETE_AND_SAVED = "Autotune complete and saved"
     STATUS_PREFERENCES_SAVED = "Preferences saved. Some changes apply on next start."

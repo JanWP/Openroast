@@ -413,6 +413,56 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
             widget.close()
             self._app.processEvents()
 
+    def test_autotune_status_shows_fan_setting_and_total_progress(self):
+        class SlowRoaster:
+            connected = True
+            max_fan_speed = 3
+
+            def __init__(self):
+                self.fan_speed = 1
+
+            def get_roaster_state(self):
+                return "idle"
+
+            def reset_simulation_state(self):
+                pass
+
+            def autotune_pid(self, **_kwargs):
+                # Keep each fan pass long enough for UI progress events to be observed.
+                time.sleep(0.05)
+                speed = float(self.fan_speed)
+                return {
+                    "kp": 0.2 + speed,
+                    "ki": 0.03 + speed / 10.0,
+                    "kd": 0.04 + speed / 10.0,
+                    "process_gain": 2.0 + speed / 10.0,
+                    "tau_s": 25.0 + speed,
+                    "dead_time_s": 0.4 + speed / 10.0,
+                }
+
+        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, roaster=SlowRoaster(), runtime_backend="local-mock")
+        try:
+            widget.expertModeEnabled.setChecked(True)
+            widget._expert_warning_ack = True
+            widget.tabs.setCurrentIndex(1)
+
+            with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
+                widget.autotuneButton.click()
+                self._app.processEvents()
+
+            saw_progress = False
+            deadline = QtCore.QTime.currentTime().addMSecs(2500)
+            while widget._autotune_worker is not None and QtCore.QTime.currentTime() < deadline:
+                self._app.processEvents()
+                if "Fan setting" in widget.statusLabel.text() and "% total" in widget.statusLabel.text():
+                    saw_progress = True
+
+            self.assertTrue(saw_progress)
+            self.assertEqual(widget.statusLabel.text(), PreferencesUI.STATUS_AUTOTUNE_COMPLETE_AND_SAVED)
+        finally:
+            widget.close()
+            self._app.processEvents()
+
 if __name__ == "__main__":
     unittest.main()
 

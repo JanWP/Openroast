@@ -63,6 +63,7 @@ class PreferencesTab(QtWidgets.QWidget):
 
     class _AutotuneWorker(QtCore.QThread):
         resultReady = QtCore.pyqtSignal(object, object)
+        progressReady = QtCore.pyqtSignal(object)
 
         def __init__(self, autotune_callable, parent=None):
             super().__init__(parent)
@@ -70,7 +71,7 @@ class PreferencesTab(QtWidgets.QWidget):
 
         def run(self):
             try:
-                result = self._autotune_callable()
+                result = self._autotune_callable(self.progressReady.emit)
             except Exception as exc:  # pragma: no cover - worker failure path
                 self.resultReady.emit(None, str(exc))
             else:
@@ -716,12 +717,44 @@ class PreferencesTab(QtWidgets.QWidget):
             fan_speeds = list(range(1, max_fan + 1))
 
         self._autotune_worker = self._AutotuneWorker(
-            lambda: autotune_pid_table_for_backend(self._roaster, fan_speeds=fan_speeds),
+            lambda progress_callback: autotune_pid_table_for_backend(
+                self._roaster,
+                fan_speeds=fan_speeds,
+                progress_callback=progress_callback,
+            ),
             parent=self,
         )
+        self._autotune_worker.progressReady.connect(self._on_autotune_progress)
         self._autotune_worker.resultReady.connect(self._on_autotune_finished)
         self._autotune_worker.finished.connect(self._on_autotune_worker_finished)
         self._autotune_worker.start()
+
+    def _on_autotune_progress(self, payload):
+        if not isinstance(payload, dict):
+            return
+        try:
+            index = int(payload.get("index", 0))
+            total = int(payload.get("total", 0))
+            completed = int(payload.get("completed", 0))
+        except (TypeError, ValueError):
+            return
+        if total <= 0:
+            return
+
+        stage = str(payload.get("stage", "running"))
+        completed_for_progress = completed
+        if stage == "completed":
+            completed_for_progress = min(total, max(completed, 0))
+        progress_percent = int(round((100.0 * float(completed_for_progress)) / float(total)))
+        progress_percent = max(0, min(100, progress_percent))
+
+        self.statusLabel.setText(
+            PreferencesUI.STATUS_AUTOTUNE_PROGRESS_TEMPLATE.format(
+                index=max(1, min(index, total)),
+                total=total,
+                progress_percent=progress_percent,
+            )
+        )
 
     def _merge_autotune_results_into_draft(self, results_by_fan):
         if not self._control_tuning_supported() or not isinstance(results_by_fan, dict):

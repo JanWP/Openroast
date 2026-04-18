@@ -4,6 +4,7 @@ RoasterController safety behaviour."""
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 from openroast import app_config
 from openroast.temperature import celsius_to_kelvin
@@ -559,6 +560,51 @@ class ControllerSafetyTests(unittest.TestCase):
         self.assertIn("canceled", str(result["error"]).lower())
         self.assertEqual(ctrl.state, RoasterState.IDLE)
         ctrl.shutdown()
+
+    def test_autotune_accepts_live_fan_speed_changes(self):
+        class _AutotuneDriverWithFanRecord(_AutotuneDriver):
+            def __init__(self, ambient_k: float = 295.0):
+                super().__init__(ambient_k=ambient_k)
+                self.fan_calls = []
+
+            def set_fan_speed(self, speed: int) -> None:
+                self.fan_calls.append(int(speed))
+
+        cfg = ControllerConfig(
+            thermostat=True,
+            sample_period_s=0.05,
+            pwm_cycle_s=0.2,
+            max_temp_k=560.0,
+            min_display_temp_k=293.15,
+        )
+        driver = _AutotuneDriverWithFanRecord(ambient_k=295.0)
+
+        with patch("localroaster.parameter_catalog.FAN_SPEED_MAX", 9):
+            ctrl = RoasterController(driver, config=cfg)
+            ctrl.connect()
+
+            result = {}
+
+            def _run_autotune():
+                try:
+                    ctrl.autotune_pid(settle_s=0.2, test_duration_s=8.0, min_rise_c=1.0)
+                except Exception as exc:  # pragma: no cover - asserted below
+                    result["error"] = exc
+
+            worker = threading.Thread(target=_run_autotune)
+            worker.start()
+
+            # Wait until control loop starts driving fan commands, then change fan live.
+            self.assertTrue(wait_for(lambda: len(driver.fan_calls) > 0, timeout=2.0))
+            ctrl.fan_speed = 3
+            self.assertTrue(wait_for(lambda: 3 in driver.fan_calls, timeout=2.0))
+
+            ctrl.cancel_autotune()
+            worker.join(timeout=3.0)
+            self.assertFalse(worker.is_alive(), "autotune thread did not exit after cancel")
+            self.assertIn("error", result)
+            self.assertIn("canceled", str(result["error"]).lower())
+            ctrl.shutdown()
 
     def test_pid_resets_on_roast_from_idle(self):
         ctrl, driver, _ = self._make_controller(thermostat=True)

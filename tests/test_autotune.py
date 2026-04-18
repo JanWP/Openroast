@@ -178,6 +178,26 @@ class AutotuneTests(unittest.TestCase):
         self.assertEqual(result["fan_speeds"], [1, 2, 3, 5])
         self.assertEqual(result["completed_speeds"], [1, 2, 3, 5])
 
+    def test_multispeed_autotune_emits_progress_events(self):
+        roaster = _NativeMultiSpeedRoaster(max_fan_speed=3, initial_fan_speed=2)
+        events = []
+
+        result = autotune_pid_table_for_backend(roaster, progress_callback=lambda event: events.append(dict(event)))
+
+        self.assertTrue(result["ok"])
+        self.assertGreaterEqual(len(events), 3)
+        first = events[0]
+        self.assertEqual(first["stage"], "running")
+        self.assertEqual(first["index"], 1)
+        self.assertEqual(first["total"], 3)
+        self.assertEqual(first["fan_speed"], 1)
+        self.assertEqual(first["completed"], 0)
+        last = events[-1]
+        self.assertEqual(last["stage"], "completed")
+        self.assertEqual(last["index"], 3)
+        self.assertEqual(last["total"], 3)
+        self.assertEqual(last["completed"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

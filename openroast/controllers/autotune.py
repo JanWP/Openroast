@@ -57,6 +57,7 @@ def autotune_pid_table_for_backend(
     settle_s=20.0,
     test_duration_s=30.0,
     min_rise_c=3.0,
+    progress_callback=None,
 ):
     """Run autotune across multiple runtime fan speeds.
 
@@ -77,8 +78,25 @@ def autotune_pid_table_for_backend(
     failed_speed = None
     error_text = None
 
+    total_speeds = len(speeds)
+
+    def _emit_progress(stage, *, index, speed, completed):
+        if not callable(progress_callback):
+            return
+        progress_callback(
+            {
+                "stage": str(stage),
+                "index": int(index),
+                "total": int(total_speeds),
+                "fan_speed": int(speed),
+                "completed": int(completed),
+            }
+        )
+
     for index, speed in enumerate(speeds):
+        display_index = index + 1
         try:
+            _emit_progress("running", index=display_index, speed=speed, completed=len(completed_speeds))
             if original_fan_speed is not None:
                 roaster.fan_speed = int(speed)
             tune = autotune_pid_for_backend(
@@ -90,9 +108,11 @@ def autotune_pid_table_for_backend(
             row = _extract_plant_keys_for_profile_row(tune)
             results[str(int(speed))] = row
             completed_speeds.append(int(speed))
+            _emit_progress("completed", index=display_index, speed=speed, completed=len(completed_speeds))
         except Exception as exc:
             failed_speed = int(speed)
             error_text = str(exc)
+            _emit_progress("failed", index=display_index, speed=speed, completed=len(completed_speeds))
             break
 
     if original_fan_speed is not None:

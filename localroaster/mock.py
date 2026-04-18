@@ -19,12 +19,12 @@ class MockHardwareDriver(HardwareDriver):
         self._heater_on = False
         self._heater_level = float(parameter_catalog.HEATER_PERCENT_MIN)
         self._use_level_control = False
-        self._tau = max(0.1, float(self.config.mock_tau_s))
-        self._thermal_max_temp_k = max(
+        self._airflow_alpha = max(1e-6, float(self.config.mock_airflow_alpha))
+        self._hot_target_k_max_fan = max(
             float(self.config.ambient_temp_k),
-            float(self.config.mock_thermal_max_temp_k),
+            float(self.config.mock_hot_target_k_at_max_fan),
         )
-        self._fan_cooling_k_per_step = max(0.0, float(self.config.mock_fan_cooling_k_per_step))
+        self._tau_max_fan_s = max(0.1, float(self.config.mock_tau_s_at_max_fan))
         self._fan_speed = 1
         self._last_update_s = float(self._time_fn())
 
@@ -34,10 +34,18 @@ class MockHardwareDriver(HardwareDriver):
             dt_s = max(0.0, now_s - self._last_update_s)
             self._last_update_s = now_s
 
-            fan_cooling = (
-                self._fan_speed - 1
-            ) * self._fan_cooling_k_per_step
-            hot_target_k = max(self._thermal_max_temp_k - fan_cooling, self.config.ambient_temp_k)
+            fan_max = max(1, int(parameter_catalog.FAN_SPEED_MAX))
+            fan_fraction = max(0.0, min(1.0, float(self._fan_speed) / float(fan_max)))
+            airflow_fraction = max(1e-6, fan_fraction ** self._airflow_alpha)
+            hot_target_k = max(
+                float(self.config.ambient_temp_k),
+                float(self.config.ambient_temp_k)
+                + (
+                    (self._hot_target_k_max_fan - float(self.config.ambient_temp_k))
+                    / airflow_fraction
+                ),
+            )
+            tau_s = max(0.1, self._tau_max_fan_s / airflow_fraction)
             if self._use_level_control:
                 if self._heater_level < parameter_catalog.HEATER_PERCENT_MIN:
                     duty = 0.0
@@ -46,7 +54,7 @@ class MockHardwareDriver(HardwareDriver):
             else:
                 duty = 1.0 if self._heater_on else 0.0
             target_k = self.config.ambient_temp_k + duty * (hot_target_k - self.config.ambient_temp_k)
-            a = math.exp(-dt_s / self._tau) if dt_s > 0.0 else 1.0
+            a = math.exp(-dt_s / tau_s) if dt_s > 0.0 else 1.0
             b = 1.0 - a
             self._temp_k = a * self._temp_k + b * target_k
             return self._temp_k

@@ -414,6 +414,8 @@ class RoastTab(QtWidgets.QWidget):
             self.currentTempLabel,
             self._format_display_temperature(self._get_roaster_current_temp_c()),
         )
+        # Keep fan controls synchronized with runtime state (including autotune).
+        self.update_fan_info()
 
         # Update timers.
         self.update_remaining_section_duration()

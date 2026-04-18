@@ -41,6 +41,9 @@ class ControllerConfig:
     mock_thermal_max_temp_k: float = parameter_catalog.MOCK_THERMAL_MAX_DEFAULT_K
     mock_tau_s: float = parameter_catalog.MOCK_TAU_DEFAULT_S
     mock_fan_cooling_k_per_step: float = parameter_catalog.MOCK_FAN_COOLING_DEFAULT_K_PER_STEP
+    mock_airflow_alpha: float = parameter_catalog.MOCK_AIRFLOW_ALPHA_DEFAULT
+    mock_hot_target_k_at_max_fan: float = parameter_catalog.MOCK_HOT_TARGET_AT_MAX_FAN_DEFAULT_K
+    mock_tau_s_at_max_fan: float = parameter_catalog.MOCK_TAU_AT_MAX_FAN_DEFAULT_S
     min_display_temp_k: float = parameter_catalog.MIN_DISPLAY_TEMP_DEFAULT_K
     heater_cutoff_enabled: bool = parameter_catalog.HEATER_CUTOFF_DEFAULT_ENABLED
 

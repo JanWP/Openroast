@@ -225,4 +225,21 @@ class RoastTabSectionTimeTests(unittest.TestCase):
         self.assertEqual(tab.fanSpeedSpinBox.minimum(), 1)
         self.assertEqual(tab.fanSpeedSpinBox.maximum(), 5)
 
+    def test_update_fan_info_syncs_controls_to_runtime_fan_speed(self):
+        tab = RoastTab.__new__(RoastTab)
+        tab.roaster = _FakeRoaster()
+        tab.roaster.max_fan_speed = 6
+        tab.roaster.fan_speed = 4
+        tab.fanSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        tab.fanSlider.setRange(1, 9)
+        tab.fanSpeedSpinBox = QtWidgets.QSpinBox()
+        tab.fanSpeedSpinBox.setRange(1, 9)
+
+        tab.update_fan_info()
+
+        self.assertEqual(tab.fanSlider.maximum(), 6)
+        self.assertEqual(tab.fanSpeedSpinBox.maximum(), 6)
+        self.assertEqual(tab.fanSlider.value(), 4)
+        self.assertEqual(tab.fanSpeedSpinBox.value(), 4)
+
 
