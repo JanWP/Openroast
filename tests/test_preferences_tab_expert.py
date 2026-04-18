@@ -39,7 +39,7 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
             widget.close()
             self._app.processEvents()
 
-    def test_pid_fan_selector_uses_runtime_backend_capabilities(self):
+    def test_control_fan_selector_uses_runtime_backend_capabilities(self):
         class DummyRoaster:
             max_fan_speed = 5
 
@@ -49,9 +49,9 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
             roaster=DummyRoaster(),
         )
         try:
-            self.assertEqual(widget.pidFanSpeedSelect.count(), 5)
-            self.assertEqual(widget.pidFanSpeedSelect.itemData(0), 1)
-            self.assertEqual(widget.pidFanSpeedSelect.itemData(4), 5)
+            self.assertEqual(widget.controlFanSpeedSelect.count(), 5)
+            self.assertEqual(widget.controlFanSpeedSelect.itemData(0), 1)
+            self.assertEqual(widget.controlFanSpeedSelect.itemData(4), 5)
         finally:
             widget.close()
             self._app.processEvents()
@@ -71,11 +71,11 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
         with patch("openroast.views.preferencestab.app_config.save_config", side_effect=_capture_save):
             widget = PreferencesTab(config=base, runtime_backend="local-mock")
             try:
-                idx = widget.pidFanSpeedSelect.findData(2)
-                widget.pidFanSpeedSelect.setCurrentIndex(idx)
-                widget.pidKp.setValue(0.22)
-                widget.pidKi.setValue(0.023)
-                widget.pidKd.setValue(0.024)
+                idx = widget.controlFanSpeedSelect.findData(2)
+                widget.controlFanSpeedSelect.setCurrentIndex(idx)
+                widget.plantK.setValue(1.22)
+                widget.plantTauS.setValue(33.0)
+                widget.plantL.setValue(0.62)
                 widget.save_preferences()
             finally:
                 widget.close()
@@ -85,28 +85,31 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
         saved = saved_payloads[0]
         local_row = saved["control"]["pidProfiles"]["local-mock"]["2"]
         usb_row = saved["control"]["pidProfiles"]["usb"]["2"]
-        self.assertAlmostEqual(local_row["kp"], 0.22, places=6)
-        self.assertAlmostEqual(local_row["ki"], 0.023, places=6)
-        self.assertAlmostEqual(local_row["kd"], 0.024, places=6)
+        self.assertAlmostEqual(local_row["kp"], 0.11, places=6)
+        self.assertAlmostEqual(local_row["ki"], 0.012, places=6)
+        self.assertAlmostEqual(local_row["kd"], 0.015, places=6)
+        self.assertAlmostEqual(local_row["K"], 1.22, places=6)
+        self.assertAlmostEqual(local_row["tau_s"], 33.0, places=6)
+        self.assertAlmostEqual(local_row["L"], 0.62, places=6)
         self.assertAlmostEqual(usb_row["kp"], 0.7, places=6)
         self.assertAlmostEqual(usb_row["ki"], 0.08, places=6)
         self.assertAlmostEqual(usb_row["kd"], 0.09, places=6)
 
-    def test_unsaved_pid_edits_are_preserved_when_switching_fan_speeds(self):
+    def test_unsaved_plant_edits_are_preserved_when_switching_fan_speeds(self):
         base = app_config.normalize_config(app_config.DEFAULT_CONFIG)
         base = app_config.set_pid_for_backend_speed(base, "local-mock", 1, 0.11, 0.012, 0.015)
         base = app_config.set_pid_for_backend_speed(base, "local-mock", 2, 0.21, 0.022, 0.025)
 
         widget = PreferencesTab(config=base, runtime_backend="local-mock")
         try:
-            idx1 = widget.pidFanSpeedSelect.findData(1)
-            idx2 = widget.pidFanSpeedSelect.findData(2)
-            widget.pidFanSpeedSelect.setCurrentIndex(idx1)
-            widget.pidKp.setValue(0.314)
-            widget.pidFanSpeedSelect.setCurrentIndex(idx2)
-            widget.pidFanSpeedSelect.setCurrentIndex(idx1)
+            idx1 = widget.controlFanSpeedSelect.findData(1)
+            idx2 = widget.controlFanSpeedSelect.findData(2)
+            widget.controlFanSpeedSelect.setCurrentIndex(idx1)
+            widget.plantK.setValue(3.14)
+            widget.controlFanSpeedSelect.setCurrentIndex(idx2)
+            widget.controlFanSpeedSelect.setCurrentIndex(idx1)
 
-            self.assertAlmostEqual(widget.pidKp.value(), 0.314, places=6)
+            self.assertAlmostEqual(widget.plantK.value(), 3.14, places=6)
         finally:
             widget.close()
             self._app.processEvents()
@@ -146,7 +149,7 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
         try:
             widget.expertModeEnabled.setChecked(True)
             widget.refreshIntervalMs.setValue(1300)
-            widget.pidKp.setValue(0.5)
+            widget.plantK.setValue(5.0)
 
             with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
                 widget.tabs.setCurrentIndex(0)
@@ -154,7 +157,7 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
                 self._app.processEvents()
 
             self.assertEqual(widget.refreshIntervalMs.value(), app_config.DEFAULT_CONFIG["ui"]["refreshIntervalMs"])
-            self.assertAlmostEqual(widget.pidKp.value(), 0.5, places=4)
+            self.assertAlmostEqual(widget.plantK.value(), 5.0, places=4)
 
             widget.expertModeEnabled.setChecked(True)
             widget._expert_warning_ack = True
@@ -164,8 +167,8 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
                 self._app.processEvents()
 
             self.assertAlmostEqual(
-                widget.pidKp.value(),
-                app_config.DEFAULT_CONFIG["control"]["pid"]["kp"],
+                widget.plantK.value(),
+                1.0,
                 places=4,
             )
         finally:
@@ -177,7 +180,7 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
         try:
             widget.expertModeEnabled.setChecked(True)
             widget.refreshIntervalMs.setValue(1300)
-            widget.pidKp.setValue(0.5)
+            widget.plantK.setValue(5.0)
 
             with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
                 widget.tabs.setCurrentIndex(0)
@@ -185,7 +188,7 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
                 self._app.processEvents()
 
             self.assertEqual(widget.refreshIntervalMs.value(), app_config.DEFAULT_CONFIG["ui"]["refreshIntervalMs"])
-            self.assertAlmostEqual(widget.pidKp.value(), 0.5, places=4)
+            self.assertAlmostEqual(widget.plantK.value(), 5.0, places=4)
 
             widget.expertModeEnabled.setChecked(True)
             widget._expert_warning_ack = True
@@ -195,8 +198,8 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
                 self._app.processEvents()
 
             self.assertAlmostEqual(
-                widget.pidKp.value(),
-                app_config.DEFAULT_CONFIG["control"]["pid"]["kp"],
+                widget.plantK.value(),
+                1.0,
                 places=4,
             )
         finally:
@@ -237,7 +240,7 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
             expected = widget.NUMERIC_EDITOR_OBJECT_NAME
             self.assertEqual(widget.refreshIntervalMs.editorObjectName(), expected)
             self.assertEqual(widget.plotYAxisHeadroomC.editorObjectName(), expected)
-            self.assertEqual(widget.pidKp.editorObjectName(), expected)
+            self.assertEqual(widget.plantK.editorObjectName(), expected)
         finally:
             widget.close()
             self._app.processEvents()
@@ -275,15 +278,15 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
             widget.close()
             self._app.processEvents()
 
-    def test_pid_editors_use_requested_step_sizes(self):
+    def test_plant_editors_use_requested_step_sizes(self):
         widget = self._build_widget()
         try:
-            self.assertAlmostEqual(widget.pidKp.step_small(), PreferencesUI.PID_STEP_SMALL, places=6)
-            self.assertAlmostEqual(widget.pidKp.step_large(), PreferencesUI.PID_STEP_LARGE, places=6)
-            self.assertAlmostEqual(widget.pidKi.step_small(), PreferencesUI.PID_STEP_SMALL, places=6)
-            self.assertAlmostEqual(widget.pidKi.step_large(), PreferencesUI.PID_STEP_LARGE, places=6)
-            self.assertAlmostEqual(widget.pidKd.step_small(), PreferencesUI.PID_STEP_SMALL, places=6)
-            self.assertAlmostEqual(widget.pidKd.step_large(), PreferencesUI.PID_STEP_LARGE, places=6)
+            self.assertAlmostEqual(widget.plantK.step_small(), PreferencesUI.CONTROL_STEP_SMALL, places=6)
+            self.assertAlmostEqual(widget.plantK.step_large(), PreferencesUI.CONTROL_STEP_LARGE, places=6)
+            self.assertAlmostEqual(widget.plantTauS.step_small(), PreferencesUI.CONTROL_STEP_SMALL, places=6)
+            self.assertAlmostEqual(widget.plantTauS.step_large(), PreferencesUI.CONTROL_STEP_LARGE, places=6)
+            self.assertAlmostEqual(widget.plantL.step_small(), PreferencesUI.CONTROL_STEP_SMALL, places=6)
+            self.assertAlmostEqual(widget.plantL.step_large(), PreferencesUI.CONTROL_STEP_LARGE, places=6)
         finally:
             widget.close()
             self._app.processEvents()
@@ -306,7 +309,14 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
             def autotune_pid(self, **_kwargs):
                 self.calls.append(int(self.fan_speed))
                 speed = float(self.fan_speed)
-                return {"kp": 0.2 + speed, "ki": 0.03 + speed / 10.0, "kd": 0.04 + speed / 10.0}
+                return {
+                    "kp": 0.2 + speed,
+                    "ki": 0.03 + speed / 10.0,
+                    "kd": 0.04 + speed / 10.0,
+                    "process_gain": 2.0 + speed / 10.0,
+                    "tau_s": 25.0 + speed,
+                    "dead_time_s": 0.4 + speed / 10.0,
+                }
 
         roaster = DummyRoaster()
         widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, roaster=roaster, runtime_backend="local-mock")
@@ -326,6 +336,10 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
             self.assertIsNone(widget._autotune_worker)
             self.assertEqual(widget.statusLabel.text(), PreferencesUI.STATUS_AUTOTUNE_COMPLETE_AND_SAVED)
             self.assertEqual(roaster.calls, [1, 2, 3])
+            row3 = widget._config["control"]["pidProfiles"]["local-mock"]["3"]
+            self.assertIn("K", row3)
+            self.assertIn("tau_s", row3)
+            self.assertIn("L", row3)
         finally:
             widget.close()
             self._app.processEvents()
@@ -348,7 +362,14 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
                 if int(self.fan_speed) == 2:
                     raise RuntimeError("forced failure")
                 speed = float(self.fan_speed)
-                return {"kp": 1.0 + speed, "ki": 0.1 + speed / 10.0, "kd": 0.2 + speed / 10.0}
+                return {
+                    "kp": 1.0 + speed,
+                    "ki": 0.1 + speed / 10.0,
+                    "kd": 0.2 + speed / 10.0,
+                    "process_gain": 2.0 + speed / 10.0,
+                    "tau_s": 25.0 + speed,
+                    "dead_time_s": 0.4 + speed / 10.0,
+                }
 
         base = app_config.normalize_config(app_config.DEFAULT_CONFIG)
         base = app_config.set_pid_for_backend_speed(base, "local-mock", 1, 0.11, 0.012, 0.015)
@@ -384,6 +405,9 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
 
             # Fan 1 tuned and saved.
             self.assertAlmostEqual(row1["kp"], 2.0, places=6)
+            self.assertIn("K", row1)
+            self.assertIn("tau_s", row1)
+            self.assertIn("L", row1)
             # Fan 2 failed, fan 3 not run: keep prior values.
             self.assertAlmostEqual(row2["kp"], 0.21, places=6)
             self.assertAlmostEqual(row3["kp"], 0.31, places=6)

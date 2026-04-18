@@ -403,6 +403,44 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertAlmostEqual(call["sample_period_s"], 0.2, places=4)
         self.assertTrue(call["heater_cutoff_enabled"])
 
+    def test_apply_runtime_preferences_forwards_plant_params_when_present(self):
+        fake_controller = FakeController()
+        fake_controller.fan_speed = 2
+
+        with patch("openroast.backends.local_roaster.create_controller", return_value=fake_controller):
+            roaster = LocalRoaster(force_mock=True)
+
+        config = {
+            "control": {
+                "autotuneZnAlpha": 0.6,
+                "pidProfiles": {
+                    "local-mock": {
+                        "2": {
+                            "kp": 0.2,
+                            "ki": 0.03,
+                            "kd": 0.04,
+                            "K": 1.8,
+                            "tau_s": 29.0,
+                            "L": 0.5,
+                        }
+                    }
+                },
+                "pwmCycleSeconds": 1.5,
+                "samplePeriodSeconds": 0.2,
+            },
+            "safety": {
+                "maxTemp": {"value": 287.8, "unit": "C"},
+                "heaterCutoffEnabled": True,
+            },
+        }
+
+        self.assertTrue(roaster.apply_runtime_preferences(config))
+        call = fake_controller.runtime_config_calls[-1]
+        self.assertAlmostEqual(call["process_gain"], 1.8, places=4)
+        self.assertAlmostEqual(call["tau_s"], 29.0, places=4)
+        self.assertAlmostEqual(call["dead_time_s"], 0.5, places=4)
+        self.assertNotIn("kp", call)
+
     def test_fan_speed_change_reapplies_pid_for_new_fan_after_runtime_preferences(self):
         fake_controller = FakeController()
         fake_controller.fan_speed = 1

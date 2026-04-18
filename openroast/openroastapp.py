@@ -82,12 +82,15 @@ def _create_roaster(args, config_data=None):
     if args.backend in ("local", "local-mock"):
         try:
             from openroast.backends.local_roaster import LocalRoaster
-            pid_values = app_config.get_pid_for_backend_speed(config, args.backend, 1)
+            profile_row = app_config.get_pid_profile_row_for_backend_speed(config, args.backend, 1)
             local_kwargs = dict(
                 thermostat=True,
-                kp=float(pid_values["kp"]),
-                ki=float(pid_values["ki"]),
-                kd=float(pid_values["kd"]),
+                kp=float(profile_row["kp"]),
+                ki=float(profile_row["ki"]),
+                kd=float(profile_row["kd"]),
+                process_gain=profile_row.get("K"),
+                tau_s=profile_row.get("tau_s"),
+                dead_time_s=profile_row.get("L"),
                 pwm_cycle_s=float(config["control"]["pwmCycleSeconds"]),
                 sample_period_s=float(config["control"]["samplePeriodSeconds"]),
                 autotune_zn_alpha=float(

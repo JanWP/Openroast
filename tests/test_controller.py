@@ -381,6 +381,67 @@ class ControllerSafetyTests(unittest.TestCase):
         self.assertAlmostEqual(ctrl.config.max_temp_k, 500.0, places=4)
         self.assertFalse(ctrl.config.heater_cutoff_enabled)
 
+    def test_apply_runtime_config_synthesizes_pid_from_plant_with_delay_floor(self):
+        ctrl, _driver, _config = self._make_controller(thermostat=True)
+
+        ctrl.apply_runtime_config(
+            autotune_zn_alpha=1.0,
+            sample_period_s=0.6,
+            pwm_cycle_s=1.2,
+            process_gain=2.0,
+            tau_s=30.0,
+            dead_time_s=0.2,
+        )
+
+        # L_est = max(L, sample_period_s, pwm_cycle_s) = 1.2
+        # kp = 1.2 * tau / (K * L_est) = 1.2 * 30 / (2 * 1.2) = 15
+        # ti = 2 * L_est = 2.4 -> ki = 15 / 2.4 = 6.25
+        # td = 0.5 * L_est = 0.6 -> kd = 15 * 0.6 = 9
+        self.assertAlmostEqual(ctrl.config.kp, 15.0, places=3)
+        self.assertAlmostEqual(ctrl.config.ki, 6.25, places=3)
+        self.assertAlmostEqual(ctrl.config.kd, 9.0, places=3)
+
+    def test_apply_runtime_config_falls_back_to_pid_when_plant_invalid(self):
+        ctrl, _driver, _config = self._make_controller(thermostat=True)
+
+        ctrl.apply_runtime_config(
+            process_gain=-1.0,
+            tau_s=0.0,
+            dead_time_s=0.0,
+            kp=0.22,
+            ki=0.033,
+            kd=0.044,
+        )
+
+        self.assertAlmostEqual(ctrl.config.kp, 0.22, places=6)
+        self.assertAlmostEqual(ctrl.config.ki, 0.033, places=6)
+        self.assertAlmostEqual(ctrl.config.kd, 0.044, places=6)
+
+    def test_handoff_feedforward_uses_process_gain_when_available(self):
+        ctrl, _driver, _config = self._make_controller(thermostat=True)
+        ctrl.apply_runtime_config(process_gain=2.0, tau_s=30.0, dead_time_s=0.5)
+
+        with ctrl._lock:
+            # ambient_c ~= 22.0 C by default config
+            duty = ctrl._estimate_handoff_output_percent_locked(
+                target_temp_c=200.0,
+                error_c=5.0,
+            )
+
+        # (200 - 22) / 2 = 89
+        self.assertAlmostEqual(duty, 89.0, places=1)
+
+    def test_handoff_feedforward_falls_back_to_proportional_when_gain_missing(self):
+        ctrl, _driver, _config = self._make_controller(thermostat=True, kp=0.5, ki=0.0, kd=0.0)
+
+        with ctrl._lock:
+            duty = ctrl._estimate_handoff_output_percent_locked(
+                target_temp_c=200.0,
+                error_c=10.0,
+            )
+
+        self.assertAlmostEqual(duty, 5.0, places=4)
+
     def test_autotune_pid_returns_positive_coefficients(self):
         cfg = ControllerConfig(
             thermostat=True,

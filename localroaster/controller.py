@@ -201,6 +201,9 @@ class RoasterController:
             output_max=parameter_catalog.HEATER_PERCENT_MAX,
             output_min=parameter_catalog.HEATER_PERCENT_MIN,
         )
+        self._plant_process_gain: float | None = None
+        self._plant_tau_s: float | None = None
+        self._plant_dead_time_s: float | None = None
         self._pwm = DutyCyclePWM(cycle_s=self.config.pwm_cycle_s)
         self._exit_handler_registered = False
 
@@ -338,6 +341,9 @@ class RoasterController:
         *,
         autotune_zn_alpha: float | None = None,
         autotune_sample_period_s: float | None = None,
+        process_gain: float | None = None,
+        tau_s: float | None = None,
+        dead_time_s: float | None = None,
         kp: float | None = None,
         ki: float | None = None,
         kd: float | None = None,
@@ -355,15 +361,19 @@ class RoasterController:
                     parameter_catalog.AUTOTUNE_SAMPLE_DT_MIN_S,
                     float(autotune_sample_period_s),
                 )
-            if kp is not None:
-                self.config.kp = float(kp)
-                self._pid.kp = float(kp)
-            if ki is not None:
-                self.config.ki = float(ki)
-                self._pid.ki = float(ki)
-            if kd is not None:
-                self.config.kd = float(kd)
-                self._pid.kd = float(kd)
+
+            incoming_process_gain = self._as_positive_float(process_gain)
+            incoming_tau_s = self._as_positive_float(tau_s)
+            incoming_dead_time_s = self._as_positive_float(dead_time_s)
+            if (
+                incoming_process_gain is not None
+                and incoming_tau_s is not None
+                and incoming_dead_time_s is not None
+            ):
+                self._plant_process_gain = incoming_process_gain
+                self._plant_tau_s = incoming_tau_s
+                self._plant_dead_time_s = incoming_dead_time_s
+
             if pwm_cycle_s is not None:
                 cycle_s = max(parameter_catalog.PWM_CYCLE_MIN_S, float(pwm_cycle_s))
                 self.config.pwm_cycle_s = cycle_s
@@ -380,6 +390,26 @@ class RoasterController:
                     self._target_temp_k = max_temp_k
             if heater_cutoff_enabled is not None:
                 self.config.heater_cutoff_enabled = bool(heater_cutoff_enabled)
+
+            synthesized = self._synthesize_pid_from_plant_locked()
+            if synthesized is not None:
+                synth_kp, synth_ki, synth_kd = synthesized
+                self.config.kp = synth_kp
+                self.config.ki = synth_ki
+                self.config.kd = synth_kd
+                self._pid.kp = synth_kp
+                self._pid.ki = synth_ki
+                self._pid.kd = synth_kd
+            else:
+                if kp is not None:
+                    self.config.kp = float(kp)
+                    self._pid.kp = float(kp)
+                if ki is not None:
+                    self.config.ki = float(ki)
+                    self._pid.ki = float(ki)
+                if kd is not None:
+                    self.config.kd = float(kd)
+                    self._pid.kd = float(kd)
 
     def autotune_pid(
         self,
@@ -567,6 +597,7 @@ class RoasterController:
                 "kp": float(kp),
                 "ki": float(ki),
                 "kd": float(kd),
+                "process_gain": float(process_gain),
                 "baseline_c": float(baseline_c),
                 "peak_c": float(peak_c),
                 "delta_c": float(delta_c),
@@ -1015,6 +1046,77 @@ class RoasterController:
 
         return best
 
+    @staticmethod
+    def _as_positive_float(value):
+        try:
+            fvalue = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not (math.isfinite(fvalue) and fvalue > 0.0):
+            return None
+        return fvalue
+
+    def _synthesize_pid_from_plant_locked(self):
+        """Synthesize ZN PID gains from plant parameters using conservative L floor.
+
+        Must be called with self._lock held.
+        """
+        process_gain = self._as_positive_float(self._plant_process_gain)
+        tau_s = self._as_positive_float(self._plant_tau_s)
+        dead_time_s = self._as_positive_float(self._plant_dead_time_s)
+        if process_gain is None or tau_s is None or dead_time_s is None:
+            return None
+
+        l_est = max(
+            float(dead_time_s),
+            float(self.config.sample_period_s),
+            float(self.config.pwm_cycle_s),
+            float(parameter_catalog.AUTOTUNE_DEAD_TIME_MIN_S),
+        )
+
+        kp = (
+            parameter_catalog.AUTOTUNE_ZN_KP_FACTOR
+            * float(tau_s)
+            / (max(parameter_catalog.AUTOTUNE_PROCESS_GAIN_EPS, float(process_gain)) * float(l_est))
+        )
+        ti_s = parameter_catalog.AUTOTUNE_ZN_TI_FACTOR * float(l_est)
+        td_s = parameter_catalog.AUTOTUNE_ZN_TD_FACTOR * float(l_est)
+        ki = kp / max(parameter_catalog.AUTOTUNE_PROCESS_GAIN_EPS, ti_s)
+        kd = kp * td_s
+
+        alpha = self._clamp_autotune_zn_alpha(self.config.autotune_zn_alpha)
+        kp *= alpha
+        ki *= alpha
+        kd *= alpha
+
+        if not all(math.isfinite(v) and v > 0.0 for v in (kp, ki, kd)):
+            return None
+        return float(kp), float(ki), float(kd)
+
+    def _estimate_handoff_output_percent_locked(self, *, target_temp_c: float, error_c: float) -> float:
+        """Estimate steady-state heater duty for bumpless PID handoff.
+
+        Preferred path uses identified process gain K [C/%]:
+            duty_ff = (target_temp_c - ambient_c) / K
+
+        Fallback path uses clamped proportional output when K is unavailable.
+        Must be called with self._lock held.
+        """
+        output_min = float(parameter_catalog.HEATER_PERCENT_MIN)
+        output_max = float(parameter_catalog.HEATER_PERCENT_MAX)
+
+        process_gain = self._as_positive_float(self._plant_process_gain)
+        if process_gain is not None:
+            ambient_c = self._kelvin_to_celsius(self.config.ambient_temp_k)
+            ff_percent = (float(target_temp_c) - float(ambient_c)) / float(process_gain)
+            if math.isfinite(ff_percent):
+                return max(output_min, min(output_max, float(ff_percent)))
+
+        p_only_percent = float(self._pid.kp * float(error_c))
+        if not math.isfinite(p_only_percent):
+            p_only_percent = output_min
+        return max(output_min, min(output_max, p_only_percent))
+
     def _control_loop(self) -> None:
         while not self._stop_event.is_set():
             start = time.monotonic()
@@ -1084,10 +1186,14 @@ class RoasterController:
                             # saturated boost/cut output) and derivative primed
                             # at current measurement to avoid entry spikes.
                             if control_mode != self._mode_pid:
+                                handoff_output = self._estimate_handoff_output_percent_locked(
+                                    target_temp_c=target_temp_c,
+                                    error_c=error_c,
+                                )
                                 self._pid.set_integral_for_output(
                                     current=current_temp_c,
                                     target=target_temp_c,
-                                    desired_output=float(self._pid.kp * error_c),
+                                    desired_output=handoff_output,
                                 )
                             pid_percent = self._pid.update(
                                 current_temp_c,

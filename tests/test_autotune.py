@@ -57,6 +57,9 @@ class _NativeMultiSpeedRoaster:
             "kp": 0.1 + speed,
             "ki": 0.01 + speed / 10.0,
             "kd": 0.02 + speed / 10.0,
+            "process_gain": 2.0 + speed / 10.0,
+            "tau_s": 25.0 + speed,
+            "dead_time_s": 0.4 + speed / 10.0,
         }
 
 
@@ -147,6 +150,9 @@ class AutotuneTests(unittest.TestCase):
         self.assertEqual(result["fan_speeds"], [1, 2, 3, 4])
         self.assertEqual(result["completed_speeds"], [1, 2, 3, 4])
         self.assertEqual(roaster.autotune_fan_history, [1, 2, 3, 4])
+        self.assertIn("K", result["results"]["1"])
+        self.assertIn("tau_s", result["results"]["1"])
+        self.assertIn("L", result["results"]["1"])
         # Final fan set restores the original fan speed.
         self.assertEqual(roaster.fan_set_history[-1], 3)
 

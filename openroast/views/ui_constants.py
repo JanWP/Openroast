@@ -64,7 +64,7 @@ class DialogText:
     ROAST_STOP_MESSAGE = "Stop the current roast now?"
 
     # Preferences tab confirmations.
-    AUTOTUNE_RUN_TITLE = "Run PID autotune"
+    AUTOTUNE_RUN_TITLE = "Run control autotune"
     AUTOTUNE_RUN_MESSAGE = (
         "Autotune applies a heating step test and may take up to about a minute. Continue?"
     )
@@ -175,10 +175,10 @@ class PreferencesUI:
     FORM_LABEL_PLOT_LINE_WIDTH = "Plot line width:"
     FORM_LABEL_CONFIRM_ON_STOP = "Confirm on STOP:"
     FORM_LABEL_CONFIRM_ON_RESET = "Confirm on RESET:"
-    FORM_LABEL_PID_KP = "PID Kp:"
-    FORM_LABEL_PID_KI = "PID Ki:"
-    FORM_LABEL_PID_KD = "PID Kd:"
-    FORM_LABEL_PID_FAN_SPEED = "PID fan speed:"
+    FORM_LABEL_PLANT_K = "Plant K:"
+    FORM_LABEL_PLANT_TAU_S = "Plant tau_s:"
+    FORM_LABEL_PLANT_L = "Plant L:"
+    FORM_LABEL_CONTROL_FAN_SPEED = "Control fan speed:"
     FORM_LABEL_PWM_CYCLE_PERIOD = "PWM cycle period:"
     FORM_LABEL_CONTROL_SAMPLE_PERIOD = "Control sample period:"
     FORM_LABEL_MAX_SAFE_TEMPERATURE = "Max safe temperature:"
@@ -186,7 +186,7 @@ class PreferencesUI:
 
     STATUS_UNSAVED_CHANGES = "Unsaved changes"
     STATUS_AUTOTUNE_UNAVAILABLE = "Autotune unavailable: no backend handle"
-    STATUS_PID_NOT_AVAILABLE = "PID tuning is unavailable for this runtime backend."
+    STATUS_CONTROL_TUNING_NOT_AVAILABLE = "Control tuning is unavailable for this runtime backend."
     STATUS_AUTOTUNE_CANCELED = "Autotune canceled"
     STATUS_AUTOTUNE_RUNNING = "Running autotune..."
     STATUS_AUTOTUNE_FAILED_TEMPLATE = "Autotune failed: {error}"
@@ -200,8 +200,8 @@ class PreferencesUI:
     NUMERIC_EDITOR_HEIGHT_COMPACT = 24
     REFRESH_INTERVAL_STEP_SMALL_MS = 10
     REFRESH_INTERVAL_STEP_LARGE_MS = 100
-    PID_STEP_SMALL = 0.005
-    PID_STEP_LARGE = 0.1
+    CONTROL_STEP_SMALL = 0.005
+    CONTROL_STEP_LARGE = 0.1
 
     DIALOG_AUTOTUNE_TITLE = DialogText.AUTOTUNE_RUN_TITLE
     DIALOG_AUTOTUNE_MESSAGE = DialogText.AUTOTUNE_RUN_MESSAGE

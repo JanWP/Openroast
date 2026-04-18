@@ -87,12 +87,14 @@ def autotune_pid_table_for_backend(
                 test_duration_s=test_duration_s,
                 min_rise_c=min_rise_c,
             )
-            results[str(int(speed))] = {
+            row = {
                 "kp": float(tune["kp"]),
                 "ki": float(tune["ki"]),
                 "kd": float(tune["kd"]),
                 "details": dict(tune),
             }
+            row.update(_extract_plant_keys_for_profile_row(tune))
+            results[str(int(speed))] = row
             completed_speeds.append(int(speed))
         except Exception as exc:
             failed_speed = int(speed)
@@ -168,6 +170,40 @@ def _run_backend_autotune(backend_autotune, *, settle_s, test_duration_s, min_ri
     except TypeError:
         # Backward-compatible path for adapters exposing no kwargs.
         return backend_autotune()
+
+
+def _extract_plant_keys_for_profile_row(tune):
+    """Extract plant-model keys using one canonical tune contract.
+
+    Canonical mapping:
+    - process_gain -> K
+    - tau_s -> tau_s
+    - dead_time_s -> L
+    """
+    if not isinstance(tune, dict):
+        return {}
+
+    def _as_positive_float(value):
+        try:
+            fvalue = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not (math.isfinite(fvalue) and fvalue > 0.0):
+            return None
+        return fvalue
+
+    K = _as_positive_float(tune.get("process_gain"))
+    tau_s = _as_positive_float(tune.get("tau_s"))
+    L = _as_positive_float(tune.get("dead_time_s"))
+
+    profile = {}
+    if K is not None:
+        profile["K"] = float(K)
+    if tau_s is not None:
+        profile["tau_s"] = float(tau_s)
+    if L is not None:
+        profile["L"] = float(L)
+    return profile
 
 
 def _run_generic_autotune(roaster, *, settle_s, test_duration_s, min_rise_c):
