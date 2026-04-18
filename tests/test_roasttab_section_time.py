@@ -12,6 +12,9 @@ from openroast.views.roasttab import RoastTab
 class _FakeRoaster:
     def __init__(self, remaining_s=0):
         self.time_remaining_s = remaining_s
+        self.total_time_s = 0
+        self.time_remaining = remaining_s
+        self.total_time = 0
         self.max_fan_speed = 9
         self.fan_speed = 1
         self.cancel_autotune_calls = 0
@@ -38,6 +41,12 @@ class _FakeRecipes:
         return self._loaded
 
     def get_current_section_duration(self):
+        return self._current_section_duration
+
+    def get_num_recipe_sections(self):
+        return 1 if self._loaded else 0
+
+    def get_section_duration(self, _index):
         return self._current_section_duration
 
     def reset_roaster_settings(self):

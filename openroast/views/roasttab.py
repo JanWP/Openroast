@@ -93,6 +93,8 @@ class RoastTab(QtWidgets.QWidget):
         self._confirm_on_stop = False
         self._confirm_on_clear = False
         self._reset_graph_axis_tracking()
+        self._graph_window_max_s_cached = None
+        self._graph_window_cache_mode = "elapsed"
 
         # Create the tab ui.
         self.create_ui()
@@ -203,9 +205,78 @@ class RoastTab(QtWidgets.QWidget):
         current_temp_c = self._get_roaster_current_temp_c()
         self.graphWidget.append_x(current_temp_c)
         self._update_graph_temperature_axis_reference(current_temp_c)
-        self.graphWidget.set_time_window_max_seconds(
-            self._get_graph_time_window_max_s(self._get_roaster_total_time_s())
+        elapsed_s = self._get_roaster_total_time_s()
+
+        if self.recipes.check_recipe_loaded():
+            if (
+                self._graph_window_max_s_cached is None
+                or self._graph_window_cache_mode != "recipe"
+                or elapsed_s >= int(self._graph_window_max_s_cached)
+            ):
+                self._refresh_graph_time_window_cache(elapsed_s=elapsed_s, force=True)
+        else:
+            # Non-recipe paths (e.g. manual roast/autotune) use a fixed cycle window
+            # when remaining time is known, avoiding per-tick x-range growth redraws.
+            self._refresh_graph_time_window_cache(elapsed_s=elapsed_s)
+
+        window_max_s = self._graph_window_max_s_cached
+        if window_max_s is None:
+            window_max_s = max(1, int(elapsed_s))
+        self.graphWidget.set_time_window_max_seconds(window_max_s)
+
+    def _refresh_graph_time_window_cache(self, *, elapsed_s=None, force=False):
+        if elapsed_s is None:
+            elapsed_s = self._get_roaster_total_time_s()
+        elapsed_s = int(max(0, elapsed_s))
+
+        get_state = getattr(self.roaster, "get_roaster_state", None)
+        state = str(get_state()) if callable(get_state) else ""
+        active_cycle = state in ("roasting", "cooling")
+        remaining_s = int(max(0, self._get_roaster_time_remaining_s()))
+        runtime_cycle_window_s = (
+            max(1, int(elapsed_s + remaining_s))
+            if active_cycle and remaining_s > 0
+            else None
         )
+
+        if self.recipes.check_recipe_loaded():
+            # Recipe section bounds are the baseline, but runtime section edits
+            # (SECTION DURATION slider) update remaining time only. Keep the
+            # graph window aligned to the active cycle horizon when it extends
+            # beyond the static recipe boundary.
+            window_max_s = self._get_graph_time_window_max_s(elapsed_s)
+            if runtime_cycle_window_s is not None:
+                window_max_s = max(int(window_max_s), int(runtime_cycle_window_s))
+            if force or window_max_s != self._graph_window_max_s_cached:
+                self._graph_window_max_s_cached = window_max_s
+            self._graph_window_cache_mode = "recipe"
+            return self._graph_window_max_s_cached
+
+
+        if active_cycle and remaining_s > 0:
+            cycle_window_s = max(1, int(elapsed_s + remaining_s))
+            if (
+                force
+                or self._graph_window_cache_mode != "cycle"
+                or self._graph_window_max_s_cached is None
+                or cycle_window_s > int(self._graph_window_max_s_cached)
+            ):
+                self._graph_window_max_s_cached = cycle_window_s
+            self._graph_window_cache_mode = "cycle"
+        else:
+            self._graph_window_max_s_cached = None
+            self._graph_window_cache_mode = "elapsed"
+
+        return self._graph_window_max_s_cached
+
+    def _on_section_duration_window_commit(self):
+        # Recompute graph window once per committed duration edit (not per drag tick).
+        self._refresh_graph_time_window_cache(
+            elapsed_s=self._get_roaster_total_time_s(),
+            force=True,
+        )
+        if self._graph_window_max_s_cached is not None:
+            self.graphWidget.set_time_window_max_seconds(self._graph_window_max_s_cached)
 
     def _reset_graph_axis_tracking(self):
         self._graph_measured_peak_c = float(self._min_temp_c)
@@ -623,6 +694,7 @@ class RoastTab(QtWidgets.QWidget):
         self.sectionDurationSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.sectionDurationSlider.setRange(0, 900)
         self.sectionDurationSlider.valueChanged.connect(self.update_section_duration_slider)
+        self.sectionDurationSlider.sliderReleased.connect(self._on_section_duration_window_commit)
         sliderPanel.addWidget(self.sectionDurationSlider, 3, 0)
 
         # Create mini duration spin box.
@@ -633,6 +705,7 @@ class RoastTab(QtWidgets.QWidget):
         self.sectionDurationSpinBox.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
         self.sectionDurationSpinBox.setDisplayFormat("mm:ss")
         self.sectionDurationSpinBox.timeChanged.connect(self.update_section_duration_spin_box)
+        self.sectionDurationSpinBox.editingFinished.connect(self._on_section_duration_window_commit)
         sliderPanel.addWidget(self.sectionDurationSpinBox, 3, 1)
 
         # Backward-compatible aliases used by older tests/callers.
@@ -898,6 +971,7 @@ class RoastTab(QtWidgets.QWidget):
 
         # Clear roast graph.
         self._reset_graph_axis_tracking()
+        self._refresh_graph_time_window_cache(elapsed_s=0, force=True)
         self.graphWidget.clear_graph()
 
     def _reset_backend_simulation_state(self):
@@ -935,6 +1009,10 @@ class RoastTab(QtWidgets.QWidget):
         self.update_remaining_section_duration()
         self.update_target_temp()
         self.update_fan_info()
+        self._refresh_graph_time_window_cache(
+            elapsed_s=self._get_roaster_total_time_s(),
+            force=True,
+        )
 
     def next_section(self):
         self.recipes.move_to_next_section()
@@ -945,6 +1023,10 @@ class RoastTab(QtWidgets.QWidget):
         self.update_remaining_section_duration()
         self.update_target_temp()
         self.update_fan_info()
+        self._refresh_graph_time_window_cache(
+            elapsed_s=self._get_roaster_total_time_s(),
+            force=True,
+        )
 
     def schedule_update_controllers(self):
         # print("roasttab.schedule_update_controllers called")
@@ -980,6 +1062,10 @@ class RoastTab(QtWidgets.QWidget):
             y_axis_step_c=app_config.get_plot_y_axis_step_c(config),
             show_grid=config["plot"]["showGrid"],
             line_width=config["plot"]["lineWidth"],
+        )
+        self._refresh_graph_time_window_cache(
+            elapsed_s=self._get_roaster_total_time_s(),
+            force=True,
         )
 
         self._confirm_on_stop = bool(config["roast"]["confirmOnStop"])

@@ -30,9 +30,31 @@ class _FakeRecipes:
 
 
 class RoastTabGraphWindowTests(unittest.TestCase):
+    class _FakeGraphWidget:
+        def __init__(self):
+            self.last_reference = None
+            self.last_window_max_s = None
+            self.append_calls = 0
+
+        def append_x(self, _value):
+            self.append_calls += 1
+
+        def set_temperature_axis_reference_c(self, reference_c):
+            self.last_reference = reference_c
+
+        def set_time_window_max_seconds(self, max_seconds):
+            self.last_window_max_s = max_seconds
+
     def _make_roast_tab(self, section_times):
         roast_tab = RoastTab.__new__(RoastTab)
         roast_tab.recipes = _FakeRecipes(section_times)
+        roast_tab._graph_window_max_s_cached = None
+        roast_tab._graph_window_cache_mode = "elapsed"
+        roast_tab.graphWidget = self._FakeGraphWidget()
+        roast_tab._get_roaster_current_temp_c = lambda: 100
+        roast_tab._update_graph_temperature_axis_reference = lambda _temp_c: None
+        roast_tab._get_roaster_time_remaining_s = lambda: 0
+        roast_tab.roaster = type("R", (), {"get_roaster_state": lambda self: "idle"})()
         return roast_tab
 
     def test_section_boundary_switch_happens_exactly_at_boundary(self):
@@ -66,14 +88,7 @@ class RoastTabGraphWindowTests(unittest.TestCase):
         )
         roast_tab._get_roaster_target_temp_c = lambda: 150
 
-        class _FakeGraphWidget:
-            def __init__(self):
-                self.last_reference = None
-
-            def set_temperature_axis_reference_c(self, reference_c):
-                self.last_reference = reference_c
-
-        roast_tab.graphWidget = _FakeGraphWidget()
+        roast_tab.graphWidget = self._FakeGraphWidget()
 
         ref0 = roast_tab._update_graph_temperature_axis_reference(80)
         self.assertEqual(ref0, 160.0)
@@ -89,6 +104,63 @@ class RoastTabGraphWindowTests(unittest.TestCase):
         roast_tab._get_roaster_target_temp_c = lambda: 120
         ref2 = roast_tab._update_graph_temperature_axis_reference(90)
         self.assertEqual(ref2, 190.0)
+
+    def test_graph_get_data_uses_cached_recipe_window_without_per_tick_recompute(self):
+        roast_tab = self._make_roast_tab([10, 20])
+        call_count = {"count": 0}
+
+        def _counted_window(elapsed_s):
+            call_count["count"] += 1
+            return 30
+
+        roast_tab._get_graph_time_window_max_s = _counted_window
+        elapsed = {"value": 5}
+        roast_tab._get_roaster_total_time_s = lambda: elapsed["value"]
+
+        roast_tab.graph_get_data()
+        elapsed["value"] = 6
+        roast_tab.graph_get_data()
+
+        self.assertEqual(call_count["count"], 1)
+        self.assertEqual(roast_tab.graphWidget.last_window_max_s, 30)
+
+    def test_graph_get_data_uses_fixed_cycle_window_for_non_recipe_runtime(self):
+        roast_tab = self._make_roast_tab([])
+        elapsed = {"value": 5}
+        remaining = {"value": 20}
+        roast_tab._get_roaster_total_time_s = lambda: elapsed["value"]
+        roast_tab._get_roaster_time_remaining_s = lambda: remaining["value"]
+        roast_tab.roaster = type("R", (), {"get_roaster_state": lambda self: "roasting"})()
+
+        roast_tab.graph_get_data()
+        first_window = roast_tab.graphWidget.last_window_max_s
+
+        # Simulate the next tick in the same cycle: elapsed + remaining stays constant.
+        elapsed["value"] = 6
+        remaining["value"] = 19
+        roast_tab.graph_get_data()
+
+        self.assertEqual(first_window, 25)
+        self.assertEqual(roast_tab.graphWidget.last_window_max_s, 25)
+
+    def test_graph_get_data_recipe_mode_uses_runtime_cycle_window_when_section_extended(self):
+        roast_tab = self._make_roast_tab([10, 20])
+        elapsed = {"value": 9}
+        remaining = {"value": 30}
+        roast_tab._get_roaster_total_time_s = lambda: elapsed["value"]
+        roast_tab._get_roaster_time_remaining_s = lambda: remaining["value"]
+        roast_tab.roaster = type("R", (), {"get_roaster_state": lambda self: "roasting"})()
+
+        # Recipe boundary at elapsed=9 is 10, but runtime section extension
+        # should move the window to elapsed+remaining=39.
+        roast_tab.graph_get_data()
+        self.assertEqual(roast_tab.graphWidget.last_window_max_s, 39)
+
+        # Next tick in same section keeps a stable horizon as remaining counts down.
+        elapsed["value"] = 10
+        remaining["value"] = 29
+        roast_tab.graph_get_data()
+        self.assertEqual(roast_tab.graphWidget.last_window_max_s, 39)
 
 
 if __name__ == "__main__":
