@@ -11,6 +11,15 @@ param (
     [switch]$bump_ver_iter = $false,  # increment iteration for dev/a/b/rc by default
     [switch]$make_installer = $false # create the installer
 )
+
+$allow_legacy_installer = ($env:OPENROAST_ALLOW_LEGACY_INSTALLER -eq "1")
+if( -not $allow_legacy_installer )
+{
+    Write-Error "Legacy Windows installer flow is deprecated and disabled by default. Use supported setuptools/pyproject packaging instead. If you must run this legacy path temporarily, set OPENROAST_ALLOW_LEGACY_INSTALLER=1."
+    exit 1
+}
+Write-Warning "Using deprecated legacy Windows installer flow (OPENROAST_ALLOW_LEGACY_INSTALLER=1)."
+
 # remember current directory
 $crnt_folder = $PSScriptRoot
 # detect whether we're running on 32-bit or 64-bit OS
@@ -32,11 +41,12 @@ if( $tool_install )
     $tempDir = [io.path]::GetTempPath()
     # prepare WebClient for use
     $wclient = New-Object System.Net.WebClient
-    # download python 3.5 - 64-bit or 32-bit
+    # download Python matching the current project baseline
+    $pythonVersion = "3.13.3"
     $pythonInstallerFileName = ""
-    if( 64 -eq $os_bitness ){ $pythonInstallerFileName = "python-3.5.3-amd64.exe" }
-    if( 32 -eq $os_bitness ){ $pythonInstallerFileName = "python-3.5.3.exe" }
-    $pythonUrl = "https://www.python.org/ftp/python/3.5.3/" + $pythonInstallerFileName
+    if( 64 -eq $os_bitness ){ $pythonInstallerFileName = "python-$pythonVersion-amd64.exe" }
+    if( 32 -eq $os_bitness ){ $pythonInstallerFileName = "python-$pythonVersion.exe" }
+    $pythonUrl = "https://www.python.org/ftp/python/$pythonVersion/" + $pythonInstallerFileName
     $pythonInstallerDestFileName = $tempDir + $pythonInstallerFileName
     $destFileExists = Test-Path $pythonInstallerDestFileName
     if( $destFileExists -eq $true ) {

@@ -1,4 +1,12 @@
+import os
 from setuptools import setup
+
+if os.environ.get("OPENROAST_ALLOW_LEGACY_INSTALLER") != "1":
+    raise SystemExit(
+        "Legacy py2app packaging is deprecated and disabled by default. "
+        "Use supported setuptools/pyproject packaging instead. "
+        "Set OPENROAST_ALLOW_LEGACY_INSTALLER=1 only for temporary legacy recovery."
+    )
 
 APP = ['openroast/openroastapp.py']
 DATA_FILES = []

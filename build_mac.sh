@@ -1,5 +1,15 @@
 #!/bin/sh
 
+if [ "${OPENROAST_ALLOW_LEGACY_INSTALLER:-}" != "1" ]; then
+    echo "Legacy macOS installer flow is deprecated and disabled by default."
+    echo "Use supported setuptools/pyproject packaging instead."
+    echo "If you must run this legacy path temporarily, set OPENROAST_ALLOW_LEGACY_INSTALLER=1."
+    exit 1
+fi
+echo "WARNING: using deprecated legacy macOS installer flow (OPENROAST_ALLOW_LEGACY_INSTALLER=1)."
+
+PYTHON_BASELINE="3.13.3"
+
 # COMMAND LINE ARGS PARSING
 # Use -gt 1 to consume two arguments per pass in the loop (e.g. each
 # argument has a corresponding value to go with it).
@@ -107,23 +117,23 @@ if [[ $? != 0 ]] ; then
 fi
 
 # PYTHON INSTALL
-echo 'Checking for python 3.5.3...'
-# We use python 3.5 because PyQt5 is easier to deal with in 3.5+
+echo "Checking for python ${PYTHON_BASELINE}..."
+# Legacy path baseline sync: match project runtime baseline.
 # Use pyenv to install a specific python version
 which -s pyenv
 if [[ $? != 0 ]] ; then
     # Install pyenv
     brew install pyenv 
 fi
-# check if 3.5.3 already installed, install & switch as necessary
+# check if baseline python is already installed, install & switch as necessary
 installed_py_versions=$(pyenv versions)
 # echo "${installed_py_versions}"
-if [[ "${installed_py_versions}" != *"3.5.3"* ]]; then
-    echo "Installing python 3.5.3 with enable-framework option..."
-    env PYTHON_CONFIGURE_OPTS="--enable-framework" pyenv install 3.5.3  
+if [[ "${installed_py_versions}" != *"${PYTHON_BASELINE}"* ]]; then
+    echo "Installing python ${PYTHON_BASELINE} with enable-framework option..."
+    env PYTHON_CONFIGURE_OPTS="--enable-framework" pyenv install "${PYTHON_BASELINE}"
 fi
-echo "Switching to python 3.5.3..."
-pyenv local 3.5.3
+echo "Switching to python ${PYTHON_BASELINE}..."
+pyenv local "${PYTHON_BASELINE}"
 pyenv versions
 # for this to work, you'll need some stuff in your .bash_profile
 if [ ! -f ~/.bash_profile ]; then
@@ -225,8 +235,8 @@ if "${make_install}" ; then
     rm setup_py2app_"${version_string}".py
     # now, for some serious manually-powered stripping of unecessary files
     echo "Manually stripping unnecessary PyQt5 components..."
-    app_folder_pyqt5_root='dist/Openroast '"${version_string}"'.app/Contents/Resources/lib/python3.5/PyQt5'
-    app_folder_matplotlib_root='dist/Openroast '"${version_string}"'.app/Contents/Resources/lib/python3.5/matplotlib'
+    app_folder_pyqt5_root='dist/Openroast '"${version_string}"'.app/Contents/Resources/lib/python3.13/PyQt5'
+    app_folder_matplotlib_root='dist/Openroast '"${version_string}"'.app/Contents/Resources/lib/python3.13/matplotlib'
     # ----------
     # pkgs/PyQt5
     # ----------
