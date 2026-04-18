@@ -13,14 +13,13 @@ class AppConfigExpertTests(ConfigSandboxMixin, unittest.TestCase):
         cfg = app_config.normalize_config({})
         self.assertIn("control", cfg)
         self.assertIn("safety", cfg)
-        self.assertIn("pid", cfg["control"])
-        self.assertIn("pidProfiles", cfg["control"])
+        self.assertIn("plantProfiles", cfg["control"])
         self.assertIn("autotuneZnAlpha", cfg["control"])
         self.assertTrue(cfg["safety"]["heaterCutoffEnabled"])
 
-    def test_normalize_builds_pid_profiles_for_known_backends(self):
+    def test_normalize_builds_plant_profiles_for_known_backends(self):
         cfg = app_config.normalize_config({})
-        profiles = cfg["control"]["pidProfiles"]
+        profiles = cfg["control"]["plantProfiles"]
 
         for backend in app_config.VALID_BACKENDS:
             with self.subTest(backend=backend):
@@ -30,25 +29,22 @@ class AppConfigExpertTests(ConfigSandboxMixin, unittest.TestCase):
                     set(profiles[backend].keys()),
                 )
 
-    def test_get_set_pid_for_backend_speed_roundtrip(self):
+    def test_get_set_plant_for_backend_speed_roundtrip(self):
         cfg = app_config.normalize_config({})
-        cfg = app_config.set_pid_for_backend_speed(cfg, "local-mock", 4, 0.25, 0.05, 0.10)
-        pid_values = app_config.get_pid_for_backend_speed(cfg, "local-mock", 4)
+        cfg = app_config.set_plant_for_backend_speed(cfg, "local-mock", 4, K=1.25, tau_s=20.5, L=0.7)
+        row = app_config.get_profile_row_for_backend_speed(cfg, "local-mock", 4)
 
-        self.assertEqual(pid_values["kp"], 0.25)
-        self.assertEqual(pid_values["ki"], 0.05)
-        self.assertEqual(pid_values["kd"], 0.10)
+        self.assertEqual(row["K"], 1.25)
+        self.assertEqual(row["tau_s"], 20.5)
+        self.assertEqual(row["L"], 0.7)
 
-    def test_set_pid_for_backend_speed_preserves_existing_plant_keys(self):
+    def test_set_plant_for_backend_speed_migrates_legacy_pidprofiles_row(self):
         cfg = app_config.normalize_config(
             {
                 "control": {
                     "pidProfiles": {
                         "local-mock": {
                             "2": {
-                                "kp": 0.1,
-                                "ki": 0.01,
-                                "kd": 0.02,
                                 "K": 2.1,
                                 "tau_s": 25.0,
                                 "L": 0.4,
@@ -59,60 +55,28 @@ class AppConfigExpertTests(ConfigSandboxMixin, unittest.TestCase):
             }
         )
 
-        cfg = app_config.set_pid_for_backend_speed(cfg, "local-mock", 2, 0.25, 0.05, 0.10)
-        row = cfg["control"]["pidProfiles"]["local-mock"]["2"]
-        self.assertEqual(row["kp"], 0.25)
-        self.assertEqual(row["ki"], 0.05)
-        self.assertEqual(row["kd"], 0.10)
-        self.assertEqual(row["K"], 2.1)
-        self.assertEqual(row["tau_s"], 25.0)
-        self.assertEqual(row["L"], 0.4)
+        cfg = app_config.set_plant_for_backend_speed(cfg, "local-mock", 2, K=2.2, tau_s=26.0, L=0.5)
+        row = cfg["control"]["plantProfiles"]["local-mock"]["2"]
+        self.assertEqual(row["K"], 2.2)
+        self.assertEqual(row["tau_s"], 26.0)
+        self.assertEqual(row["L"], 0.5)
 
-    def test_set_pid_and_plant_for_backend_speed_sets_plant_keys(self):
+    def test_set_plant_for_backend_speed_sets_plant_keys(self):
         cfg = app_config.normalize_config(app_config.DEFAULT_CONFIG)
 
-        cfg = app_config.set_pid_and_plant_for_backend_speed(
+        cfg = app_config.set_plant_for_backend_speed(
             cfg,
             "local-mock",
             3,
-            kp=0.22,
-            ki=0.023,
-            kd=0.024,
             K=1.95,
             tau_s=28.0,
             L=0.55,
         )
 
-        row = cfg["control"]["pidProfiles"]["local-mock"]["3"]
-        self.assertAlmostEqual(row["kp"], 0.22, places=6)
-        self.assertAlmostEqual(row["ki"], 0.023, places=6)
-        self.assertAlmostEqual(row["kd"], 0.024, places=6)
+        row = cfg["control"]["plantProfiles"]["local-mock"]["3"]
         self.assertAlmostEqual(row["K"], 1.95, places=6)
         self.assertAlmostEqual(row["tau_s"], 28.0, places=6)
         self.assertAlmostEqual(row["L"], 0.55, places=6)
-
-    def test_migrate_legacy_pid_to_backend_profiles(self):
-        cfg = app_config.normalize_config(
-            {
-                "app": {"backendDefault": "local"},
-                "control": {
-                    "pid": {"kp": 0.4, "ki": 0.06, "kd": 0.8},
-                },
-            }
-        )
-
-        migrated = app_config.migrate_legacy_pid_to_backend_profiles(
-            cfg,
-            backend="local",
-            runtime_fan_max=5,
-        )
-
-        self.assertNotIn("pid", migrated["control"])
-        for fan in range(1, 6):
-            row = migrated["control"]["pidProfiles"]["local"][str(fan)]
-            self.assertEqual(row["kp"], 0.4)
-            self.assertEqual(row["ki"], 0.06)
-            self.assertEqual(row["kd"], 0.8)
 
     def test_save_config_omits_legacy_control_pid_field(self):
         cfg = app_config.normalize_config({})
@@ -127,7 +91,7 @@ class AppConfigExpertTests(ConfigSandboxMixin, unittest.TestCase):
 
         self.assertIn("control", saved)
         self.assertNotIn("pid", saved["control"])
-        self.assertIn("pidProfiles", saved["control"])
+        self.assertIn("plantProfiles", saved["control"])
 
     def test_load_config_auto_migrates_v1_and_preserves_startup_settings(self):
         legacy_v1 = {
@@ -162,18 +126,15 @@ class AppConfigExpertTests(ConfigSandboxMixin, unittest.TestCase):
 
         self.assertEqual(migrated_on_disk["configVersion"], app_config.CONFIG_VERSION)
         self.assertNotIn("pid", migrated_on_disk["control"])
-        self.assertIn("pidProfiles", migrated_on_disk["control"])
+        self.assertIn("plantProfiles", migrated_on_disk["control"])
 
     def test_save_load_preserves_optional_plant_keys(self):
         cfg = app_config.normalize_config(
             {
                 "control": {
-                    "pidProfiles": {
+                    "plantProfiles": {
                         "local": {
                             "1": {
-                                "kp": 0.3,
-                                "ki": 0.04,
-                                "kd": 0.05,
                                 "K": 1.9,
                                 "tau_s": 27.0,
                                 "L": 0.6,
@@ -190,7 +151,7 @@ class AppConfigExpertTests(ConfigSandboxMixin, unittest.TestCase):
                 app_config.save_config(cfg)
                 loaded = app_config.load_config()
 
-        row = loaded["control"]["pidProfiles"]["local"]["1"]
+        row = loaded["control"]["plantProfiles"]["local"]["1"]
         self.assertEqual(row["K"], 1.9)
         self.assertEqual(row["tau_s"], 27.0)
         self.assertEqual(row["L"], 0.6)
@@ -200,12 +161,10 @@ class AppConfigExpertTests(ConfigSandboxMixin, unittest.TestCase):
     def test_update_config_clamps_expert_values(self):
         cfg = app_config.update_config(
             app_config.DEFAULT_CONFIG,
-            pid_kp=99.0,
             sample_period_seconds=0.001,
             autotune_zn_alpha=99.0,
             safety_max_temp_c=999.0,
         )
-        self.assertEqual(cfg["control"]["pid"]["kp"], app_config.MAX_PID_KP)
         self.assertEqual(cfg["control"]["samplePeriodSeconds"], app_config.MIN_SAMPLE_PERIOD_SECONDS)
         self.assertEqual(cfg["control"]["autotuneZnAlpha"], app_config.MAX_AUTOTUNE_ZN_ALPHA)
         self.assertEqual(cfg["safety"]["maxTemp"]["unit"], TEMP_UNIT_C)

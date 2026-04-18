@@ -87,13 +87,7 @@ def autotune_pid_table_for_backend(
                 test_duration_s=test_duration_s,
                 min_rise_c=min_rise_c,
             )
-            row = {
-                "kp": float(tune["kp"]),
-                "ki": float(tune["ki"]),
-                "kd": float(tune["kd"]),
-                "details": dict(tune),
-            }
-            row.update(_extract_plant_keys_for_profile_row(tune))
+            row = _extract_plant_keys_for_profile_row(tune)
             results[str(int(speed))] = row
             completed_speeds.append(int(speed))
         except Exception as exc:

@@ -58,8 +58,8 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
 
     def test_save_preferences_updates_only_runtime_backend_selected_fan_row(self):
         base = app_config.normalize_config(app_config.DEFAULT_CONFIG)
-        base = app_config.set_pid_for_backend_speed(base, "local-mock", 2, 0.11, 0.012, 0.015)
-        base = app_config.set_pid_for_backend_speed(base, "usb", 2, 0.7, 0.08, 0.09)
+        base = app_config.set_plant_for_backend_speed(base, "local-mock", 2, K=1.11, tau_s=22.0, L=0.4)
+        base = app_config.set_plant_for_backend_speed(base, "usb", 2, K=1.7, tau_s=18.0, L=0.3)
 
         saved_payloads = []
 
@@ -83,22 +83,19 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
 
         self.assertEqual(len(saved_payloads), 1)
         saved = saved_payloads[0]
-        local_row = saved["control"]["pidProfiles"]["local-mock"]["2"]
-        usb_row = saved["control"]["pidProfiles"]["usb"]["2"]
-        self.assertAlmostEqual(local_row["kp"], 0.11, places=6)
-        self.assertAlmostEqual(local_row["ki"], 0.012, places=6)
-        self.assertAlmostEqual(local_row["kd"], 0.015, places=6)
+        local_row = saved["control"]["plantProfiles"]["local-mock"]["2"]
+        usb_row = saved["control"]["plantProfiles"]["usb"]["2"]
         self.assertAlmostEqual(local_row["K"], 1.22, places=6)
         self.assertAlmostEqual(local_row["tau_s"], 33.0, places=6)
         self.assertAlmostEqual(local_row["L"], 0.62, places=6)
-        self.assertAlmostEqual(usb_row["kp"], 0.7, places=6)
-        self.assertAlmostEqual(usb_row["ki"], 0.08, places=6)
-        self.assertAlmostEqual(usb_row["kd"], 0.09, places=6)
+        self.assertAlmostEqual(usb_row["K"], 1.7, places=6)
+        self.assertAlmostEqual(usb_row["tau_s"], 18.0, places=6)
+        self.assertAlmostEqual(usb_row["L"], 0.3, places=6)
 
     def test_unsaved_plant_edits_are_preserved_when_switching_fan_speeds(self):
         base = app_config.normalize_config(app_config.DEFAULT_CONFIG)
-        base = app_config.set_pid_for_backend_speed(base, "local-mock", 1, 0.11, 0.012, 0.015)
-        base = app_config.set_pid_for_backend_speed(base, "local-mock", 2, 0.21, 0.022, 0.025)
+        base = app_config.set_plant_for_backend_speed(base, "local-mock", 1, K=1.11, tau_s=22.0, L=0.4)
+        base = app_config.set_plant_for_backend_speed(base, "local-mock", 2, K=1.21, tau_s=20.0, L=0.6)
 
         widget = PreferencesTab(config=base, runtime_backend="local-mock")
         try:
@@ -336,7 +333,7 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
             self.assertIsNone(widget._autotune_worker)
             self.assertEqual(widget.statusLabel.text(), PreferencesUI.STATUS_AUTOTUNE_COMPLETE_AND_SAVED)
             self.assertEqual(roaster.calls, [1, 2, 3])
-            row3 = widget._config["control"]["pidProfiles"]["local-mock"]["3"]
+            row3 = widget._config["control"]["plantProfiles"]["local-mock"]["3"]
             self.assertIn("K", row3)
             self.assertIn("tau_s", row3)
             self.assertIn("L", row3)
@@ -372,9 +369,9 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
                 }
 
         base = app_config.normalize_config(app_config.DEFAULT_CONFIG)
-        base = app_config.set_pid_for_backend_speed(base, "local-mock", 1, 0.11, 0.012, 0.015)
-        base = app_config.set_pid_for_backend_speed(base, "local-mock", 2, 0.21, 0.022, 0.025)
-        base = app_config.set_pid_for_backend_speed(base, "local-mock", 3, 0.31, 0.032, 0.035)
+        base = app_config.set_plant_for_backend_speed(base, "local-mock", 1, K=1.11, tau_s=22.0, L=0.4)
+        base = app_config.set_plant_for_backend_speed(base, "local-mock", 2, K=1.21, tau_s=20.0, L=0.6)
+        base = app_config.set_plant_for_backend_speed(base, "local-mock", 3, K=1.31, tau_s=18.0, L=0.8)
 
         saved_payloads = []
 
@@ -399,18 +396,18 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
 
             self.assertEqual(len(saved_payloads), 1)
             saved = saved_payloads[0]
-            row1 = saved["control"]["pidProfiles"]["local-mock"]["1"]
-            row2 = saved["control"]["pidProfiles"]["local-mock"]["2"]
-            row3 = saved["control"]["pidProfiles"]["local-mock"]["3"]
+            row1 = saved["control"]["plantProfiles"]["local-mock"]["1"]
+            row2 = saved["control"]["plantProfiles"]["local-mock"]["2"]
+            row3 = saved["control"]["plantProfiles"]["local-mock"]["3"]
 
             # Fan 1 tuned and saved.
-            self.assertAlmostEqual(row1["kp"], 2.0, places=6)
+            self.assertAlmostEqual(row1["K"], 2.1, places=6)
             self.assertIn("K", row1)
             self.assertIn("tau_s", row1)
             self.assertIn("L", row1)
             # Fan 2 failed, fan 3 not run: keep prior values.
-            self.assertAlmostEqual(row2["kp"], 0.21, places=6)
-            self.assertAlmostEqual(row3["kp"], 0.31, places=6)
+            self.assertAlmostEqual(row2["K"], 1.21, places=6)
+            self.assertAlmostEqual(row3["K"], 1.31, places=6)
             self.assertIn("failed at fan 2", widget.statusLabel.text())
         finally:
             widget.close()

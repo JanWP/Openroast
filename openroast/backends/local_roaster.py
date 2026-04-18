@@ -131,30 +131,37 @@ class LocalRoaster:
             return False
 
         runtime_fan_speed = int(max(1, getattr(self._controller, "fan_speed", 1)))
-        profile_row = app_config.get_pid_profile_row_for_backend_speed(
+        profile_row = app_config.get_profile_row_for_backend_speed(
             self._runtime_preferences_config,
             self._profile_backend_key,
             runtime_fan_speed,
         )
+        runtime_kwargs = self._build_runtime_kwargs(
+            self._runtime_preferences_config,
+            profile_row,
+            include_safety=False,
+        )
+        apply_runtime_config(**runtime_kwargs)
+        return True
+
+    def _build_runtime_kwargs(self, config, profile_row, *, include_safety):
         runtime_kwargs = {
             "autotune_zn_alpha": float(
-                self._runtime_preferences_config["control"].get(
+                config["control"].get(
                     "autotuneZnAlpha",
                     parameter_catalog.AUTOTUNE_ZN_ALPHA_DEFAULT,
                 )
             ),
         }
-        plant_kwargs = self._extract_plant_runtime_kwargs(profile_row)
-        if plant_kwargs:
-            runtime_kwargs.update(plant_kwargs)
-        else:
+        runtime_kwargs.update(self._extract_plant_runtime_kwargs(profile_row))
+        if include_safety:
             runtime_kwargs.update(
-                kp=float(profile_row["kp"]),
-                ki=float(profile_row["ki"]),
-                kd=float(profile_row["kd"]),
+                pwm_cycle_s=float(config["control"]["pwmCycleSeconds"]),
+                sample_period_s=float(config["control"]["samplePeriodSeconds"]),
+                max_temp_k=celsius_to_kelvin(app_config.get_safety_max_temp_c(config)),
+                heater_cutoff_enabled=bool(config["safety"]["heaterCutoffEnabled"]),
             )
-        apply_runtime_config(**runtime_kwargs)
-        return True
+        return runtime_kwargs
 
     def _register_controller_listeners(self):
         if self._listeners_registered:
@@ -418,34 +425,13 @@ class LocalRoaster:
             return False
 
         runtime_fan_speed = int(max(1, getattr(self._controller, "fan_speed", 1)))
-        profile_row = app_config.get_pid_profile_row_for_backend_speed(
+        profile_row = app_config.get_profile_row_for_backend_speed(
             config,
             self._profile_backend_key,
             runtime_fan_speed,
         )
 
-        runtime_kwargs = {
-            "autotune_zn_alpha": float(
-                config["control"].get(
-                    "autotuneZnAlpha",
-                    parameter_catalog.AUTOTUNE_ZN_ALPHA_DEFAULT,
-                )
-            ),
-            "pwm_cycle_s": float(config["control"]["pwmCycleSeconds"]),
-            "sample_period_s": float(config["control"]["samplePeriodSeconds"]),
-            "max_temp_k": celsius_to_kelvin(app_config.get_safety_max_temp_c(config)),
-            "heater_cutoff_enabled": bool(config["safety"]["heaterCutoffEnabled"]),
-        }
-
-        plant_kwargs = self._extract_plant_runtime_kwargs(profile_row)
-        if plant_kwargs:
-            runtime_kwargs.update(plant_kwargs)
-        else:
-            runtime_kwargs.update(
-                kp=float(profile_row["kp"]),
-                ki=float(profile_row["ki"]),
-                kd=float(profile_row["kd"]),
-            )
+        runtime_kwargs = self._build_runtime_kwargs(config, profile_row, include_safety=True)
 
         apply_runtime_config(**runtime_kwargs)
         self._runtime_preferences_config = config

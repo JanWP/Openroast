@@ -24,7 +24,7 @@ _DEFAULT_AUTOTUNE_ZN_ALPHA = (
 )
 
 VALID_BACKENDS = ("usb", "usb-mock", "local", "local-mock")
-CONFIG_VERSION = 2
+CONFIG_VERSION = 3
 
 # Openroast-level fan speed bounds. Backend-specific capability discovery
 # will be layered on top of these defaults in a follow-up step.
@@ -50,12 +50,6 @@ MIN_CONTROL_L_S = 0.01
 MAX_CONTROL_L_S = 60.0
 DEFAULT_CONTROL_L_S = 0.5
 
-MIN_PID_KP = 0.0
-MAX_PID_KP = 15.0
-MIN_PID_KI = 0.0
-MAX_PID_KI = 15.0
-MIN_PID_KD = 0.0
-MAX_PID_KD = 10.0
 MIN_PWM_CYCLE_SECONDS = 0.2
 MAX_PWM_CYCLE_SECONDS = 10.0
 MIN_SAMPLE_PERIOD_SECONDS = 0.05
@@ -107,12 +101,7 @@ DEFAULT_CONFIG = {
     },
     "control": {
         "autotuneZnAlpha": _DEFAULT_AUTOTUNE_ZN_ALPHA,
-        "pid": {
-            "kp": 0.108,
-            "ki": 0.0135,
-            "kd": 0.018,
-        },
-        "pidProfiles": {},
+        "plantProfiles": {},
         "pwmCycleSeconds": 1.0,
         "samplePeriodSeconds": 0.5,
     },
@@ -124,61 +113,37 @@ DEFAULT_CONFIG = {
 
 
 def _to_serializable_config(config):
-    """Return normalized config in on-disk v2 shape (without legacy shim keys)."""
+    """Return normalized config in on-disk v3 shape."""
     serialized = copy.deepcopy(normalize_config(config))
-    serialized.setdefault("control", {}).pop("pid", None)
     serialized["configVersion"] = CONFIG_VERSION
     return serialized
 
 
-def _default_pid_values():
+def _default_plant_values():
     return {
-        "kp": float(DEFAULT_CONFIG["control"]["pid"]["kp"]),
-        "ki": float(DEFAULT_CONFIG["control"]["pid"]["ki"]),
-        "kd": float(DEFAULT_CONFIG["control"]["pid"]["kd"]),
-    }
-
-
-def _normalized_pid_values(values):
-    source = values if isinstance(values, dict) else {}
-    defaults = _default_pid_values()
-    return {
-        "kp": _clamp_float(source.get("kp"), MIN_PID_KP, MAX_PID_KP, defaults["kp"]),
-        "ki": _clamp_float(source.get("ki"), MIN_PID_KI, MAX_PID_KI, defaults["ki"]),
-        "kd": _clamp_float(source.get("kd"), MIN_PID_KD, MAX_PID_KD, defaults["kd"]),
+        "K": float(DEFAULT_CONTROL_K),
+        "tau_s": float(DEFAULT_CONTROL_TAU_S),
+        "L": float(DEFAULT_CONTROL_L_S),
     }
 
 
 def _normalized_plant_values(values):
-    """Return optional normalized plant-model keys found in a profile row."""
+    """Return normalized plant-model keys for a profile row."""
     source = values if isinstance(values, dict) else {}
-    normalized = {}
-    plant_defaults = {
-        "K": DEFAULT_CONTROL_K,
-        "tau_s": DEFAULT_CONTROL_TAU_S,
-        "L": DEFAULT_CONTROL_L_S,
-    }
+    normalized = _default_plant_values()
     plant_bounds = {
         "K": (MIN_CONTROL_K, MAX_CONTROL_K),
         "tau_s": (MIN_CONTROL_TAU_S, MAX_CONTROL_TAU_S),
         "L": (MIN_CONTROL_L_S, MAX_CONTROL_L_S),
     }
     for key in PLANT_PROFILE_KEYS:
-        if key not in source:
-            continue
         try:
-            fvalue = float(source.get(key))
+            fvalue = float(source.get(key, normalized[key]))
         except (TypeError, ValueError):
-            continue
+            fvalue = normalized[key]
         low, high = plant_bounds[key]
-        normalized[key] = _clamp_float(fvalue, low, high, plant_defaults[key])
+        normalized[key] = _clamp_float(fvalue, low, high, normalized[key])
     return normalized
-
-
-def _normalized_pid_profile_row(values):
-    row = _normalized_pid_values(values)
-    row.update(_normalized_plant_values(values))
-    return row
 
 
 def _normalize_fan_index(fan_speed):
@@ -189,15 +154,18 @@ def _normalize_fan_index(fan_speed):
     return max(1, fan_index)
 
 
-def ensure_pid_profile_shape(cfg):
-    """Ensure config contains normalized per-backend/per-fan PID tables.
+def ensure_profile_shape(cfg):
+    """Ensure config contains normalized per-backend/per-fan plant profile rows.
 
     Unknown backend keys and out-of-default fan rows are preserved if valid.
     """
     if not isinstance(cfg, dict):
         cfg = {}
     control = cfg.setdefault("control", {})
-    incoming = control.get("pidProfiles")
+    incoming = control.get("plantProfiles")
+    if not isinstance(incoming, dict):
+        # Legacy key migration path.
+        incoming = control.get("pidProfiles")
     profiles = {}
 
     if isinstance(incoming, dict):
@@ -205,138 +173,50 @@ def ensure_pid_profile_shape(cfg):
             if not isinstance(backend_rows, dict):
                 continue
             normalized_rows = {}
-            for fan_key, pid_values in backend_rows.items():
+            for fan_key, row_values in backend_rows.items():
                 try:
                     fan_index = int(fan_key)
                 except (TypeError, ValueError):
                     continue
                 if fan_index < 1:
                     continue
-                normalized_rows[str(fan_index)] = _normalized_pid_profile_row(pid_values)
+                normalized_rows[str(fan_index)] = _normalized_plant_values(row_values)
             profiles[str(backend_key)] = normalized_rows
 
-    defaults = _default_pid_values()
+    defaults = _default_plant_values()
     for backend in VALID_BACKENDS:
         rows = profiles.setdefault(backend, {})
         for fan_index in range(1, FAN_SPEED_MAX + 1):
             rows.setdefault(str(fan_index), dict(defaults))
 
-    control["pidProfiles"] = profiles
+    control["plantProfiles"] = profiles
+    # Remove legacy key from normalized in-memory config.
+    control.pop("pidProfiles", None)
     return cfg
 
 
-def get_pid_for_backend_speed(config, backend, fan_speed):
+def get_profile_row_for_backend_speed(config, backend, fan_speed):
+    """Return normalized plant profile row for backend/fan (K, tau_s, L)."""
     cfg = normalize_config(config)
     backend_key = str(backend)
     fan_index = _normalize_fan_index(fan_speed)
 
-    profiles = cfg.get("control", {}).get("pidProfiles", {})
+    profiles = cfg.get("control", {}).get("plantProfiles", {})
     backend_rows = profiles.get(backend_key)
     if not isinstance(backend_rows, dict):
         backend_rows = profiles.get(cfg["app"].get("backendDefault", "usb"), {})
-    values = backend_rows.get(str(fan_index), _default_pid_values())
-    return _normalized_pid_values(values)
-
-
-def get_pid_profile_row_for_backend_speed(config, backend, fan_speed):
-    """Return normalized profile row for backend/fan (PID + optional plant keys)."""
-    cfg = normalize_config(config)
-    backend_key = str(backend)
-    fan_index = _normalize_fan_index(fan_speed)
-
-    profiles = cfg.get("control", {}).get("pidProfiles", {})
-    backend_rows = profiles.get(backend_key)
-    if not isinstance(backend_rows, dict):
-        backend_rows = profiles.get(cfg["app"].get("backendDefault", "usb"), {})
-    values = backend_rows.get(str(fan_index), _default_pid_values())
-    return _normalized_pid_profile_row(values)
-
-
-def set_pid_for_backend_speed(config, backend, fan_speed, kp, ki, kd):
-    cfg = normalize_config(config)
-    backend_key = str(backend)
-    fan_index = _normalize_fan_index(fan_speed)
-
-    ensure_pid_profile_shape(cfg)
-    cfg["control"]["pidProfiles"].setdefault(backend_key, {})
-    existing_row = cfg["control"]["pidProfiles"][backend_key].get(str(fan_index), {})
-    next_row = _normalized_pid_values({"kp": kp, "ki": ki, "kd": kd})
-    next_row.update(_normalized_plant_values(existing_row))
-    cfg["control"]["pidProfiles"][backend_key][str(fan_index)] = next_row
-    return cfg
-
-
-def set_pid_and_plant_for_backend_speed(
-    config,
-    backend,
-    fan_speed,
-    *,
-    kp,
-    ki,
-    kd,
-    K=None,
-    tau_s=None,
-    L=None,
-):
-    """Set PID values and optional plant-model keys for one backend/fan row."""
-    cfg = set_pid_for_backend_speed(config, backend, fan_speed, kp, ki, kd)
-    backend_key = str(backend)
-    fan_index = _normalize_fan_index(fan_speed)
-    row = cfg["control"]["pidProfiles"].setdefault(backend_key, {}).setdefault(str(fan_index), {})
-    plant_values = _normalized_plant_values({"K": K, "tau_s": tau_s, "L": L})
-    row.update(plant_values)
-    return cfg
+    values = backend_rows.get(str(fan_index), _default_plant_values())
+    return _normalized_plant_values(values)
 
 
 def set_plant_for_backend_speed(config, backend, fan_speed, *, K=None, tau_s=None, L=None):
-    """Set plant-model keys for one backend/fan row while preserving PID values."""
-    existing = get_pid_profile_row_for_backend_speed(config, backend, fan_speed)
-    return set_pid_and_plant_for_backend_speed(
-        config,
-        backend,
-        fan_speed,
-        kp=existing["kp"],
-        ki=existing["ki"],
-        kd=existing["kd"],
-        K=K,
-        tau_s=tau_s,
-        L=L,
-    )
-
-
-def set_profile_row_for_backend_speed(config, backend, fan_speed, values):
-    """Set one backend/fan profile row from a dict carrying PID and optional plant keys."""
-    source = values if isinstance(values, dict) else {}
-    normalized_pid = _normalized_pid_values(source)
-    return set_pid_and_plant_for_backend_speed(
-        config,
-        backend,
-        fan_speed,
-        kp=normalized_pid["kp"],
-        ki=normalized_pid["ki"],
-        kd=normalized_pid["kd"],
-        K=source.get("K"),
-        tau_s=source.get("tau_s"),
-        L=source.get("L"),
-    )
-
-
-def migrate_legacy_pid_to_backend_profiles(config, *, backend, runtime_fan_max):
-    """Copy legacy global PID values into backend fan rows, then drop legacy key."""
+    """Set plant-model keys for one backend/fan row."""
     cfg = normalize_config(config)
-    ensure_pid_profile_shape(cfg)
-
-    legacy_pid = cfg.get("control", {}).get("pid")
-    pid_values = _normalized_pid_values(legacy_pid)
     backend_key = str(backend)
-    max_fan = _clamp_int(runtime_fan_max, 1, 10_000, FAN_SPEED_MAX)
-
-    rows = cfg["control"]["pidProfiles"].setdefault(backend_key, {})
-    for fan_index in range(1, max_fan + 1):
-        rows[str(fan_index)] = dict(pid_values)
-
-    cfg["control"].pop("pid", None)
-    cfg["configVersion"] = CONFIG_VERSION
+    fan_index = _normalize_fan_index(fan_speed)
+    ensure_profile_shape(cfg)
+    row = cfg["control"]["plantProfiles"].setdefault(backend_key, {}).setdefault(str(fan_index), {})
+    row.update(_normalized_plant_values({"K": K, "tau_s": tau_s, "L": L}))
     return cfg
 
 
@@ -439,14 +319,14 @@ def _merge_defaults(raw_cfg):
         incoming = raw_cfg.get(section)
         if isinstance(incoming, dict):
             if section == "control":
-                incoming_pid = incoming.get("pid")
-                if isinstance(incoming_pid, dict):
-                    cfg["control"]["pid"].update(incoming_pid)
-                incoming_profiles = incoming.get("pidProfiles")
+                incoming_profiles = incoming.get("plantProfiles")
+                if not isinstance(incoming_profiles, dict):
+                    # Legacy key migration path.
+                    incoming_profiles = incoming.get("pidProfiles")
                 if isinstance(incoming_profiles, dict):
-                    cfg["control"]["pidProfiles"] = copy.deepcopy(incoming_profiles)
+                    cfg["control"]["plantProfiles"] = copy.deepcopy(incoming_profiles)
                 for key, value in incoming.items():
-                    if key in ("pid", "pidProfiles"):
+                    if key in ("plantProfiles", "pidProfiles", "pid"):
                         continue
                     cfg["control"][key] = value
             else:
@@ -459,7 +339,7 @@ def _merge_defaults(raw_cfg):
 
 def normalize_config(raw_cfg):
     cfg = _merge_defaults(raw_cfg)
-    ensure_pid_profile_shape(cfg)
+    ensure_profile_shape(cfg)
 
     cfg["display"]["temperatureUnitDefault"] = normalize_temperature_unit(
         cfg["display"].get("temperatureUnitDefault"),
@@ -495,45 +375,6 @@ def normalize_config(raw_cfg):
     cfg["roast"]["confirmOnStop"] = bool(cfg["roast"].get("confirmOnStop", False))
     cfg["roast"]["confirmOnClear"] = bool(cfg["roast"].get("confirmOnClear", False))
 
-    cfg["control"]["pid"]["kp"] = _clamp_float(
-        cfg["control"]["pid"].get("kp", 0.108),
-        MIN_PID_KP,
-        MAX_PID_KP,
-        0.108,
-    )
-    cfg["control"]["pid"]["ki"] = _clamp_float(
-        cfg["control"]["pid"].get("ki", 0.0135),
-        MIN_PID_KI,
-        MAX_PID_KI,
-        0.0135,
-    )
-    cfg["control"]["pid"]["kd"] = _clamp_float(
-        cfg["control"]["pid"].get("kd", 0.018),
-        MIN_PID_KD,
-        MAX_PID_KD,
-        0.018,
-    )
-
-    raw_control = raw_cfg.get("control") if isinstance(raw_cfg, dict) else None
-    raw_has_profiles = isinstance(raw_control, dict) and isinstance(raw_control.get("pidProfiles"), dict)
-    raw_legacy_pid = raw_control.get("pid") if isinstance(raw_control, dict) else None
-    if isinstance(raw_legacy_pid, dict) and not raw_has_profiles:
-        # Legacy config import: preserve tuned values in current default backend rows.
-        backend_default = cfg["app"].get("backendDefault", "usb")
-        rows = cfg["control"]["pidProfiles"].setdefault(str(backend_default), {})
-        migrated = _normalized_pid_values(raw_legacy_pid)
-        for fan_index in range(1, FAN_SPEED_MAX + 1):
-            rows[str(fan_index)] = dict(migrated)
-
-    # Runtime compatibility shim during migration window: derive scalar pid from
-    # backend-default profile at fan speed 1.
-    backend_default = str(cfg["app"].get("backendDefault", "usb"))
-    profiles = cfg["control"].get("pidProfiles", {})
-    backend_rows = profiles.get(backend_default)
-    if not isinstance(backend_rows, dict):
-        backend_rows = profiles.get("usb", {})
-    compat_pid = _normalized_pid_values(backend_rows.get("1"))
-    cfg["control"]["pid"] = dict(compat_pid)
     cfg["control"]["pwmCycleSeconds"] = _clamp_float(
         cfg["control"].get("pwmCycleSeconds", 1.0),
         MIN_PWM_CYCLE_SECONDS,
@@ -576,8 +417,8 @@ def load_config():
         return normalize_config(copy.deepcopy(DEFAULT_CONFIG))
 
     normalized = normalize_config(loaded)
-    # Auto-migrate on read: preserve settings, upgrade schema, and remove
-    # legacy scalar control.pid from file contents.
+    # Auto-migrate on read: preserve settings and normalize to the current
+    # schema/key conventions.
     serialized = _to_serializable_config(normalized)
     if loaded != serialized:
         try:
@@ -606,7 +447,7 @@ def update_config(config, *, display_unit=None, compact_mode=None, fullscreen=No
                   backend=None, refresh_interval_ms=None,
                   y_axis_headroom_c=None, y_axis_step_c=None, plot_show_grid=None,
                   plot_line_width=None, confirm_on_stop=None, confirm_on_clear=None,
-                  expert_mode_enabled=None, pid_kp=None, pid_ki=None, pid_kd=None,
+                  expert_mode_enabled=None,
                   pwm_cycle_seconds=None, sample_period_seconds=None,
                   autotune_zn_alpha=None,
                   safety_max_temp_c=None, heater_cutoff_enabled=None):
@@ -664,35 +505,6 @@ def update_config(config, *, display_unit=None, compact_mode=None, fullscreen=No
     if confirm_on_clear is not None:
         next_cfg["roast"]["confirmOnClear"] = bool(confirm_on_clear)
 
-    if pid_kp is not None:
-        next_cfg["control"]["pid"]["kp"] = _clamp_float(
-            pid_kp,
-            MIN_PID_KP,
-            MAX_PID_KP,
-            next_cfg["control"]["pid"].get("kp", 0.108),
-        )
-    if pid_ki is not None:
-        next_cfg["control"]["pid"]["ki"] = _clamp_float(
-            pid_ki,
-            MIN_PID_KI,
-            MAX_PID_KI,
-            next_cfg["control"]["pid"].get("ki", 0.0135),
-        )
-    if pid_kd is not None:
-        next_cfg["control"]["pid"]["kd"] = _clamp_float(
-            pid_kd,
-            MIN_PID_KD,
-            MAX_PID_KD,
-            next_cfg["control"]["pid"].get("kd", 0.018),
-        )
-    if pid_kp is not None or pid_ki is not None or pid_kd is not None:
-        ensure_pid_profile_shape(next_cfg)
-        compat_pid = _normalized_pid_values(next_cfg["control"].get("pid"))
-        for backend_rows in next_cfg["control"]["pidProfiles"].values():
-            if not isinstance(backend_rows, dict):
-                continue
-            for fan_key in list(backend_rows.keys()):
-                backend_rows[fan_key] = dict(compat_pid)
     if pwm_cycle_seconds is not None:
         next_cfg["control"]["pwmCycleSeconds"] = _clamp_float(
             pwm_cycle_seconds,

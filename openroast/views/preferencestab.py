@@ -438,17 +438,20 @@ class PreferencesTab(QtWidgets.QWidget):
     def _reset_draft_from_config(self, config):
         normalized = app_config.normalize_config(config)
         self._draft_profiles = copy.deepcopy(
-            normalized.get("control", {}).get("pidProfiles", {})
+            normalized.get("control", {}).get("plantProfiles", {})
         )
 
     def _get_profile_row_from_draft(self, fan_speed):
-        temp_cfg = app_config.normalize_config(self._config)
-        temp_cfg["control"]["pidProfiles"] = copy.deepcopy(self._draft_profiles)
-        return app_config.get_pid_profile_row_for_backend_speed(
-            temp_cfg,
+        return app_config.get_profile_row_for_backend_speed(
+            self._build_config_with_draft_profiles(),
             self._runtime_backend,
             fan_speed,
         )
+
+    def _build_config_with_draft_profiles(self):
+        temp_cfg = app_config.normalize_config(self._config)
+        temp_cfg["control"]["plantProfiles"] = copy.deepcopy(self._draft_profiles)
+        return temp_cfg
 
     def _plant_values_for_editor(self, row):
         defaults = {
@@ -470,8 +473,7 @@ class PreferencesTab(QtWidgets.QWidget):
         if not self._control_tuning_supported():
             return
         current_fan = int(max(1, self._selected_fan_speed))
-        temp_cfg = app_config.normalize_config(self._config)
-        temp_cfg["control"]["pidProfiles"] = copy.deepcopy(self._draft_profiles)
+        temp_cfg = self._build_config_with_draft_profiles()
         updated = app_config.set_plant_for_backend_speed(
             temp_cfg,
             self._runtime_backend,
@@ -480,7 +482,7 @@ class PreferencesTab(QtWidgets.QWidget):
             tau_s=self.plantTauS.value(),
             L=self.plantL.value(),
         )
-        self._draft_profiles = copy.deepcopy(updated["control"]["pidProfiles"])
+        self._draft_profiles = copy.deepcopy(updated["control"]["plantProfiles"])
 
     def _update_control_editor_visibility(self):
         supported = self._control_tuning_supported()
@@ -726,8 +728,7 @@ class PreferencesTab(QtWidgets.QWidget):
             return 0
 
         merged = 0
-        temp_cfg = app_config.normalize_config(self._config)
-        temp_cfg["control"]["pidProfiles"] = copy.deepcopy(self._draft_profiles)
+        temp_cfg = self._build_config_with_draft_profiles()
 
         for fan_key, values in results_by_fan.items():
             try:
@@ -736,18 +737,17 @@ class PreferencesTab(QtWidgets.QWidget):
                 continue
             if not isinstance(values, dict):
                 continue
-            if not isinstance(values, dict):
-                continue
-
-            temp_cfg = app_config.set_profile_row_for_backend_speed(
+            temp_cfg = app_config.set_plant_for_backend_speed(
                 temp_cfg,
                 self._runtime_backend,
                 fan_speed,
-                values,
+                K=values.get("K"),
+                tau_s=values.get("tau_s"),
+                L=values.get("L"),
             )
             merged += 1
 
-        self._draft_profiles = copy.deepcopy(temp_cfg["control"]["pidProfiles"])
+        self._draft_profiles = copy.deepcopy(temp_cfg["control"]["plantProfiles"])
 
         # Refresh currently selected row in editors so UI reflects merged data.
         row = self._get_profile_row_from_draft(self._selected_fan_speed)
@@ -944,7 +944,7 @@ class PreferencesTab(QtWidgets.QWidget):
     def _restore_expert_defaults(self, defaults):
         unit = normalize_temperature_unit(self.temperatureUnitSelect.currentData(), default=TEMP_UNIT_C)
         normalized_defaults = app_config.normalize_config(defaults)
-        row = app_config.get_pid_profile_row_for_backend_speed(
+        row = app_config.get_profile_row_for_backend_speed(
             defaults,
             self._runtime_backend,
             self._selected_fan_speed,
@@ -1028,7 +1028,7 @@ class PreferencesTab(QtWidgets.QWidget):
             heater_cutoff_enabled=self.heaterCutoffEnabled.isChecked(),
         )
         if self._control_tuning_supported():
-            updated["control"]["pidProfiles"] = copy.deepcopy(self._draft_profiles)
+            updated["control"]["plantProfiles"] = copy.deepcopy(self._draft_profiles)
         saved = app_config.save_config(updated)
         self._config = saved
         self._reset_draft_from_config(saved)

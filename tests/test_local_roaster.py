@@ -362,7 +362,7 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertTrue(roaster.reset_simulation_state())
         self.assertEqual(fake_controller.reset_simulation_calls, 1)
 
-    def test_apply_runtime_preferences_forwards_pid_and_safety_settings(self):
+    def test_apply_runtime_preferences_forwards_plant_and_safety_settings(self):
         fake_controller = FakeController()
         fake_controller.fan_speed = 3
 
@@ -374,13 +374,13 @@ class LocalRoasterAdapterTests(unittest.TestCase):
             "app": {"backendDefault": "usb"},
             "control": {
                 "autotuneZnAlpha": 0.4,
-                "pidProfiles": {
+                "plantProfiles": {
                     "local": {
-                        "1": {"kp": 0.11, "ki": 0.012, "kd": 0.015},
-                        "3": {"kp": 0.2, "ki": 0.03, "kd": 0.04},
+                        "1": {"K": 1.1, "tau_s": 31.0, "L": 0.45},
+                        "3": {"K": 2.0, "tau_s": 23.0, "L": 0.6},
                     },
                     "local-mock": {
-                        "3": {"kp": 0.4, "ki": 0.05, "kd": 0.08},
+                        "3": {"K": 1.8, "tau_s": 27.0, "L": 0.5},
                     },
                 },
                 "pwmCycleSeconds": 1.5,
@@ -395,9 +395,9 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertTrue(roaster.apply_runtime_preferences(config))
         self.assertEqual(len(fake_controller.runtime_config_calls), 1)
         call = fake_controller.runtime_config_calls[0]
-        self.assertAlmostEqual(call["kp"], 0.2, places=4)
-        self.assertAlmostEqual(call["ki"], 0.03, places=4)
-        self.assertAlmostEqual(call["kd"], 0.04, places=4)
+        self.assertAlmostEqual(call["process_gain"], 2.0, places=4)
+        self.assertAlmostEqual(call["tau_s"], 23.0, places=4)
+        self.assertAlmostEqual(call["dead_time_s"], 0.6, places=4)
         self.assertAlmostEqual(call["autotune_zn_alpha"], 0.4, places=4)
         self.assertAlmostEqual(call["pwm_cycle_s"], 1.5, places=4)
         self.assertAlmostEqual(call["sample_period_s"], 0.2, places=4)
@@ -413,7 +413,7 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         config = {
             "control": {
                 "autotuneZnAlpha": 0.6,
-                "pidProfiles": {
+                "plantProfiles": {
                     "local-mock": {
                         "2": {
                             "kp": 0.2,
@@ -441,7 +441,7 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertAlmostEqual(call["dead_time_s"], 0.5, places=4)
         self.assertNotIn("kp", call)
 
-    def test_fan_speed_change_reapplies_pid_for_new_fan_after_runtime_preferences(self):
+    def test_fan_speed_change_reapplies_plant_for_new_fan_after_runtime_preferences(self):
         fake_controller = FakeController()
         fake_controller.fan_speed = 1
 
@@ -451,10 +451,10 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         config = {
             "control": {
                 "autotuneZnAlpha": 0.5,
-                "pidProfiles": {
+                "plantProfiles": {
                     "local-mock": {
-                        "1": {"kp": 0.10, "ki": 0.01, "kd": 0.02},
-                        "3": {"kp": 0.30, "ki": 0.03, "kd": 0.06},
+                        "1": {"K": 1.2, "tau_s": 30.0, "L": 0.4},
+                        "3": {"K": 2.4, "tau_s": 20.0, "L": 0.7},
                     }
                 },
                 "pwmCycleSeconds": 1.5,
@@ -472,15 +472,15 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         roaster.fan_speed = 3
         self.assertEqual(fake_controller.fan_speed, 3)
         self.assertEqual(len(fake_controller.runtime_config_calls), 2)
-        pid_switch_call = fake_controller.runtime_config_calls[-1]
+        plant_switch_call = fake_controller.runtime_config_calls[-1]
         self.assertEqual(
-            set(pid_switch_call.keys()),
-            {"autotune_zn_alpha", "kp", "ki", "kd"},
+            set(plant_switch_call.keys()),
+            {"autotune_zn_alpha", "process_gain", "tau_s", "dead_time_s"},
         )
-        self.assertAlmostEqual(pid_switch_call["autotune_zn_alpha"], 0.5, places=4)
-        self.assertAlmostEqual(pid_switch_call["kp"], 0.30, places=4)
-        self.assertAlmostEqual(pid_switch_call["ki"], 0.03, places=4)
-        self.assertAlmostEqual(pid_switch_call["kd"], 0.06, places=4)
+        self.assertAlmostEqual(plant_switch_call["autotune_zn_alpha"], 0.5, places=4)
+        self.assertAlmostEqual(plant_switch_call["process_gain"], 2.4, places=4)
+        self.assertAlmostEqual(plant_switch_call["tau_s"], 20.0, places=4)
+        self.assertAlmostEqual(plant_switch_call["dead_time_s"], 0.7, places=4)
 
     def test_fan_speed_change_before_runtime_preferences_does_not_apply_pid(self):
         fake_controller = FakeController()
