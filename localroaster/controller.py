@@ -180,7 +180,7 @@ class RoasterController:
         self._connected = False
         self._target_temp_k = float(self.config.min_display_temp_k)
         self._current_temp_k = float(self.config.ambient_temp_k)
-        self._fan_speed = 1
+        self._fan_speed = self._standby_fan_speed()
         self._heat_setting = parameter_catalog.HEAT_SETTING_MIN
         self._heater_level = parameter_catalog.HEATER_PERCENT_MIN
         self._heater_output = False
@@ -252,11 +252,33 @@ class RoasterController:
         except Exception:  # pragma: no cover - last-resort safety
             pass
 
+    @staticmethod
+    def _standby_fan_speed() -> int:
+        return max(
+            1,
+            min(
+                int(parameter_catalog.FAN_SPEED_MAX),
+                int(parameter_catalog.FAN_SPEED_STANDBY_DEFAULT),
+            ),
+        )
+
+    def _apply_standby_fan_speed(self) -> None:
+        speed = self._standby_fan_speed()
+        with self._lock:
+            self._fan_speed = speed
+        try:
+            self.hardware.set_fan_speed(speed)
+        except Exception as exc:
+            logging.warning("localroaster: standby fan command failed: %s", exc)
+            with self._lock:
+                self._fault = str(exc)
+
     def connect(self) -> None:
         with self._lock:
             self._connected = True
             if self._state == RoasterState.DISCONNECTED:
                 self._state = RoasterState.IDLE
+        self._apply_standby_fan_speed()
         self._register_exit_handler()
         if not self._threads_started:
             self._threads_started = True
@@ -275,6 +297,7 @@ class RoasterController:
         with self._lock:
             self._connected = False
             self._state = RoasterState.DISCONNECTED
+            self._fan_speed = self._standby_fan_speed()
         self._set_heater_level(0)
         self._set_heater_output(False, emit_telemetry=False)
         # Join daemon threads before tearing down hardware to avoid
@@ -284,6 +307,7 @@ class RoasterController:
                 thread.join(timeout=2.0)
         try:
             self.hardware.set_heater(False)
+            self.hardware.set_fan_speed(self._standby_fan_speed())
             self.hardware.close()
         except Exception as exc:  # pragma: no cover - defensive cleanup
             logging.warning("localroaster: hardware shutdown failed: %s", exc)
@@ -758,6 +782,7 @@ class RoasterController:
         with self._lock:
             self._state = RoasterState.IDLE
             self._control_mode = self._mode_pid
+        self._apply_standby_fan_speed()
         self._set_heater_level(0)
         self._set_heater_output(False, emit_telemetry=False)
         self._emit_telemetry()
@@ -766,6 +791,7 @@ class RoasterController:
         with self._lock:
             self._state = RoasterState.SLEEPING
             self._control_mode = self._mode_pid
+        self._apply_standby_fan_speed()
         self._set_heater_level(0)
         self._set_heater_output(False, emit_telemetry=False)
         self._emit_telemetry()

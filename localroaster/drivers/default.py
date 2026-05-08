@@ -98,8 +98,10 @@ class Max31855SsrDriver(HardwareDriver):
                 hz=pwm_frequency_hz,
                 chip=pwm_chip,
             )
-            # Keep fan alive at minimum configured duty on startup.
-            self._fan_pwm.start(self._fan_duty_for_speed(1))
+            # Initialize fan output to the backend standby speed.
+            self._fan_pwm.start(
+                self._fan_duty_for_speed(parameter_catalog.FAN_SPEED_STANDBY_DEFAULT)
+            )
 
     @property
     def config_max_fan_speed(self) -> int:

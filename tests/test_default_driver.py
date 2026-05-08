@@ -181,6 +181,29 @@ class DefaultDriverPwmTests(unittest.TestCase):
             places=4,
         )
 
+    def test_driver_startup_pwm_uses_configured_standby_fan_speed(self):
+        module = self._import_driver_module(with_pwm_module=True)
+        cfg = {
+            "thermocouple": {"cs_pin": "D5"},
+            "heater": {"gpio_pin": "D17", "active_high": True},
+            "fan": {
+                "pwm_chip": 0,
+                "pwm_channel": 1,
+                "frequency_hz": 2000,
+                "duty_min_percent": 15.0,
+                "duty_max_percent": 90.0,
+                "active_high": True,
+                "max_speed": 9,
+            },
+        }
+
+        with patch.object(module.parameter_catalog, "FAN_SPEED_STANDBY_DEFAULT", 9):
+            with patch.object(module, "load_hw_config", return_value=cfg):
+                module.Max31855SsrDriver(ControllerConfig())
+
+        pwm = _FakeHardwarePWM.instances[0]
+        self.assertAlmostEqual(pwm.started_with, 90.0, places=4)
+
 
 if __name__ == "__main__":
     unittest.main()

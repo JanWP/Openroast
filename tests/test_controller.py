@@ -736,6 +736,29 @@ class ControllerSafetyTests(unittest.TestCase):
         self.assertAlmostEqual(t.current_temp_k, 350.0, places=0)
         ctrl.shutdown()
 
+    def test_connect_applies_configured_standby_fan_speed(self):
+        with patch("localroaster.parameter_catalog.FAN_SPEED_STANDBY_DEFAULT", 2):
+            ctrl, driver, _ = self._make_controller()
+            ctrl.connect()
+
+            self.assertEqual(ctrl.fan_speed, 2)
+            self.assertTrue(wait_for(lambda: 2 in driver.fan_calls, timeout=1.0))
+            ctrl.shutdown()
+
+    def test_idle_resets_fan_to_standby_after_roast_interruption(self):
+        with patch("localroaster.parameter_catalog.FAN_SPEED_STANDBY_DEFAULT", 2):
+            ctrl, driver, _ = self._make_controller()
+            ctrl.connect()
+            ctrl.fan_speed = 7
+            ctrl.roast()
+            self.assertTrue(wait_for(lambda: 7 in driver.fan_calls, timeout=1.0))
+
+            ctrl.idle()
+
+            self.assertEqual(ctrl.fan_speed, 2)
+            self.assertTrue(wait_for(lambda: driver.fan_calls and driver.fan_calls[-1] == 2, timeout=1.0))
+            ctrl.shutdown()
+
     def test_fan_speed_validation(self):
         ctrl, _, _ = self._make_controller()
         with self.assertRaises(ValueError):
