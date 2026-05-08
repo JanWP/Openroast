@@ -6,8 +6,11 @@ Board-specific pin mappings are loaded from `localroaster/hardware_config.json`
 so the public API remains hardware-agnostic.
 """
 
+import logging
 import threading
+from typing import Any, cast
 
+from localroaster import parameter_catalog
 from localroaster.api import ControllerConfig
 from localroaster.controller import HardwareDriver
 from localroaster.hw_config import load_hw_config
@@ -15,6 +18,11 @@ from localroaster.hw_config import load_hw_config
 import adafruit_max31855
 import board
 import digitalio
+
+try:
+    from rpi_hardware_pwm import HardwarePWM
+except ImportError:  # pragma: no cover - exercised on non-RPi dev hosts
+    HardwarePWM = None
 
 
 class Max31855SsrDriver(HardwareDriver):
@@ -25,9 +33,38 @@ class Max31855SsrDriver(HardwareDriver):
         hw_cfg = load_hw_config()
         thermo_cfg = hw_cfg.get("thermocouple", {})
         heater_cfg = hw_cfg.get("heater", {})
+        fan_cfg = hw_cfg.get("fan", {})
         cs_pin_name = str(thermo_cfg.get("cs_pin", "D5"))
         heater_pin_name = str(heater_cfg.get("gpio_pin", "D17"))
         self._heater_active_high = bool(heater_cfg.get("active_high", True))
+
+        self._fan_duty_min_percent = max(
+            0.0,
+            min(
+                100.0,
+                float(
+                    fan_cfg.get(
+                        "duty_min_percent",
+                        parameter_catalog.FAN_PWM_DUTY_MIN_DEFAULT_PERCENT,
+                    )
+                ),
+            ),
+        )
+        self._fan_duty_max_percent = max(
+            self._fan_duty_min_percent,
+            min(
+                100.0,
+                float(
+                    fan_cfg.get(
+                        "duty_max_percent",
+                        parameter_catalog.FAN_PWM_DUTY_MAX_DEFAULT_PERCENT,
+                    )
+                ),
+            ),
+        )
+        self._fan_active_high = bool(fan_cfg.get("active_high", True))
+        self._fan_max_speed = max(1, int(fan_cfg.get("max_speed", self.config_max_fan_speed)))
+        self._fan_pwm = None
 
         self._spi = board.SPI()
         cs_pin = getattr(board, cs_pin_name)
@@ -39,6 +76,54 @@ class Max31855SsrDriver(HardwareDriver):
         self._heater.direction = digitalio.Direction.OUTPUT
         self._heater.value = (not self._heater_active_high)
 
+        if HardwarePWM is None:
+            logging.warning(
+                "localroaster: rpi_hardware_pwm not available; fan PWM output disabled"
+            )
+        else:
+            pwm_class = cast(Any, HardwarePWM)
+            pwm_channel = int(fan_cfg.get("pwm_channel", 1))
+            pwm_chip = int(fan_cfg.get("pwm_chip", 0))
+            pwm_frequency_hz = max(
+                1,
+                int(
+                    fan_cfg.get(
+                        "frequency_hz",
+                        parameter_catalog.FAN_PWM_FREQUENCY_DEFAULT_HZ,
+                    )
+                ),
+            )
+            self._fan_pwm = pwm_class(
+                pwm_channel=pwm_channel,
+                hz=pwm_frequency_hz,
+                chip=pwm_chip,
+            )
+            # Keep fan alive at minimum configured duty on startup.
+            self._fan_pwm.start(self._fan_duty_for_speed(1))
+
+    @property
+    def config_max_fan_speed(self) -> int:
+        max_fan = getattr(self.config, "max_fan_speed", None)
+        if max_fan is None:
+            return int(parameter_catalog.FAN_SPEED_MAX)
+        try:
+            return max(1, int(str(max_fan)))
+        except (TypeError, ValueError):
+            return int(parameter_catalog.FAN_SPEED_MAX)
+
+    def _fan_duty_for_speed(self, speed: int) -> float:
+        speed = max(1, min(self._fan_max_speed, int(speed)))
+        if self._fan_max_speed <= 1:
+            duty_percent = self._fan_duty_max_percent
+        else:
+            ratio = float(speed - 1) / float(self._fan_max_speed - 1)
+            duty_percent = self._fan_duty_min_percent + (
+                (self._fan_duty_max_percent - self._fan_duty_min_percent) * ratio
+            )
+        if not self._fan_active_high:
+            duty_percent = 100.0 - duty_percent
+        return max(0.0, min(100.0, float(duty_percent)))
+
     def read_temperature_k(self) -> float:
         with self._lock:
             temp_c = self._sensor.temperature
@@ -49,12 +134,19 @@ class Max31855SsrDriver(HardwareDriver):
             self._heater.value = bool(on) if self._heater_active_high else (not bool(on))
 
     def set_fan_speed(self, speed: int) -> None:
-        # Placeholder. Fan control wiring/driver is hardware-specific and can
-        # be added later without changing the controller API.
-        _ = speed
+        with self._lock:
+            if self._fan_pwm is None:
+                return
+            self._fan_pwm.change_duty_cycle(self._fan_duty_for_speed(speed))
 
     def close(self) -> None:
         with self._lock:
+            if self._fan_pwm is not None:
+                try:
+                    self._fan_pwm.change_duty_cycle(0.0)
+                    self._fan_pwm.stop()
+                finally:
+                    self._fan_pwm = None
             self._heater.value = (not self._heater_active_high)
             self._heater.deinit()
             self._cs.deinit()

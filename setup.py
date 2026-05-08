@@ -56,6 +56,7 @@ setup(
         "local-hw": [
             "adafruit-blinka>=8.0",
             "adafruit-circuitpython-max31855>=3.2",
+            "rpi-hardware-pwm>=0.2",
         ],
     },
     package_data={

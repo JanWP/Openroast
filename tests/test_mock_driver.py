@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from localroaster.api import ControllerConfig
 from localroaster.mock import MockHardwareDriver
+from localroaster import parameter_catalog
 
 
 class _FakeClock:
@@ -108,7 +109,7 @@ class MockDriverThermalModelTests(unittest.TestCase):
         temp_pre = driver.read_temperature_k()
 
         dt_s = 0.1
-        fan_max = 3.0
+        fan_max = float(parameter_catalog.FAN_SPEED_MAX)
         ambient = float(cfg.ambient_temp_k)
         u_f1 = max(1e-6, (1.0 / fan_max) ** float(cfg.mock_airflow_alpha))
         u_f3 = max(1e-6, (3.0 / fan_max) ** float(cfg.mock_airflow_alpha))

@@ -27,6 +27,7 @@ The default real driver (`localroaster/drivers/default.py`) expects:
 
 - MAX31855 thermocouple on SPI
 - an SSR connected to a digital GPIO for heater on/off
+- a PWM-controlled fan via Raspberry Pi hardware PWM (default: PWM channel 1)
 
 Hardware wiring details are read from `localroaster/hardware_config.json`
 (or from a file pointed to by `LOCALROASTER_HW_CONFIG`).
@@ -46,6 +47,38 @@ Controller defaults are tuned for the requested local behavior:
 `sample_period_s` and `pwm_cycle_s` are configurable in `ControllerConfig`.
 Board pin assignment is intentionally *not* part of the API and is configured
 in `hardware_config.json`.
+
+### Fan PWM wiring defaults
+
+The default hardware config enables PWM fan output using `rpi_hardware_pwm`.
+If the fan section omits PWM tunables, the driver uses defaults from
+`localroaster/parameter_catalog.py`:
+
+- `fan.pwm_chip: 0`
+- `fan.pwm_channel: 1` (maps to GPIO13 on Raspberry Pi with standard PWM overlay)
+- `fan.frequency_hz: 2000`
+- `fan.duty_min_percent: 15.0`
+- `fan.duty_max_percent: 90.0`
+
+Speed commands from the controller (`1..FAN_SPEED_MAX`) are linearly mapped to
+`duty_min_percent..duty_max_percent`.
+
+### Raspberry Pi PWM deployment note
+
+To expose hardware PWM channel 1 on GPIO13, ensure the PWM overlay is enabled
+on the Pi and reboot:
+
+```sh
+sudo sh -c 'grep -q "^dtoverlay=pwm" /boot/config.txt || echo "dtoverlay=pwm" >> /boot/config.txt'
+sudo reboot
+```
+
+After reboot, install local hardware dependencies and verify config:
+
+```sh
+pip install -e .[local-hw]
+python -m localroaster.show_hw_config
+```
 
 ## Running the demo
 

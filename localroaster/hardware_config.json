@@ -6,6 +6,14 @@
   "heater": {
     "gpio_pin": "D17",
     "active_high": true
+  },
+  "fan": {
+    "pwm_chip": 0,
+    "pwm_channel": 1,
+    "frequency_hz": 2000,
+    "duty_min_percent": 15.0,
+    "duty_max_percent": 90.0,
+    "active_high": true
   }
 }
 
