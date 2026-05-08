@@ -65,11 +65,20 @@ Speed commands from the controller (`1..FAN_SPEED_MAX`) are linearly mapped to
 
 ### Raspberry Pi PWM deployment note
 
-To expose hardware PWM channel 1 on GPIO13, ensure the PWM overlay is enabled
-on the Pi and reboot:
+To expose hardware PWM channel 1 on GPIO13, ensure these settings are present
+in `/boot/firmware/config.txt` and reboot:
+
+- `dtoverlay=pwm-2chan`
+- `dtparam=audio=off`
+
+`dtparam=audio=on` can claim the same PWM hardware and cause PWM writes to fail
+with I/O errors.
+
+You can append the required lines with:
 
 ```sh
-sudo sh -c 'grep -q "^dtoverlay=pwm" /boot/config.txt || echo "dtoverlay=pwm" >> /boot/config.txt'
+sudo sh -c 'grep -q "^dtoverlay=pwm-2chan" /boot/firmware/config.txt || echo "dtoverlay=pwm-2chan" >> /boot/firmware/config.txt'
+sudo sh -c 'grep -q "^dtparam=audio=off" /boot/firmware/config.txt || echo "dtparam=audio=off" >> /boot/firmware/config.txt'
 sudo reboot
 ```
 
