@@ -1,3 +1,5 @@
 freshroastsr700>=0.2.3
 PyQt5>=5.15
 pyqtgraph>=0.13
+# Required for Raspberry Pi hardware PWM fan control in localroaster.
+rpi-hardware-pwm>=0.2
