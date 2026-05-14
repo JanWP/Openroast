@@ -394,12 +394,16 @@ class RecipesTabUI:
     BUTTON_EDIT = "EDIT"
     BUTTON_PURCHASE_BEANS = "PURCHASE BEANS"
 
+    RECIPE_WINDOW_COLUMN_SPACING = 10
+    RECIPE_NAME_FONT_SIZE_PX = 18
+
     LABEL_RECIPE_NAME = "Recipe Name"
     LABEL_CREATED_BY = "Created by "
     LABEL_TOTAL_TIME = "Total Time: "
     LABEL_ROAST_TYPE = "Roast Type: "
     LABEL_BEAN_REGION = "Bean Region: "
     LABEL_BEAN_COUNTRY = "Bean Country: "
+    LABEL_FIRST_CRACK_SUMMARY_TEMPLATE = "Stop {duration} after first crack"
 
     TABLE_HEADER_TEMPERATURE_PREFIX = "T"
     TABLE_HEADER_FAN = "FAN"

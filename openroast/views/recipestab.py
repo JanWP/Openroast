@@ -8,8 +8,8 @@ import webbrowser
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 
+from openroast.controllers.recipe import RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY
 from openroast.temperature import (
-    TEMP_UNIT_C,
     celsius_to_formatted_display,
     get_default_display_temperature_unit,
     normalize_temperature_unit,
@@ -98,6 +98,7 @@ class RecipesTab(QtWidgets.QWidget):
         populated when a recipe is chosen from the left column."""
         # Create all of the gui Objects
         window = QtWidgets.QGridLayout()
+        window.setHorizontalSpacing(RecipesTabUI.RECIPE_WINDOW_COLUMN_SPACING)
         self.nameLabel = QtWidgets.QLabel(RecipesTabUI.LABEL_RECIPE_NAME)
         self.creatorLabel = QtWidgets.QLabel(RecipesTabUI.LABEL_CREATED_BY)
         self.totalTimeLabel = QtWidgets.QLabel(RecipesTabUI.LABEL_TOTAL_TIME)
@@ -107,6 +108,10 @@ class RecipesTab(QtWidgets.QWidget):
         self.descriptionBox = QtWidgets.QTextEdit()
         self.descriptionBox.setReadOnly(True)
         self.stepsTable = QtWidgets.QTableWidget()
+        self.firstCrackInfoRow = QtWidgets.QWidget()
+        self.firstCrackInfoLayout = QtWidgets.QHBoxLayout(self.firstCrackInfoRow)
+        self.firstCrackStepLabel = QtWidgets.QLabel("")
+        self.firstCrackSummaryLabel = QtWidgets.QLabel("")
 
         # Set options for recipe table.
         self.stepsTable.setShowGrid(False)
@@ -115,6 +120,27 @@ class RecipesTab(QtWidgets.QWidget):
         self.stepsTable.horizontalHeader().setSectionResizeMode(1)
         self.stepsTable.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.stepsTable.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        self.stepsTable.verticalHeader().setVisible(True)
+        self.stepsTable.verticalHeader().setDefaultAlignment(QtCore.Qt.AlignCenter)
+        self.stepsTable.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+
+        self.nameLabel.setWordWrap(True)
+        self.nameLabel.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop)
+        self.nameLabel.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
+        self.nameLabel.setStyleSheet(f"font-size: {RecipesTabUI.RECIPE_NAME_FONT_SIZE_PX}px;")
+
+        self.descriptionBox.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
+
+        self.firstCrackInfoLayout.setContentsMargins(0, 0, 0, 0)
+        self.firstCrackInfoLayout.setSpacing(6)
+        self.firstCrackStepLabel.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.firstCrackStepLabel.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Minimum)
+        self.firstCrackSummaryLabel.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        self.firstCrackSummaryLabel.setWordWrap(False)
+        self.firstCrackSummaryLabel.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.firstCrackInfoLayout.addWidget(self.firstCrackStepLabel)
+        self.firstCrackInfoLayout.addWidget(self.firstCrackSummaryLabel, 1)
+        self.firstCrackInfoRow.hide()
 
         # Assign Object Names for qss
         self.nameLabel.setObjectName("RecipeName")
@@ -124,18 +150,57 @@ class RecipesTab(QtWidgets.QWidget):
         self.beanRegionLabel.setObjectName("RecipeBeanRegion")
         self.beanCountryLabel.setObjectName("RecipeBeanCountry")
         self.stepsTable.setObjectName("RecipeSteps")
+        self.firstCrackStepLabel.setObjectName("RecipeFirstCrackStep")
+        self.firstCrackSummaryLabel.setObjectName("RecipeFirstCrackSummary")
 
         # Add objects to the layout
-        window.addWidget(self.nameLabel, 0, 0, 1, 2)
+        window.addWidget(self.nameLabel, 0, 0)
         window.addWidget(self.creatorLabel, 1, 0)
         window.addWidget(self.roastTypeLabel, 2, 0)
         window.addWidget(self.totalTimeLabel, 3, 0)
         window.addWidget(self.beanRegionLabel, 4, 0)
         window.addWidget(self.beanCountryLabel, 5, 0)
-        window.addWidget(self.descriptionBox, 7, 0)
-        window.addWidget(self.stepsTable, 7, 1)
+        window.addWidget(self.descriptionBox, 6, 0)
+        window.addWidget(self.firstCrackInfoRow, 0, 1)
+        window.addWidget(self.stepsTable, 1, 1, 6, 1)
+
+        window.setColumnStretch(0, 1)
+        window.setColumnStretch(1, 1)
+        window.setRowStretch(6, 1)
 
         return window
+
+    def _sync_first_crack_summary_gutter_width(self):
+        step_label = getattr(self, "firstCrackStepLabel", None)
+        steps_table = getattr(self, "stepsTable", None)
+        if step_label is None or steps_table is None:
+            return
+        step_label.setFixedWidth(steps_table.verticalHeader().width())
+
+    def _set_first_crack_summary(self, recipe_object):
+        first_crack_step_number = None
+        first_crack_duration_s = 0
+        for index, step in enumerate(recipe_object.get("steps", []), start=1):
+            after_first_crack_time = int(step.get(RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY, 0) or 0)
+            if after_first_crack_time > 0:
+                first_crack_step_number = index
+                first_crack_duration_s = after_first_crack_time
+                break
+
+        if first_crack_step_number is None:
+            self.firstCrackStepLabel.clear()
+            self.firstCrackSummaryLabel.clear()
+            self.firstCrackInfoRow.hide()
+            return
+
+        self.firstCrackStepLabel.setText(str(first_crack_step_number))
+        self.firstCrackSummaryLabel.setText(
+            RecipesTabUI.LABEL_FIRST_CRACK_SUMMARY_TEMPLATE.format(
+                duration=time.strftime("%M:%S", time.gmtime(first_crack_duration_s))
+            )
+        )
+        self._sync_first_crack_summary_gutter_width()
+        self.firstCrackInfoRow.show()
 
     def create_recipe_buttons(self):
         """Creates the button panel on the bottom to allow for the user to
@@ -237,8 +302,12 @@ class RecipesTab(QtWidgets.QWidget):
         # Steps spreadsheet
         self.stepsTable.setRowCount(len(recipe_object["steps"]))
         self.stepsTable.setColumnCount(3)
+        self.stepsTable.setVerticalHeaderLabels([
+            str(index + 1) for index in range(len(recipe_object["steps"]))
+        ])
         self.stepsTable.setHorizontalHeaderLabels([f"{RecipesTabUI.TABLE_HEADER_TEMPERATURE_PREFIX} ({temperature_unit_symbol_to_display(display_unit)})",
             RecipesTabUI.TABLE_HEADER_FAN, RecipesTabUI.TABLE_HEADER_DURATION])
+        self._set_first_crack_summary(recipe_object)
 
         for row in range(len(recipe_object["steps"])):
 
@@ -267,6 +336,8 @@ class RecipesTab(QtWidgets.QWidget):
             self.stepsTable.setItem(row, 0, sectionTempWidget)
             self.stepsTable.setItem(row, 1, sectionFanSpeedWidget)
             self.stepsTable.setItem(row, 2, sectionDurationWidget)
+
+        self._sync_first_crack_summary_gutter_width()
 
     def load_recipe(self):
         """Loads recipe into Roast tab."""
