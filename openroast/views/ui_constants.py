@@ -18,7 +18,7 @@ class SharedTabStyle:
 class SharedColors:
     # Core text/surface tokens.
     FOREGROUND_TEXT = "#ffffff"
-    FOREGROUND_TEXT_MUTED = "#cfd6e0"
+    FOREGROUND_TEXT_MUTED = "#b5bec9"
     SURFACE_PANEL = "#23252a"
     SURFACE_TAB_PANE = "#444952"
     SURFACE_TAB_INACTIVE = "#2e3138"
@@ -290,8 +290,9 @@ class RecipeEditorUI:
     TABLE_HEADER_TEMPERATURE_PREFIX = "T"
     TABLE_HEADER_FAN = "Fan"
     TABLE_HEADER_DURATION = "Duration"
-    TABLE_HEADER_AFTER_FIRST_CRACK = "After 1C"
+    TABLE_HEADER_AFTER_FIRST_CRACK = "1C STOP"
     TABLE_HEADER_MODIFY = "Modify"
+    AFTER_FIRST_CRACK_INACTIVE_COLOR = SharedColors.FOREGROUND_TEXT_MUTED
 
     PLOT_AXIS_TIME = "Time"
     PLOT_AXIS_TEMPERATURE = "Temperature"

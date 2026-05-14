@@ -840,6 +840,10 @@ class AdaptiveValueEditor(QtWidgets.QWidget):
         self._spec = spec or ValueSpec()
         self._compact = bool(compact)
         self._is_duration = self._spec.kind == "duration"
+        self._text_color_override = ""
+        self._alignment = QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter
+        self._base_editor_palette = None
+        self._base_line_edit_palette = None
         self._duration_min_s = int(max(0, self._spec.minimum))
         self._duration_max_s = int(max(self._duration_min_s, self._spec.maximum))
         self._duration_step_small_s = max(1, int(round(self._spec.step_small)))
@@ -852,6 +856,7 @@ class AdaptiveValueEditor(QtWidgets.QWidget):
                 self._editor = TimeEditNoWheel(self)
                 self._editor.set_fixed_step_seconds(self._duration_step_small_s)
             self._editor.setDisplayFormat("mm:ss")
+            self._alignment = QtCore.Qt.AlignCenter
             self._editor.timeChanged.connect(lambda _time: self._on_inner_duration_changed())
         elif self._compact:
             small_factor = 1.0
@@ -878,10 +883,17 @@ class AdaptiveValueEditor(QtWidgets.QWidget):
         layout.addWidget(self._editor)
         self._editor.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         self._editor.setMinimumWidth(0)
+        self._base_editor_palette = QtGui.QPalette(self._editor.palette())
+        line_edit_getter = getattr(self._editor, "lineEdit", None)
+        if callable(line_edit_getter):
+            line_edit = line_edit_getter()
+            if isinstance(line_edit, QtWidgets.QLineEdit):
+                self._base_line_edit_palette = QtGui.QPalette(line_edit.palette())
 
         if not self._is_duration:
             self._editor.valueChanged.connect(self._on_inner_value_changed)
         self._apply_spec(self._spec)
+        self.setAlignment(self._alignment)
 
     def _apply_spec(self, spec):
         self.setRange(spec.minimum, spec.maximum)
@@ -1072,6 +1084,33 @@ class AdaptiveValueEditor(QtWidgets.QWidget):
 
     def editorObjectName(self):
         return self._editor.objectName()
+
+    def setAlignment(self, alignment):
+        self._alignment = alignment
+        if hasattr(self._editor, "setAlignment"):
+            self._editor.setAlignment(alignment)
+        line_edit_getter = getattr(self._editor, "lineEdit", None)
+        if callable(line_edit_getter):
+            line_edit = line_edit_getter()
+            if isinstance(line_edit, QtWidgets.QLineEdit):
+                line_edit.setAlignment(alignment)
+
+    def alignment(self):
+        return self._alignment
+
+    def setTextColorOverride(self, color=None):
+        self._text_color_override = "" if color in (None, "") else str(color)
+        resolved_color = self._text_color_override or SharedColors.FOREGROUND_TEXT
+        style = f"color: {resolved_color};"
+        self._editor.setStyleSheet(style)
+        line_edit_getter = getattr(self._editor, "lineEdit", None)
+        if callable(line_edit_getter):
+            line_edit = line_edit_getter()
+            if isinstance(line_edit, QtWidgets.QLineEdit):
+                line_edit.setStyleSheet(style)
+
+    def textColorOverride(self):
+        return self._text_color_override
 
     def set_uniform_height(self, height):
         fixed_height = max(16, int(height))

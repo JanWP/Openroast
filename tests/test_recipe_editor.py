@@ -10,6 +10,7 @@ from PyQt5 import QtCore, QtWidgets
 from openroast.controllers.recipe import RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY
 from openroast.temperature import RECIPE_UNIT_FAHRENHEIT
 from openroast.views.recipeeditorwindow import RecipeEditor
+from openroast.views.ui_constants import RecipeEditorUI, SharedColors
 
 
 class RecipeEditorTests(unittest.TestCase):
@@ -24,7 +25,7 @@ class RecipeEditorTests(unittest.TestCase):
             self.assertEqual(editor.editorTabs.tabText(1), "Heating profile")
 
             headers = [editor.recipeSteps.horizontalHeaderItem(i).text() for i in range(5)]
-            self.assertEqual(headers, [f"T ({chr(176)}C)", "Fan", "Duration", "After 1C", "Modify"])
+            self.assertEqual(headers, [f"T ({chr(176)}C)", "Fan", "Duration", "1C STOP", "Modify"])
 
             corner_widget = editor.editorTabs.cornerWidget(QtCore.Qt.TopRightCorner)
             corner_layout = corner_widget.layout()
@@ -83,7 +84,7 @@ class RecipeEditorTests(unittest.TestCase):
             editor.recipeSteps.setRowCount(0)
             editor.temperatureUnitSelect.setCurrentText("Kelvin")
             headers = [editor.recipeSteps.horizontalHeaderItem(i).text() for i in range(5)]
-            self.assertEqual(headers, [f"T ({chr(176)}K)", "Fan", "Duration", "After 1C", "Modify"])
+            self.assertEqual(headers, [f"T ({chr(176)}K)", "Fan", "Duration", "1C STOP", "Modify"])
         finally:
             editor.close()
             self._app.processEvents()
@@ -100,8 +101,50 @@ class RecipeEditorTests(unittest.TestCase):
         editor = RecipeEditor(recipe_data=legacy_recipe, compact_ui=True)
         try:
             headers = [editor.recipeSteps.horizontalHeaderItem(i).text() for i in range(5)]
-            self.assertEqual(headers, [f"T ({chr(176)}F)", "Fan", "Duration", "After 1C", "Modify"])
+            self.assertEqual(headers, [f"T ({chr(176)}F)", "Fan", "Duration", "1C STOP", "Modify"])
             self.assertEqual(editor.temperatureUnitSelect.currentText(), RECIPE_UNIT_FAHRENHEIT)
+        finally:
+            editor.close()
+            self._app.processEvents()
+
+    def test_zero_after_first_crack_entries_are_visually_muted_but_active_entry_is_not(self):
+        recipe_data = {
+            "roastName": "",
+            "creator": "",
+            "roastDescription": {"roastType": "", "description": ""},
+            "bean": {"region": "", "country": "", "source": {"reseller": "", "link": ""}},
+            "steps": [
+                {"targetTemp": 100, "fanSpeed": 5, "sectionTime": 60},
+                {
+                    "targetTemp": 110,
+                    "fanSpeed": 5,
+                    "sectionTime": 60,
+                    RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY: 25,
+                },
+            ],
+        }
+        editor = RecipeEditor(recipe_data=recipe_data, compact_ui=False)
+        try:
+            muted_widget = editor.recipeSteps.cellWidget(0, 3)
+            active_widget = editor.recipeSteps.cellWidget(1, 3)
+
+            self.assertEqual(
+                muted_widget.textColorOverride(),
+                RecipeEditorUI.AFTER_FIRST_CRACK_INACTIVE_COLOR,
+            )
+            self.assertEqual(active_widget.textColorOverride(), "")
+            self.assertEqual(muted_widget._editor.alignment(), active_widget._editor.alignment())
+            self.assertEqual(muted_widget._editor.alignment(), QtCore.Qt.AlignCenter)
+            self.assertIn(RecipeEditorUI.AFTER_FIRST_CRACK_INACTIVE_COLOR, muted_widget._editor.styleSheet())
+            self.assertIn(SharedColors.FOREGROUND_TEXT, active_widget._editor.styleSheet())
+
+            muted_widget.setValue(20)
+
+            self.assertEqual(muted_widget.textColorOverride(), "")
+            self.assertEqual(
+                active_widget.textColorOverride(),
+                RecipeEditorUI.AFTER_FIRST_CRACK_INACTIVE_COLOR,
+            )
         finally:
             editor.close()
             self._app.processEvents()
