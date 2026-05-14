@@ -22,6 +22,9 @@ from openroast import app_config
 from openroast.fan_speed import recipe_fan_to_runtime_fan
 
 
+RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY = "afterFirstCrackTime"
+
+
 # ---------------------------------------------------------------------------
 # Recipe storage backends
 # ---------------------------------------------------------------------------
@@ -113,6 +116,46 @@ def normalize_recipe_for_runtime(recipe_json, *, default_source_unit=TEMP_UNIT_F
         default=default_source_unit,
     )
     normalized_recipe = recipe_to_celsius(recipe_json)
+    first_crack_step_index = None
+    for index, step in enumerate(normalized_recipe.get("steps", [])):
+        after_first_crack_time = step.get(RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY)
+        if after_first_crack_time in (None, "", 0):
+            step.pop(RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY, None)
+            continue
+
+        try:
+            after_first_crack_time = int(after_first_crack_time)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Step {index + 1} has invalid {RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY}: "
+                f"{after_first_crack_time!r}"
+            ) from exc
+
+        if after_first_crack_time <= 0:
+            step.pop(RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY, None)
+            continue
+
+        if step.get("cooling"):
+            raise ValueError(
+                f"Step {index + 1} cannot define {RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY} "
+                "for a cooling section."
+            )
+
+        section_time_s = int(step.get("sectionTime", 0))
+        if after_first_crack_time > section_time_s:
+            raise ValueError(
+                f"Step {index + 1} {RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY} "
+                f"({after_first_crack_time}s) exceeds sectionTime ({section_time_s}s)."
+            )
+
+        if first_crack_step_index is not None:
+            raise ValueError(
+                "Recipes may define only one non-zero afterFirstCrackTime section."
+            )
+
+        step[RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY] = after_first_crack_time
+        first_crack_step_index = index
+
     normalized_recipe["displayTemperatureUnit"] = source_unit
     return normalized_recipe
 
@@ -310,6 +353,32 @@ class Recipe(object):
         else:
             return self._default_target_temp_c
 
+    def get_section_after_first_crack_time(self, index):
+        return int(self._recipe()["steps"][index].get(RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY, 0) or 0)
+
+    def get_first_crack_step_index(self):
+        if not self.check_recipe_loaded():
+            return None
+        for index, step in enumerate(self._recipe().get("steps", [])):
+            if int(step.get(RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY, 0) or 0) > 0:
+                return index
+        return None
+
+    def get_first_crack_duration_s(self):
+        step_index = self.get_first_crack_step_index()
+        if step_index is None:
+            return 0
+        return self.get_section_after_first_crack_time(step_index)
+
+    def get_section_start_time_s(self, index):
+        elapsed_s = 0
+        for step_index in range(max(0, int(index))):
+            elapsed_s += int(self.get_section_duration(step_index))
+        return elapsed_s
+
+    def get_section_end_time_s(self, index):
+        return self.get_section_start_time_s(index) + int(self.get_section_duration(index))
+
     def get_display_temperature_unit(self):
         if not self.check_recipe_loaded():
             return get_default_display_temperature_unit()
@@ -346,6 +415,58 @@ class Recipe(object):
             self.roaster.time_remaining_s = section_duration_s
             return
         self.roaster.time_remaining = section_duration_s
+
+    def _get_roaster_total_time_s(self):
+        if hasattr(self.roaster, "total_time_s"):
+            return int(max(0, self.roaster.total_time_s))
+        return int(max(0, getattr(self.roaster, "total_time", 0)))
+
+    def _set_roaster_total_time_s(self, total_time_s):
+        total_time_s = int(max(0, total_time_s))
+        if hasattr(self.roaster, "total_time_s"):
+            self.roaster.total_time_s = total_time_s
+            return
+        self.roaster.total_time = total_time_s
+
+    def can_notify_first_crack(self):
+        if not self.check_recipe_loaded():
+            return False
+
+        first_crack_step_index = self.get_first_crack_step_index()
+        if first_crack_step_index is None:
+            return False
+
+        current_step = int(self._storage.current_step)
+        if current_step > first_crack_step_index:
+            return False
+
+        return self._get_roaster_total_time_s() < self.get_section_end_time_s(first_crack_step_index)
+
+    def notify_first_crack(self):
+        if not self.can_notify_first_crack():
+            return False
+
+        first_crack_step_index = self.get_first_crack_step_index()
+        after_first_crack_time_s = self.get_first_crack_duration_s()
+        if first_crack_step_index is None or after_first_crack_time_s <= 0:
+            return False
+
+        self._storage.current_step = first_crack_step_index
+        section_end_time_s = self.get_section_end_time_s(first_crack_step_index)
+        rewound_total_time_s = max(
+            self.get_section_start_time_s(first_crack_step_index),
+            section_end_time_s - after_first_crack_time_s,
+        )
+
+        self.set_roaster_settings(
+            self.get_current_target_temp(),
+            self.get_current_fan_speed(),
+            after_first_crack_time_s,
+            self.get_current_cooling_status(),
+        )
+        self._set_roaster_total_time_s(rewound_total_time_s)
+        self._set_roaster_time_remaining_s(after_first_crack_time_s)
+        return True
 
     def set_roaster_settings(self, target_temp_c, fan_speed, section_duration_s, cooling):
         if not self._is_roaster_connected():

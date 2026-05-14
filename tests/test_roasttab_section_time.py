@@ -20,6 +20,7 @@ class _FakeRoaster:
         self.cancel_autotune_calls = 0
         self.idle_calls = 0
         self.reset_control_state_calls = 0
+        self._state = "idle"
 
     def cancel_autotune(self):
         self.cancel_autotune_calls += 1
@@ -31,11 +32,17 @@ class _FakeRoaster:
     def reset_control_state(self):
         self.reset_control_state_calls += 1
 
+    def get_roaster_state(self):
+        return self._state
+
 
 class _FakeRecipes:
-    def __init__(self, loaded=False, current_section_duration=0):
+    def __init__(self, loaded=False, current_section_duration=0, can_notify_first_crack=False, notify_result=False):
         self._loaded = loaded
         self._current_section_duration = current_section_duration
+        self._can_notify_first_crack = can_notify_first_crack
+        self._notify_result = notify_result
+        self.notify_calls = 0
 
     def check_recipe_loaded(self):
         return self._loaded
@@ -54,6 +61,13 @@ class _FakeRecipes:
 
     def clear_recipe(self):
         return None
+
+    def can_notify_first_crack(self):
+        return self._can_notify_first_crack
+
+    def notify_first_crack(self):
+        self.notify_calls += 1
+        return self._notify_result
 
 
 class RoastTabSectionTimeTests(unittest.TestCase):
@@ -241,5 +255,38 @@ class RoastTabSectionTimeTests(unittest.TestCase):
         self.assertEqual(tab.fanSpeedSpinBox.maximum(), 6)
         self.assertEqual(tab.fanSlider.value(), 4)
         self.assertEqual(tab.fanSpeedSpinBox.value(), 4)
+
+    def test_first_crack_button_only_enables_while_roasting_and_recipe_allows_it(self):
+        tab = RoastTab.__new__(RoastTab)
+        tab.roaster = _FakeRoaster()
+        tab.recipes = _FakeRecipes(can_notify_first_crack=True)
+        tab.firstCrackButton = QtWidgets.QPushButton()
+
+        tab.roaster._state = "roasting"
+        tab._update_first_crack_button_state()
+        self.assertTrue(tab.firstCrackButton.isEnabled())
+
+        tab.roaster._state = "idle"
+        tab._update_first_crack_button_state()
+        self.assertFalse(tab.firstCrackButton.isEnabled())
+
+    def test_on_first_crack_clicked_updates_controllers_after_successful_notify(self):
+        tab = RoastTab.__new__(RoastTab)
+        tab.roaster = _FakeRoaster()
+        tab.roaster._state = "roasting"
+        tab.roaster.total_time_s = 42
+        tab.recipes = _FakeRecipes(can_notify_first_crack=True, notify_result=True)
+        tab.firstCrackButton = QtWidgets.QPushButton()
+        tab.sectionTimelineWidget = None
+
+        calls = {"update_controllers": 0, "update_total_time": 0}
+        tab.update_controllers = lambda: calls.__setitem__("update_controllers", calls["update_controllers"] + 1)
+        tab.update_total_time = lambda: calls.__setitem__("update_total_time", calls["update_total_time"] + 1)
+
+        tab.on_first_crack_clicked()
+
+        self.assertEqual(tab.recipes.notify_calls, 1)
+        self.assertEqual(calls["update_controllers"], 1)
+        self.assertEqual(calls["update_total_time"], 1)
 
 

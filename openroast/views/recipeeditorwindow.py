@@ -16,7 +16,11 @@ import pyqtgraph as pg
 from openroast import tools
 from openroast import app_config
 from openroast import utils as utils
-from openroast.controllers.recipe import build_default_recipe, normalize_recipe_for_runtime
+from openroast.controllers.recipe import (
+    RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY,
+    build_default_recipe,
+    normalize_recipe_for_runtime,
+)
 from openroast.temperature import (
     DEFAULT_TARGET_TEMPERATURE_C,
     MAX_TEMPERATURE_C,
@@ -61,6 +65,8 @@ class RecipeEditor(QtWidgets.QDialog):
     COLUMN_WIDTH_FAN = RecipeEditorUI.COLUMN_WIDTH_FAN
     COLUMN_WIDTH_DURATION_COMPACT = RecipeEditorUI.COLUMN_WIDTH_DURATION_COMPACT
     COLUMN_WIDTH_DURATION_DEFAULT = RecipeEditorUI.COLUMN_WIDTH_DURATION_DEFAULT
+    COLUMN_WIDTH_AFTER_FIRST_CRACK_COMPACT = RecipeEditorUI.COLUMN_WIDTH_AFTER_FIRST_CRACK_COMPACT
+    COLUMN_WIDTH_AFTER_FIRST_CRACK_DEFAULT = RecipeEditorUI.COLUMN_WIDTH_AFTER_FIRST_CRACK_DEFAULT
     COLUMN_WIDTH_MODIFY_COMPACT = RecipeEditorUI.COLUMN_WIDTH_MODIFY_COMPACT
     COLUMN_WIDTH_MODIFY_DEFAULT = RecipeEditorUI.COLUMN_WIDTH_MODIFY_DEFAULT
     TABLE_MIN_EXTRA_WIDTH = RecipeEditorUI.TABLE_MIN_EXTRA_WIDTH
@@ -72,6 +78,8 @@ class RecipeEditor(QtWidgets.QDialog):
     FAN_EDITOR_WIDTH_DEFAULT = RecipeEditorUI.FAN_EDITOR_WIDTH_DEFAULT
     TIME_EDITOR_WIDTH_COMPACT = RecipeEditorUI.TIME_EDITOR_WIDTH_COMPACT
     TIME_EDITOR_WIDTH_DEFAULT = RecipeEditorUI.TIME_EDITOR_WIDTH_DEFAULT
+    AFTER_FIRST_CRACK_EDITOR_WIDTH_COMPACT = RecipeEditorUI.AFTER_FIRST_CRACK_EDITOR_WIDTH_COMPACT
+    AFTER_FIRST_CRACK_EDITOR_WIDTH_DEFAULT = RecipeEditorUI.AFTER_FIRST_CRACK_EDITOR_WIDTH_DEFAULT
 
     DURATION_STEP_SMALL_S = RecipeEditorUI.DURATION_STEP_SMALL_S
     DURATION_STEP_LARGE_S = RecipeEditorUI.DURATION_STEP_LARGE_S
@@ -149,6 +157,7 @@ class RecipeEditor(QtWidgets.QDialog):
     TABLE_HEADER_TEMPERATURE_PREFIX = RecipeEditorUI.TABLE_HEADER_TEMPERATURE_PREFIX
     TABLE_HEADER_FAN = RecipeEditorUI.TABLE_HEADER_FAN
     TABLE_HEADER_DURATION = RecipeEditorUI.TABLE_HEADER_DURATION
+    TABLE_HEADER_AFTER_FIRST_CRACK = RecipeEditorUI.TABLE_HEADER_AFTER_FIRST_CRACK
     TABLE_HEADER_MODIFY = RecipeEditorUI.TABLE_HEADER_MODIFY
 
     PLOT_AXIS_TIME = RecipeEditorUI.PLOT_AXIS_TIME
@@ -156,6 +165,7 @@ class RecipeEditor(QtWidgets.QDialog):
 
     PICKER_TEMPERATURE_TITLE = RecipeEditorUI.PICKER_TEMPERATURE_TITLE
     PICKER_DURATION_TITLE = RecipeEditorUI.PICKER_DURATION_TITLE
+    PICKER_AFTER_FIRST_CRACK_TITLE = RecipeEditorUI.PICKER_AFTER_FIRST_CRACK_TITLE
 
     ALERT_MIN_STEPS_TITLE = RecipeEditorUI.ALERT_MIN_STEPS_TITLE
     ALERT_MIN_STEPS_TEXT = RecipeEditorUI.ALERT_MIN_STEPS_TEXT
@@ -468,7 +478,7 @@ class RecipeEditor(QtWidgets.QDialog):
         recipeStepsTable.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         recipeStepsTable.verticalHeader().setVisible(False)
 
-        recipeStepsTable.setColumnCount(4)
+        recipeStepsTable.setColumnCount(5)
         self._update_steps_header_labels(recipeStepsTable)
 
         return recipeStepsTable
@@ -479,6 +489,7 @@ class RecipeEditor(QtWidgets.QDialog):
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.Fixed)
         header.setSectionResizeMode(3, QtWidgets.QHeaderView.Fixed)
+        header.setSectionResizeMode(4, QtWidgets.QHeaderView.Fixed)
 
         if self.compact_ui:
             font = header.font()
@@ -492,6 +503,11 @@ class RecipeEditor(QtWidgets.QDialog):
             self.COLUMN_WIDTH_DURATION_COMPACT
             if self.compact_ui
             else self.COLUMN_WIDTH_DURATION_DEFAULT
+        )
+        after_first_crack_width = (
+            self.COLUMN_WIDTH_AFTER_FIRST_CRACK_COMPACT
+            if self.compact_ui
+            else self.COLUMN_WIDTH_AFTER_FIRST_CRACK_DEFAULT
         )
         temp_width = (
             self.COLUMN_WIDTH_TEMP_COMPACT
@@ -507,12 +523,14 @@ class RecipeEditor(QtWidgets.QDialog):
         self.recipeSteps.setColumnWidth(0, temp_width)
         self.recipeSteps.setColumnWidth(1, self.COLUMN_WIDTH_FAN)
         self.recipeSteps.setColumnWidth(2, duration_width)
-        self.recipeSteps.setColumnWidth(3, modify_width)
+        self.recipeSteps.setColumnWidth(3, after_first_crack_width)
+        self.recipeSteps.setColumnWidth(4, modify_width)
         # Keep a little extra width beyond column sum for a vertical scroll bar and padding.
         self.recipeSteps.setMinimumWidth(
             temp_width
             + self.COLUMN_WIDTH_FAN
             + duration_width
+            + after_first_crack_width
             + modify_width
             + self.TABLE_MIN_EXTRA_WIDTH
         )
@@ -535,8 +553,52 @@ class RecipeEditor(QtWidgets.QDialog):
             f"{self.TABLE_HEADER_TEMPERATURE_PREFIX} ({chr(176)}{unit_symbol})",
             self.TABLE_HEADER_FAN,
             self.TABLE_HEADER_DURATION,
+            self.TABLE_HEADER_AFTER_FIRST_CRACK,
             self.TABLE_HEADER_MODIFY,
         ])
+
+    def _get_step_duration_widget(self, row):
+        return self.recipeSteps.cellWidget(row, 2)
+
+    def _get_after_first_crack_widget(self, row):
+        return self.recipeSteps.cellWidget(row, 3)
+
+    def _sync_after_first_crack_editor_constraints(self, row):
+        duration_widget = self._get_step_duration_widget(row)
+        after_first_crack_widget = self._get_after_first_crack_widget(row)
+        if duration_widget is None or after_first_crack_widget is None:
+            return
+        max_seconds = int(duration_widget.value())
+        after_first_crack_widget.setRange(0, max_seconds)
+        if int(after_first_crack_widget.value()) > max_seconds:
+            blocker = QtCore.QSignalBlocker(after_first_crack_widget)
+            after_first_crack_widget.setValue(max_seconds)
+            del blocker
+
+    def _on_row_duration_changed(self, row):
+        if self._updating_steps_table:
+            return
+        self._sync_after_first_crack_editor_constraints(row)
+        self.on_steps_changed()
+
+    def _on_after_first_crack_changed(self, row):
+        if self._updating_steps_table:
+            return
+        selected_widget = self._get_after_first_crack_widget(row)
+        if selected_widget is None:
+            return
+        selected_value = int(selected_widget.value())
+        if selected_value > 0:
+            for other_row in range(self.recipeSteps.rowCount()):
+                if other_row == row:
+                    continue
+                other_widget = self._get_after_first_crack_widget(other_row)
+                if other_widget is None or int(other_widget.value()) == 0:
+                    continue
+                blocker = QtCore.QSignalBlocker(other_widget)
+                other_widget.setValue(0)
+                del blocker
+        self.on_steps_changed()
 
     def close_edit_window(self):
         """Method used to close the Recipe Editor Window."""
@@ -589,6 +651,17 @@ class RecipeEditor(QtWidgets.QDialog):
             cancel_text=self.PICKER_CANCEL_TEXT,
             apply_text=self.PICKER_APPLY_TEXT,
         )
+        after_first_crack_spec = customqtwidgets.ValueSpec(
+            kind="duration",
+            minimum=0,
+            maximum=self.DURATION_MAX_S,
+            step_small=self.DURATION_STEP_SMALL_S,
+            step_large=self.DURATION_STEP_LARGE_S,
+            dialog_title=self.PICKER_AFTER_FIRST_CRACK_TITLE,
+            dialog_width=self.PICKER_DIALOG_WIDTH_COMPACT if self.compact_ui else self.PICKER_DIALOG_WIDTH_DEFAULT,
+            cancel_text=self.PICKER_CANCEL_TEXT,
+            apply_text=self.PICKER_APPLY_TEXT,
+        )
         if self._row_action_icons is None:
             self._row_action_icons = {
                 "delete": QtGui.QIcon(utils.get_resource_filename('static/images/delete.png')),
@@ -637,7 +710,20 @@ class RecipeEditor(QtWidgets.QDialog):
                     self.TIME_EDITOR_WIDTH_COMPACT if self.compact_ui else self.TIME_EDITOR_WIDTH_DEFAULT
                 )
                 sectionDurationWidget.setValue(int(steps[row]["sectionTime"]))
-                sectionDurationWidget.valueChanged.connect(self.on_steps_changed)
+                sectionDurationWidget.valueChanged.connect(functools.partial(self._on_row_duration_changed, row))
+
+                afterFirstCrackWidget = customqtwidgets.AdaptiveValueEditor(
+                    after_first_crack_spec,
+                    compact=self.compact_ui,
+                    parent=self,
+                )
+                afterFirstCrackWidget.setObjectName("recipeEditTime")
+                afterFirstCrackWidget.setEditorObjectName("recipeEditTime")
+                afterFirstCrackWidget.setFixedWidth(
+                    self.AFTER_FIRST_CRACK_EDITOR_WIDTH_COMPACT if self.compact_ui else self.AFTER_FIRST_CRACK_EDITOR_WIDTH_DEFAULT
+                )
+                afterFirstCrackWidget.setValue(int(steps[row].get(RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY, 0) or 0))
+                afterFirstCrackWidget.valueChanged.connect(functools.partial(self._on_after_first_crack_changed, row))
 
                 sectionFanSpeedWidget = customqtwidgets.ComboBoxNoWheel()
                 sectionFanSpeedWidget.setObjectName("recipeEditCombo")
@@ -683,7 +769,9 @@ class RecipeEditor(QtWidgets.QDialog):
                 recipeStepsTable.setCellWidget(row, 0, sectionTempWidget)
                 recipeStepsTable.setCellWidget(row, 1, sectionFanSpeedWidget)
                 recipeStepsTable.setCellWidget(row, 2, sectionDurationWidget)
-                recipeStepsTable.setCellWidget(row, 3, modifyRowWidget)
+                recipeStepsTable.setCellWidget(row, 3, afterFirstCrackWidget)
+                recipeStepsTable.setCellWidget(row, 4, modifyRowWidget)
+                self._sync_after_first_crack_editor_constraints(row)
         finally:
             self._updating_steps_table = False
 
@@ -766,9 +854,13 @@ class RecipeEditor(QtWidgets.QDialog):
         recipeSteps = []
         for row in range(0, self.recipeSteps.rowCount()):
             currentRow = {}
-            duration_widget = self.recipeSteps.cellWidget(row, 2)
+            duration_widget = self._get_step_duration_widget(row)
             currentRow["sectionTime"] = int(duration_widget.value())
             currentRow["fanSpeed"] = int(self.recipeSteps.cellWidget(row, 1).currentText())
+            after_first_crack_widget = self._get_after_first_crack_widget(row)
+            after_first_crack_time = int(after_first_crack_widget.value()) if after_first_crack_widget is not None else 0
+            if after_first_crack_time > 0:
+                currentRow[RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY] = after_first_crack_time
 
             temp_widget = self.recipeSteps.cellWidget(row, 0)
             if temp_widget.is_sentinel_selected():
@@ -856,6 +948,8 @@ class RecipeEditor(QtWidgets.QDialog):
                 converted["targetTemp"] = int(round(
                     celsius_to_temperature_unit(step["targetTemp"], output_unit_symbol)
                 ))
+            if int(step.get(RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY, 0) or 0) > 0:
+                converted[RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY] = int(step[RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY])
             converted_steps.append(converted)
         return converted_steps
 

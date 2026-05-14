@@ -38,6 +38,7 @@ class RoastTab(QtWidgets.QWidget):
     BUTTON_COOL = RoastTabUI.BUTTON_COOL
     BUTTON_STOP = RoastTabUI.BUTTON_STOP
     BUTTON_RESET = RoastTabUI.BUTTON_RESET
+    BUTTON_FIRST_CRACK = RoastTabUI.BUTTON_FIRST_CRACK
 
     LABEL_TARGET_TEMP = RoastTabUI.LABEL_TARGET_TEMP
     LABEL_SECTION_DURATION = RoastTabUI.LABEL_SECTION_DURATION
@@ -465,6 +466,9 @@ class RoastTab(QtWidgets.QWidget):
         # Update over-temperature fault banner.
         self._update_fault_banner()
 
+        # Update first-crack action availability.
+        self._update_first_crack_button_state()
+
     def _update_fault_banner(self):
         fault = getattr(self.roaster, "fault", None)
         banner = getattr(self, "_faultBannerWidget", None)
@@ -655,7 +659,45 @@ class RoastTab(QtWidgets.QWidget):
         self.resetButton.clicked.connect(self.reset_current_roast)
         buttonPanel.addWidget(self.resetButton, 0, 3)
 
+        # Create first-crack button.
+        self.firstCrackButton = QtWidgets.QPushButton(self.BUTTON_FIRST_CRACK)
+        self.firstCrackButton.setObjectName("roastControlButton")
+        self.firstCrackButton.clicked.connect(self.on_first_crack_clicked)
+        self.firstCrackButton.setEnabled(False)
+        buttonPanel.addWidget(self.firstCrackButton, 1, 0, 1, 4)
+
         return buttonPanel
+
+    def _get_roaster_state(self):
+        get_state = getattr(self.roaster, "get_roaster_state", None)
+        if callable(get_state):
+            return str(get_state())
+        return ""
+
+    def _update_first_crack_button_state(self):
+        button = self.__dict__.get("firstCrackButton")
+        if button is None:
+            return
+        enabled = (
+            self._get_roaster_state() == "roasting"
+            and bool(getattr(self.recipes, "can_notify_first_crack", lambda: False)())
+        )
+        if button.isEnabled() != enabled:
+            button.setEnabled(enabled)
+
+    def on_first_crack_clicked(self):
+        notify_first_crack = getattr(self.recipes, "notify_first_crack", None)
+        if not callable(notify_first_crack):
+            return
+        if not notify_first_crack():
+            self._update_first_crack_button_state()
+            return
+        self.update_controllers()
+        self.update_total_time()
+        timeline_widget = getattr(self, "sectionTimelineWidget", None)
+        if timeline_widget is not None:
+            timeline_widget.set_elapsed_seconds(self._get_roaster_total_time_s())
+        self._update_first_crack_button_state()
 
     def create_slider_panel(self):
         sliderPanel = QtWidgets.QGridLayout()
@@ -975,6 +1017,7 @@ class RoastTab(QtWidgets.QWidget):
         self._reset_graph_axis_tracking()
         self._refresh_graph_time_window_cache(elapsed_s=0, force=True)
         self.graphWidget.clear_graph()
+        self._update_first_crack_button_state()
 
     def _reset_backend_simulation_state(self):
         """Reset optional backend simulation state (used by local-mock)."""
@@ -1015,6 +1058,7 @@ class RoastTab(QtWidgets.QWidget):
             elapsed_s=self._get_roaster_total_time_s(),
             force=True,
         )
+        self._update_first_crack_button_state()
 
     def next_section(self):
         self.recipes.move_to_next_section()
@@ -1029,6 +1073,7 @@ class RoastTab(QtWidgets.QWidget):
             elapsed_s=self._get_roaster_total_time_s(),
             force=True,
         )
+        self._update_first_crack_button_state()
 
     def schedule_update_controllers(self):
         # print("roasttab.schedule_update_controllers called")
@@ -1049,6 +1094,7 @@ class RoastTab(QtWidgets.QWidget):
             if answer != QtWidgets.QMessageBox.Yes:
                 return
         self._prepare_backend_for_stop(reset_control_state=False)
+        self._update_first_crack_button_state()
 
     def apply_preferences(self, config_data):
         config = app_config.normalize_config(config_data)

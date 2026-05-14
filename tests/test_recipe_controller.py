@@ -3,7 +3,7 @@ import json
 import os
 import tempfile
 
-from openroast.controllers.recipe import Recipe
+from openroast.controllers.recipe import Recipe, RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY
 from openroast.temperature import (
     DEFAULT_TARGET_TEMPERATURE_C,
     RECIPE_UNIT_CELSIUS,
@@ -34,6 +34,7 @@ class FakeRoaster:
         self.target_temp = None
         self.fan_speed = None
         self.time_remaining = None
+        self.total_time = 0
         self.cool_calls = 0
         self.roast_calls = 0
         self.idle_calls = 0
@@ -333,6 +334,153 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         # Should not crash even with no callback.
         recipe.move_to_next_section()
         self.assertEqual(recipe.get_current_step_number(), 1)
+
+    def test_load_recipe_json_preserves_single_after_first_crack_time(self):
+        recipe = Recipe(roaster=FakeRoaster("C"), app=FakeApp())
+
+        recipe.load_recipe_json(
+            {
+                "temperatureUnit": RECIPE_UNIT_CELSIUS,
+                "steps": [
+                    {"targetTemp": 90, "fanSpeed": 3, "sectionTime": 20},
+                    {
+                        "targetTemp": 100,
+                        "fanSpeed": 4,
+                        "sectionTime": 45,
+                        RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY: 30,
+                    },
+                ],
+            }
+        )
+
+        self.assertEqual(recipe.get_first_crack_step_index(), 1)
+        self.assertEqual(recipe.get_first_crack_duration_s(), 30)
+        self.assertEqual(
+            recipe.get_current_recipe()["steps"][1][RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY],
+            30,
+        )
+
+    def test_load_recipe_json_rejects_multiple_after_first_crack_steps(self):
+        recipe = Recipe(roaster=FakeRoaster("C"), app=FakeApp())
+
+        with self.assertRaisesRegex(ValueError, "only one non-zero afterFirstCrackTime"):
+            recipe.load_recipe_json(
+                {
+                    "temperatureUnit": RECIPE_UNIT_CELSIUS,
+                    "steps": [
+                        {
+                            "targetTemp": 90,
+                            "fanSpeed": 3,
+                            "sectionTime": 20,
+                            RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY: 10,
+                        },
+                        {
+                            "targetTemp": 100,
+                            "fanSpeed": 4,
+                            "sectionTime": 45,
+                            RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY: 30,
+                        },
+                    ],
+                }
+            )
+
+    def test_load_recipe_json_rejects_after_first_crack_longer_than_step(self):
+        recipe = Recipe(roaster=FakeRoaster("C"), app=FakeApp())
+
+        with self.assertRaisesRegex(ValueError, "exceeds sectionTime"):
+            recipe.load_recipe_json(
+                {
+                    "temperatureUnit": RECIPE_UNIT_CELSIUS,
+                    "steps": [
+                        {
+                            "targetTemp": 100,
+                            "fanSpeed": 4,
+                            "sectionTime": 20,
+                            RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY: 25,
+                        },
+                    ],
+                }
+            )
+
+    def test_notify_first_crack_jumps_to_configured_step_and_rewinds_timer(self):
+        roaster = FakeRoaster("C")
+        recipe = Recipe(roaster=roaster, on_section_change=FakeApp())
+        recipe.load_recipe_json(
+            {
+                "temperatureUnit": RECIPE_UNIT_CELSIUS,
+                "steps": [
+                    {"targetTemp": 90, "fanSpeed": 3, "sectionTime": 20},
+                    {
+                        "targetTemp": 100,
+                        "fanSpeed": 4,
+                        "sectionTime": 45,
+                        RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY: 30,
+                    },
+                    {"targetTemp": 110, "fanSpeed": 5, "sectionTime": 20},
+                ],
+            }
+        )
+        roaster.total_time = 5
+
+        self.assertTrue(recipe.can_notify_first_crack())
+        self.assertTrue(recipe.notify_first_crack())
+
+        self.assertEqual(recipe.get_current_step_number(), 1)
+        self.assertEqual(roaster.target_temp, 100)
+        self.assertEqual(roaster.fan_speed, 4)
+        self.assertEqual(roaster.time_remaining, 30)
+        self.assertEqual(roaster.total_time, 35)
+        self.assertEqual(roaster.roast_calls, 1)
+
+    def test_notify_first_crack_repress_resets_interval_by_rewinding_total_time(self):
+        roaster = FakeRoaster("C")
+        recipe = Recipe(roaster=roaster, on_section_change=FakeApp())
+        recipe.load_recipe_json(
+            {
+                "temperatureUnit": RECIPE_UNIT_CELSIUS,
+                "steps": [
+                    {"targetTemp": 90, "fanSpeed": 3, "sectionTime": 20},
+                    {
+                        "targetTemp": 100,
+                        "fanSpeed": 4,
+                        "sectionTime": 45,
+                        RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY: 30,
+                    },
+                ],
+            }
+        )
+        recipe._storage.current_step = 1
+        roaster.total_time = 50
+
+        self.assertTrue(recipe.notify_first_crack())
+
+        self.assertEqual(recipe.get_current_step_number(), 1)
+        self.assertEqual(roaster.total_time, 35)
+        self.assertEqual(roaster.time_remaining, 30)
+
+    def test_notify_first_crack_disables_after_target_step_passes_without_notification(self):
+        roaster = FakeRoaster("C")
+        recipe = Recipe(roaster=roaster, on_section_change=FakeApp())
+        recipe.load_recipe_json(
+            {
+                "temperatureUnit": RECIPE_UNIT_CELSIUS,
+                "steps": [
+                    {"targetTemp": 90, "fanSpeed": 3, "sectionTime": 20},
+                    {
+                        "targetTemp": 100,
+                        "fanSpeed": 4,
+                        "sectionTime": 45,
+                        RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY: 30,
+                    },
+                    {"targetTemp": 110, "fanSpeed": 5, "sectionTime": 20},
+                ],
+            }
+        )
+        recipe._storage.current_step = 2
+        roaster.total_time = 70
+
+        self.assertFalse(recipe.can_notify_first_crack())
+        self.assertFalse(recipe.notify_first_crack())
 
     def test_thread_safe_storage_backend(self):
         """Recipe with use_shared_memory=False uses lightweight thread-safe storage."""

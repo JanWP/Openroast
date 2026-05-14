@@ -7,6 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5 import QtCore, QtWidgets
 
+from openroast.controllers.recipe import RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY
 from openroast.temperature import RECIPE_UNIT_FAHRENHEIT
 from openroast.views.recipeeditorwindow import RecipeEditor
 
@@ -22,8 +23,8 @@ class RecipeEditorTests(unittest.TestCase):
             self.assertEqual(editor.editorTabs.tabText(0), "Recipe info")
             self.assertEqual(editor.editorTabs.tabText(1), "Heating profile")
 
-            headers = [editor.recipeSteps.horizontalHeaderItem(i).text() for i in range(4)]
-            self.assertEqual(headers, [f"T ({chr(176)}C)", "Fan", "Duration", "Modify"])
+            headers = [editor.recipeSteps.horizontalHeaderItem(i).text() for i in range(5)]
+            self.assertEqual(headers, [f"T ({chr(176)}C)", "Fan", "Duration", "After 1C", "Modify"])
 
             corner_widget = editor.editorTabs.cornerWidget(QtCore.Qt.TopRightCorner)
             corner_layout = corner_widget.layout()
@@ -81,8 +82,8 @@ class RecipeEditorTests(unittest.TestCase):
         try:
             editor.recipeSteps.setRowCount(0)
             editor.temperatureUnitSelect.setCurrentText("Kelvin")
-            headers = [editor.recipeSteps.horizontalHeaderItem(i).text() for i in range(4)]
-            self.assertEqual(headers, [f"T ({chr(176)}K)", "Fan", "Duration", "Modify"])
+            headers = [editor.recipeSteps.horizontalHeaderItem(i).text() for i in range(5)]
+            self.assertEqual(headers, [f"T ({chr(176)}K)", "Fan", "Duration", "After 1C", "Modify"])
         finally:
             editor.close()
             self._app.processEvents()
@@ -98,8 +99,8 @@ class RecipeEditorTests(unittest.TestCase):
         }
         editor = RecipeEditor(recipe_data=legacy_recipe, compact_ui=True)
         try:
-            headers = [editor.recipeSteps.horizontalHeaderItem(i).text() for i in range(4)]
-            self.assertEqual(headers, [f"T ({chr(176)}F)", "Fan", "Duration", "Modify"])
+            headers = [editor.recipeSteps.horizontalHeaderItem(i).text() for i in range(5)]
+            self.assertEqual(headers, [f"T ({chr(176)}F)", "Fan", "Duration", "After 1C", "Modify"])
             self.assertEqual(editor.temperatureUnitSelect.currentText(), RECIPE_UNIT_FAHRENHEIT)
         finally:
             editor.close()
@@ -119,12 +120,17 @@ class RecipeEditorTests(unittest.TestCase):
             )
             self.assertGreaterEqual(
                 editor.recipeSteps.columnWidth(3),
+                editor.COLUMN_WIDTH_AFTER_FIRST_CRACK_COMPACT,
+            )
+            self.assertGreaterEqual(
+                editor.recipeSteps.columnWidth(4),
                 editor.COLUMN_WIDTH_MODIFY_COMPACT,
             )
             expected_min_width = (
                 editor.COLUMN_WIDTH_TEMP_COMPACT
                 + editor.COLUMN_WIDTH_FAN
                 + editor.COLUMN_WIDTH_DURATION_COMPACT
+                + editor.COLUMN_WIDTH_AFTER_FIRST_CRACK_COMPACT
                 + editor.COLUMN_WIDTH_MODIFY_COMPACT
                 + editor.TABLE_MIN_EXTRA_WIDTH
             )
@@ -148,7 +154,7 @@ class RecipeEditorTests(unittest.TestCase):
     def test_compact_row_action_widget_omits_move_arrows(self):
         editor = RecipeEditor(compact_ui=True)
         try:
-            action_widget = editor.recipeSteps.cellWidget(0, 3)
+            action_widget = editor.recipeSteps.cellWidget(0, 4)
             self.assertIsNotNone(action_widget.findChild(QtWidgets.QPushButton, "deleteRow"))
             self.assertIsNotNone(action_widget.findChild(QtWidgets.QPushButton, "insertRow"))
             self.assertIsNone(action_widget.findChild(QtWidgets.QPushButton, "upArrow"))
@@ -160,7 +166,7 @@ class RecipeEditorTests(unittest.TestCase):
     def test_default_row_action_widget_keeps_move_arrows(self):
         editor = RecipeEditor(compact_ui=False)
         try:
-            action_widget = editor.recipeSteps.cellWidget(0, 3)
+            action_widget = editor.recipeSteps.cellWidget(0, 4)
             self.assertIsNotNone(action_widget.findChild(QtWidgets.QPushButton, "deleteRow"))
             self.assertIsNotNone(action_widget.findChild(QtWidgets.QPushButton, "insertRow"))
             self.assertIsNotNone(action_widget.findChild(QtWidgets.QPushButton, "upArrow"))
@@ -186,6 +192,64 @@ class RecipeEditorTests(unittest.TestCase):
             duration_widget.setValue(95)
             self.assertEqual(duration_widget.value(), 95)
             self.assertEqual(duration_widget.currentText(), "01:35")
+        finally:
+            editor.close()
+            self._app.processEvents()
+
+    def test_after_first_crack_duration_picker_updates_cell_value(self):
+        editor = RecipeEditor(compact_ui=True)
+        try:
+            after_first_crack_widget = editor.recipeSteps.cellWidget(0, 3)
+            after_first_crack_widget.setValue(40)
+            self.assertEqual(after_first_crack_widget.value(), 0)
+
+            editor.recipeSteps.cellWidget(0, 2).setValue(95)
+            after_first_crack_widget.setValue(40)
+            self.assertEqual(after_first_crack_widget.value(), 40)
+            self.assertEqual(after_first_crack_widget.currentText(), "00:40")
+        finally:
+            editor.close()
+            self._app.processEvents()
+
+    def test_only_one_after_first_crack_step_remains_selected(self):
+        recipe_data = {
+            "roastName": "",
+            "creator": "",
+            "roastDescription": {"roastType": "", "description": ""},
+            "bean": {"region": "", "country": "", "source": {"reseller": "", "link": ""}},
+            "steps": [
+                {"targetTemp": 100, "fanSpeed": 5, "sectionTime": 60},
+                {"targetTemp": 110, "fanSpeed": 5, "sectionTime": 60},
+            ],
+        }
+        editor = RecipeEditor(recipe_data=recipe_data, compact_ui=False)
+        try:
+            first_widget = editor.recipeSteps.cellWidget(0, 3)
+            second_widget = editor.recipeSteps.cellWidget(1, 3)
+
+            first_widget.setValue(20)
+            second_widget.setValue(25)
+
+            self.assertEqual(first_widget.value(), 0)
+            self.assertEqual(second_widget.value(), 25)
+        finally:
+            editor.close()
+            self._app.processEvents()
+
+    def test_save_persists_after_first_crack_time(self):
+        editor = RecipeEditor(compact_ui=False)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recipe_path = os.path.join(temp_dir, "first-crack.json")
+            editor.recipe["file"] = recipe_path
+            editor.recipeSteps.cellWidget(0, 2).setValue(90)
+            editor.recipeSteps.cellWidget(0, 3).setValue(30)
+            editor.save_recipe()
+
+            with open(recipe_path, encoding="utf-8") as handle:
+                saved = json.load(handle)
+
+        try:
+            self.assertEqual(saved["steps"][0][RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY], 30)
         finally:
             editor.close()
             self._app.processEvents()

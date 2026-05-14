@@ -10,7 +10,7 @@ DEGREE_SYMBOL = chr(176)
 RECIPE_UNIT_CELSIUS = "Celsius"
 RECIPE_UNIT_FAHRENHEIT = "Fahrenheit"
 RECIPE_UNIT_KELVIN = "Kelvin"
-RECIPE_FORMAT_VERSION = 2
+RECIPE_FORMAT_VERSION = 3
 
 # Global temperature policy for Openroast UI/recipes.
 MIN_TEMPERATURE_C = 20
