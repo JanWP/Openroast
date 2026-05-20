@@ -45,6 +45,9 @@ The codebase is split between `openroast/` for UI/orchestration and `localroaste
 ## Testing conventions in this repo
 - Tests are mostly `unittest` style but are routinely run with `pytest`.
 - For Qt tests, set `QT_QPA_PLATFORM=offscreen` (see `tests/test_mainwindow_init.py`).
+- Add tests for stable behavior: state transitions, safety logic, conversions/clamps, migration/persistence, cancel/fallback paths, and bug regressions that can be asserted through public behavior.
+- Do not add a test just because code changed. Skip tests that only restate implementation choices or framework details (for example exact widget wording/layout, full config shapes, internal payload shapes, or exact constants like a chosen step value unless that value is itself the requirement).
+- For UI-adjacent code, prefer asserting the logical effect on roaster/recipe state over presentation details or the exact Qt mechanism used to implement it.
 - Prefer focused runs for the layer you changed, e.g. `tests/test_controller.py`, `tests/test_local_roaster.py`, `tests/test_app_config_expert.py`, `tests/test_preferences_tab_expert.py`.
 - Prefer polling helpers like `wait_for(...)` over raw sleeps for controller/thread tests.
 
