@@ -634,13 +634,13 @@ class RoastTab(QtWidgets.QWidget):
         # Create start roast button.
         self.startButton = QtWidgets.QPushButton(self.BUTTON_ROAST)
         self.startButton.setObjectName("roastControlButton")
-        self.startButton.clicked.connect(self.roaster.roast)
+        self.startButton.clicked.connect(self.on_roast_clicked)
         buttonPanel.addWidget(self.startButton, 0, 0)
 
         # Create cool button.
         self.coolButton = QtWidgets.QPushButton(self.BUTTON_COOL)
         self.coolButton.setObjectName("roastControlButton")
-        self.coolButton.clicked.connect(self.roaster.cool)
+        self.coolButton.clicked.connect(self.on_cool_clicked)
         buttonPanel.addWidget(self.coolButton, 0, 1)
 
         # Create stop roast button.
@@ -1049,6 +1049,25 @@ class RoastTab(QtWidgets.QWidget):
             if answer != QtWidgets.QMessageBox.Yes:
                 return
         self._prepare_backend_for_stop(reset_control_state=False)
+
+    def on_roast_clicked(self):
+        if self.recipes.check_recipe_loaded():
+            runtime_fan_speed = self.recipes.get_current_runtime_fan_speed()
+            if self.roaster.fan_speed != runtime_fan_speed:
+                self.roaster.fan_speed = runtime_fan_speed
+            if hasattr(self, "fanSlider") and hasattr(self, "fanSpeedSpinBox"):
+                self.update_fan_info()
+
+        self.roaster.roast()
+
+    def on_cool_clicked(self):
+        runtime_fan_max = self._get_runtime_fan_max()
+        self.roaster.cool()
+        if self.roaster.fan_speed != runtime_fan_max:
+            self.roaster.fan_speed = runtime_fan_max
+
+        if hasattr(self, "fanSlider") and hasattr(self, "fanSpeedSpinBox"):
+            self.update_fan_info()
 
     def apply_preferences(self, config_data):
         config = app_config.normalize_config(config_data)

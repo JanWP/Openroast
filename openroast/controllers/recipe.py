@@ -254,6 +254,18 @@ class Recipe(object):
         current_step = self._storage.current_step
         return self._recipe()["steps"][current_step]["fanSpeed"]
 
+    def recipe_fan_to_runtime_fan(self, recipe_fan_speed):
+        return int(
+            recipe_fan_to_runtime_fan(
+                int(recipe_fan_speed),
+                recipe_fan_max=app_config.FAN_SPEED_MAX,
+                runtime_fan_max=self._runtime_fan_max(),
+            )
+        )
+
+    def get_current_runtime_fan_speed(self):
+        return self.recipe_fan_to_runtime_fan(self.get_current_fan_speed())
+
     def get_current_target_temp(self):
         current_step = self._storage.current_step
         if(self._recipe()["steps"][current_step].get("targetTemp")):
@@ -360,11 +372,7 @@ class Recipe(object):
 
         self._set_roaster_target_temp_c(target_temp_c)
         recipe_fan_speed = int(fan_speed)
-        runtime_fan_speed = recipe_fan_to_runtime_fan(
-            recipe_fan_speed,
-            recipe_fan_max=app_config.FAN_SPEED_MAX,
-            runtime_fan_max=self._runtime_fan_max(),
-        )
+        runtime_fan_speed = self.recipe_fan_to_runtime_fan(recipe_fan_speed)
         self.roaster.fan_speed = int(runtime_fan_speed)
         self._set_roaster_time_remaining_s(section_duration_s)
 
