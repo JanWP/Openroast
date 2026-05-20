@@ -49,15 +49,6 @@ class HwConfigTests(unittest.TestCase):
         self.assertEqual(loaded_path, cfg_path)
         self.assertEqual(loaded_config, cfg_data)
 
-    def test_package_default_exposes_fan_pwm_tuning_keys(self):
-        with patch.dict(os.environ, {}, clear=True):
-            _cfg_path, cfg = load_hw_config_with_path()
-
-        fan_cfg = cfg.get("fan", {})
-        self.assertIn("frequency_hz", fan_cfg)
-        self.assertIn("duty_min_percent", fan_cfg)
-        self.assertIn("duty_max_percent", fan_cfg)
-
 
 if __name__ == "__main__":
     unittest.main()

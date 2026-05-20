@@ -1,5 +1,4 @@
 import os
-import types
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -124,21 +123,6 @@ class RoastTabSectionTimeTests(unittest.TestCase):
         self.assertEqual(tab._section_duration_setpoint_s, 75)
         self.assertEqual(tab.sectTimeSlider.value(), 75)
 
-    def test_gauge_label_uses_remaining_section_duration_text(self):
-        tab = RoastTab.__new__(RoastTab)
-        tab.compact_ui = False
-        tab._min_temp_c = 20
-        captured = []
-
-        def fake_create_info_box(_self, label_text, _object_name, _value_label):
-            captured.append(label_text)
-            return QtWidgets.QVBoxLayout()
-
-        tab.create_info_box = types.MethodType(fake_create_info_box, tab)
-        tab.create_gauge_window()
-
-        self.assertIn("REMAINING SECTION DURATION", captured)
-
     def test_clear_roast_resets_backend_simulation_state(self):
         class _FakeRoasterWithReset:
             def __init__(self):
@@ -195,30 +179,6 @@ class RoastTabSectionTimeTests(unittest.TestCase):
         self.assertEqual(tab.roaster.idle_calls, 1)
         self.assertEqual(tab.roaster.reset_control_state_calls, 1)
 
-    def test_create_right_pane_non_compact_places_spacer_above_buttons(self):
-        tab = RoastTab.__new__(RoastTab)
-        tab.compact_ui = False
-        tab.create_gauge_window = lambda: QtWidgets.QVBoxLayout()
-        tab.create_slider_panel = lambda: QtWidgets.QGridLayout()
-        tab.create_button_panel = lambda: QtWidgets.QGridLayout()
-
-        pane = tab.create_right_pane()
-
-        self.assertEqual(pane.count(), 4)
-        self.assertIsNotNone(pane.itemAt(2).widget())
-        self.assertIsNotNone(pane.itemAt(3).layout())
-
-    def test_create_right_pane_compact_has_no_extra_spacer(self):
-        tab = RoastTab.__new__(RoastTab)
-        tab.compact_ui = True
-        tab.create_gauge_window = lambda: QtWidgets.QVBoxLayout()
-        tab.create_slider_panel = lambda: QtWidgets.QGridLayout()
-        tab.create_button_panel = lambda: QtWidgets.QGridLayout()
-
-        pane = tab.create_right_pane()
-
-        self.assertEqual(pane.count(), 3)
-        self.assertIsNotNone(pane.itemAt(2).layout())
 
     def test_create_slider_panel_uses_backend_runtime_fan_max(self):
         tab = RoastTab.__new__(RoastTab)

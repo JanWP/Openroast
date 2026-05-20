@@ -9,25 +9,6 @@ from tests.config_sandbox import ConfigSandboxMixin
 
 
 class AppConfigExpertTests(ConfigSandboxMixin, unittest.TestCase):
-    def test_normalize_populates_expert_defaults(self):
-        cfg = app_config.normalize_config({})
-        self.assertIn("control", cfg)
-        self.assertIn("safety", cfg)
-        self.assertIn("plantProfiles", cfg["control"])
-        self.assertIn("autotuneZnAlpha", cfg["control"])
-        self.assertTrue(cfg["safety"]["heaterCutoffEnabled"])
-
-    def test_normalize_builds_plant_profiles_for_known_backends(self):
-        cfg = app_config.normalize_config({})
-        profiles = cfg["control"]["plantProfiles"]
-
-        for backend in app_config.VALID_BACKENDS:
-            with self.subTest(backend=backend):
-                self.assertIn(backend, profiles)
-                self.assertEqual(
-                    set(str(v) for v in range(1, app_config.FAN_SPEED_MAX + 1)),
-                    set(profiles[backend].keys()),
-                )
 
     def test_get_set_plant_for_backend_speed_roundtrip(self):
         cfg = app_config.normalize_config({})

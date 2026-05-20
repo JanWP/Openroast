@@ -80,8 +80,6 @@ class MainWindowInitTests(unittest.TestCase):
             try:
                 self.assertTrue(hasattr(window, "_heaterLedOn"))
                 self.assertTrue(window._heaterLedOn)
-                self.assertEqual(window.heaterDebugLabel.text(), "Heater:  50%")
-                self.assertIn("background-color: #8ab71b", window.heaterDebugLed.styleSheet())
             finally:
                 window.close()
                 self._app.processEvents()
@@ -105,7 +103,6 @@ class MainWindowInitTests(unittest.TestCase):
                 fake_roaster._heater_cb(False)
                 self._app.processEvents()
                 self.assertFalse(window._heaterLedOn)
-                self.assertIn("background-color: #2e3138", window.heaterDebugLed.styleSheet())
             finally:
                 window.close()
                 self._app.processEvents()

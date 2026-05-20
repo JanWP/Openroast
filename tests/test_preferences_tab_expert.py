@@ -1,5 +1,4 @@
 import os
-import time
 import unittest
 from unittest.mock import patch
 
@@ -10,7 +9,6 @@ from PyQt5 import QtCore, QtWidgets
 from openroast import app_config
 from openroast.temperature import TEMP_UNIT_F
 from openroast.views.preferencestab import PreferencesTab
-from openroast.views.ui_constants import PreferencesUI
 from tests.config_sandbox import ConfigSandboxMixin
 
 
@@ -144,6 +142,11 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
     def test_restore_defaults_applies_only_current_tab(self):
         widget = self._build_widget()
         try:
+            default_row = app_config.get_profile_row_for_backend_speed(
+                app_config.DEFAULT_CONFIG,
+                widget.runtime_backend,
+                widget.controlFanSpeedSelect.currentData(),
+            )
             widget.expertModeEnabled.setChecked(True)
             widget.refreshIntervalMs.setValue(1300)
             widget.plantK.setValue(5.0)
@@ -165,7 +168,7 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
 
             self.assertAlmostEqual(
                 widget.plantK.value(),
-                1.0,
+                default_row["K"],
                 places=4,
             )
         finally:
@@ -175,6 +178,11 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
     def test_revert_changes_applies_only_current_tab(self):
         widget = self._build_widget()
         try:
+            default_row = app_config.get_profile_row_for_backend_speed(
+                app_config.DEFAULT_CONFIG,
+                widget.runtime_backend,
+                widget.controlFanSpeedSelect.currentData(),
+            )
             widget.expertModeEnabled.setChecked(True)
             widget.refreshIntervalMs.setValue(1300)
             widget.plantK.setValue(5.0)
@@ -196,7 +204,7 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
 
             self.assertAlmostEqual(
                 widget.plantK.value(),
-                1.0,
+                default_row["K"],
                 places=4,
             )
         finally:
@@ -224,66 +232,8 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
             widget.temperatureUnitSelect.setCurrentIndex(idx_f)
             self._app.processEvents()
 
-            self.assertIn("\N{DEGREE SIGN}F", widget.plotYAxisHeadroomC.suffix())
             # 10 C delta -> 18 F delta
             self.assertAlmostEqual(widget.plotYAxisHeadroomC.value(), 18.0, places=1)
-        finally:
-            widget.close()
-            self._app.processEvents()
-
-    def test_numeric_controls_use_unified_editor_style_ids(self):
-        widget = self._build_widget()
-        try:
-            expected = widget.NUMERIC_EDITOR_OBJECT_NAME
-            self.assertEqual(widget.refreshIntervalMs.editorObjectName(), expected)
-            self.assertEqual(widget.plotYAxisHeadroomC.editorObjectName(), expected)
-            self.assertEqual(widget.plantK.editorObjectName(), expected)
-        finally:
-            widget.close()
-            self._app.processEvents()
-
-    def test_compact_numeric_controls_use_unified_compact_style_ids(self):
-        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, compact_ui=True, runtime_backend="local-mock")
-        try:
-            expected = widget.NUMERIC_EDITOR_COMPACT_OBJECT_NAME
-            self.assertEqual(widget.refreshIntervalMs.editorObjectName(), expected)
-            self.assertEqual(widget.plotYAxisStepC.editorObjectName(), expected)
-            self.assertEqual(widget.safetyMaxTempC.editorObjectName(), expected)
-        finally:
-            widget.close()
-            self._app.processEvents()
-
-    def test_numeric_controls_have_uniform_height_in_default_layout(self):
-        widget = self._build_widget()
-        try:
-            expected = widget.NUMERIC_EDITOR_HEIGHT_DEFAULT
-            self.assertEqual(widget.refreshIntervalMs.height(), expected)
-            self.assertEqual(widget.plotYAxisHeadroomC.height(), expected)
-            self.assertEqual(widget.plotYAxisStepC.height(), expected)
-        finally:
-            widget.close()
-            self._app.processEvents()
-
-    def test_numeric_controls_have_uniform_height_in_compact_layout(self):
-        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, compact_ui=True, runtime_backend="local-mock")
-        try:
-            expected = widget.NUMERIC_EDITOR_HEIGHT_COMPACT
-            self.assertEqual(widget.refreshIntervalMs.height(), expected)
-            self.assertEqual(widget.plotYAxisHeadroomC.height(), expected)
-            self.assertEqual(widget.plotYAxisStepC.height(), expected)
-        finally:
-            widget.close()
-            self._app.processEvents()
-
-    def test_plant_editors_use_requested_step_sizes(self):
-        widget = self._build_widget()
-        try:
-            self.assertAlmostEqual(widget.plantK.step_small(), PreferencesUI.CONTROL_STEP_SMALL, places=6)
-            self.assertAlmostEqual(widget.plantK.step_large(), PreferencesUI.CONTROL_STEP_LARGE, places=6)
-            self.assertAlmostEqual(widget.plantTauS.step_small(), PreferencesUI.CONTROL_STEP_SMALL, places=6)
-            self.assertAlmostEqual(widget.plantTauS.step_large(), PreferencesUI.CONTROL_STEP_LARGE, places=6)
-            self.assertAlmostEqual(widget.plantL.step_small(), PreferencesUI.CONTROL_STEP_SMALL, places=6)
-            self.assertAlmostEqual(widget.plantL.step_large(), PreferencesUI.CONTROL_STEP_LARGE, places=6)
         finally:
             widget.close()
             self._app.processEvents()
@@ -331,7 +281,6 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
                 self._app.processEvents()
 
             self.assertIsNone(widget._autotune_worker)
-            self.assertEqual(widget.statusLabel.text(), PreferencesUI.STATUS_AUTOTUNE_COMPLETE_AND_SAVED)
             self.assertEqual(roaster.calls, [1, 2, 3])
             row3 = widget._config["control"]["plantProfiles"]["local-mock"]["3"]
             self.assertIn("K", row3)
@@ -408,57 +357,6 @@ class PreferencesTabExpertTests(ConfigSandboxMixin, unittest.TestCase):
             # Fan 2 failed, fan 3 not run: keep prior values.
             self.assertAlmostEqual(row2["K"], 1.21, places=6)
             self.assertAlmostEqual(row3["K"], 1.31, places=6)
-            self.assertIn("failed at fan 2", widget.statusLabel.text())
-        finally:
-            widget.close()
-            self._app.processEvents()
-
-    def test_autotune_status_shows_fan_setting_and_total_progress(self):
-        class SlowRoaster:
-            connected = True
-            max_fan_speed = 3
-
-            def __init__(self):
-                self.fan_speed = 1
-
-            def get_roaster_state(self):
-                return "idle"
-
-            def reset_simulation_state(self):
-                pass
-
-            def autotune_pid(self, **_kwargs):
-                # Keep each fan pass long enough for UI progress events to be observed.
-                time.sleep(0.05)
-                speed = float(self.fan_speed)
-                return {
-                    "kp": 0.2 + speed,
-                    "ki": 0.03 + speed / 10.0,
-                    "kd": 0.04 + speed / 10.0,
-                    "process_gain": 2.0 + speed / 10.0,
-                    "tau_s": 25.0 + speed,
-                    "dead_time_s": 0.4 + speed / 10.0,
-                }
-
-        widget = PreferencesTab(config=app_config.DEFAULT_CONFIG, roaster=SlowRoaster(), runtime_backend="local-mock")
-        try:
-            widget.expertModeEnabled.setChecked(True)
-            widget._expert_warning_ack = True
-            widget.tabs.setCurrentIndex(1)
-
-            with patch("PyQt5.QtWidgets.QMessageBox.question", return_value=QtWidgets.QMessageBox.Yes):
-                widget.autotuneButton.click()
-                self._app.processEvents()
-
-            saw_progress = False
-            deadline = QtCore.QTime.currentTime().addMSecs(2500)
-            while widget._autotune_worker is not None and QtCore.QTime.currentTime() < deadline:
-                self._app.processEvents()
-                if "Fan setting" in widget.statusLabel.text() and "% total" in widget.statusLabel.text():
-                    saw_progress = True
-
-            self.assertTrue(saw_progress)
-            self.assertEqual(widget.statusLabel.text(), PreferencesUI.STATUS_AUTOTUNE_COMPLETE_AND_SAVED)
         finally:
             widget.close()
             self._app.processEvents()

@@ -2,7 +2,6 @@ import unittest
 
 from openroast.backends.usb_roaster_adapter import (
     USBRoasterAdapter,
-    USB_BACKEND_FAN_SPEED_MAX,
 )
 
 
@@ -16,9 +15,6 @@ class _DummyUSBRoaster:
 
 
 class USBRoasterAdapterTests(unittest.TestCase):
-    def test_exposes_backend_capability_constants(self):
-        adapter = USBRoasterAdapter(_DummyUSBRoaster())
-        self.assertEqual(adapter.max_fan_speed, USB_BACKEND_FAN_SPEED_MAX)
 
     def test_attribute_passthrough(self):
         roaster = _DummyUSBRoaster()

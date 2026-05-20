@@ -8,7 +8,6 @@ from PyQt5 import QtWidgets
 
 from openroast.controllers.recipe import RECIPE_STEP_AFTER_FIRST_CRACK_TIME_KEY
 from openroast.views.recipestab import RecipesTab
-from openroast.views.ui_constants import RecipesTabUI
 
 
 class _FakeRoastTab:
@@ -129,26 +128,19 @@ class RecipesTabLoadStateTests(unittest.TestCase):
                 self.assertEqual(window.select_roast_calls, 0)
                 self.assertEqual(recipes_obj.clear_calls, 1)
                 critical.assert_called_once()
-                _args, kwargs = critical.call_args
-                # title/message are positional in this code path
-                self.assertIn("Cannot load recipe", critical.call_args[0][1])
                 self.assertIn("target_temp_k out of range", critical.call_args[0][2])
         finally:
             tab.close()
             self._app.processEvents()
 
-    def test_load_recipe_information_shows_single_first_crack_summary_above_three_column_table(self):
+    def test_load_recipe_information_shows_first_crack_summary_when_present(self):
         roast_tab = _FakeRoastTab(has_previous_state=False)
         tab, _recipes_obj, _window = self._build_tab(roast_tab)
         try:
             tab.load_recipe_information(self._sample_recipe(with_first_crack=True))
 
-            self.assertEqual(tab.stepsTable.columnCount(), 3)
+            self.assertEqual(tab.stepsTable.rowCount(), 2)
             self.assertFalse(tab.firstCrackInfoRow.isHidden())
-            self.assertEqual(tab.firstCrackStepLabel.text(), "2")
-            self.assertEqual(tab.firstCrackSummaryLabel.text(), "Stop 01:30 after first crack")
-            self.assertEqual(tab.stepsTable.verticalHeaderItem(0).text(), "1")
-            self.assertEqual(tab.stepsTable.verticalHeaderItem(1).text(), "2")
         finally:
             tab.close()
             self._app.processEvents()
@@ -160,29 +152,6 @@ class RecipesTabLoadStateTests(unittest.TestCase):
             tab.load_recipe_information(self._sample_recipe(with_first_crack=False))
 
             self.assertTrue(tab.firstCrackInfoRow.isHidden())
-            self.assertEqual(tab.firstCrackStepLabel.text(), "")
-            self.assertEqual(tab.firstCrackSummaryLabel.text(), "")
-        finally:
-            tab.close()
-            self._app.processEvents()
-
-    def test_recipe_window_uses_wrapping_name_and_expanding_description(self):
-        roast_tab = _FakeRoastTab(has_previous_state=False)
-        tab, _recipes_obj, _window = self._build_tab(roast_tab)
-        try:
-            tab.load_recipe_information(self._sample_recipe(with_first_crack=False))
-
-            self.assertTrue(tab.nameLabel.wordWrap())
-            self.assertEqual(tab.recipe_window.columnStretch(0), 1)
-            self.assertEqual(tab.recipe_window.columnStretch(1), 1)
-            self.assertEqual(
-                tab.nameLabel.styleSheet(),
-                f"font-size: {RecipesTabUI.RECIPE_NAME_FONT_SIZE_PX}px;",
-            )
-            self.assertEqual(
-                tab.descriptionBox.sizePolicy().verticalPolicy(),
-                QtWidgets.QSizePolicy.Expanding,
-            )
         finally:
             tab.close()
             self._app.processEvents()

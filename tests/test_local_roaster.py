@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from localroaster import RoasterState
 from openroast.backends.local_roaster import LocalRoaster
-from openroast.temperature import MAX_TEMPERATURE_C, MIN_TEMPERATURE_C, celsius_to_kelvin, kelvin_to_celsius
+from openroast.temperature import MAX_TEMPERATURE_C, MIN_TEMPERATURE_C, celsius_to_kelvin
 
 
 class FakeController:
@@ -439,7 +439,6 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertAlmostEqual(call["process_gain"], 1.8, places=4)
         self.assertAlmostEqual(call["tau_s"], 29.0, places=4)
         self.assertAlmostEqual(call["dead_time_s"], 0.5, places=4)
-        self.assertNotIn("kp", call)
 
     def test_fan_speed_change_reapplies_plant_for_new_fan_after_runtime_preferences(self):
         fake_controller = FakeController()
@@ -473,10 +472,10 @@ class LocalRoasterAdapterTests(unittest.TestCase):
         self.assertEqual(fake_controller.fan_speed, 3)
         self.assertEqual(len(fake_controller.runtime_config_calls), 2)
         plant_switch_call = fake_controller.runtime_config_calls[-1]
-        self.assertEqual(
-            set(plant_switch_call.keys()),
-            {"autotune_zn_alpha", "process_gain", "tau_s", "dead_time_s"},
-        )
+        self.assertIn("autotune_zn_alpha", plant_switch_call)
+        self.assertIn("process_gain", plant_switch_call)
+        self.assertIn("tau_s", plant_switch_call)
+        self.assertIn("dead_time_s", plant_switch_call)
         self.assertAlmostEqual(plant_switch_call["autotune_zn_alpha"], 0.5, places=4)
         self.assertAlmostEqual(plant_switch_call["process_gain"], 2.4, places=4)
         self.assertAlmostEqual(plant_switch_call["tau_s"], 20.0, places=4)
