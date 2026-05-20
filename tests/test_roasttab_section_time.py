@@ -18,6 +18,8 @@ class _FakeRoaster:
         self.fan_speed = 1
         self.cancel_autotune_calls = 0
         self.idle_calls = 0
+        self.cool_calls = 0
+        self.roast_calls = 0
         self.reset_control_state_calls = 0
         self._state = "idle"
 
@@ -28,6 +30,12 @@ class _FakeRoaster:
     def idle(self):
         self.idle_calls += 1
 
+    def roast(self):
+        self.roast_calls += 1
+
+    def cool(self):
+        self.cool_calls += 1
+
     def reset_control_state(self):
         self.reset_control_state_calls += 1
 
@@ -36,9 +44,21 @@ class _FakeRoaster:
 
 
 class _FakeRecipes:
-    def __init__(self, loaded=False, current_section_duration=0, can_notify_first_crack=False, notify_result=False):
+    def __init__(
+        self,
+        loaded=False,
+        current_section_duration=0,
+        current_fan_speed=1,
+        current_runtime_fan_speed=None,
+        can_notify_first_crack=False,
+        notify_result=False,
+    ):
         self._loaded = loaded
         self._current_section_duration = current_section_duration
+        self._current_fan_speed = current_fan_speed
+        self._current_runtime_fan_speed = (
+            current_runtime_fan_speed if current_runtime_fan_speed is not None else current_fan_speed
+        )
         self._can_notify_first_crack = can_notify_first_crack
         self._notify_result = notify_result
         self.notify_calls = 0
@@ -48,6 +68,12 @@ class _FakeRecipes:
 
     def get_current_section_duration(self):
         return self._current_section_duration
+
+    def get_current_fan_speed(self):
+        return self._current_fan_speed
+
+    def get_current_runtime_fan_speed(self):
+        return self._current_runtime_fan_speed
 
     def get_num_recipe_sections(self):
         return 1 if self._loaded else 0
@@ -165,6 +191,46 @@ class RoastTabSectionTimeTests(unittest.TestCase):
         self.assertEqual(tab.roaster.cancel_autotune_calls, 1)
         self.assertEqual(tab.roaster.idle_calls, 1)
 
+    def test_roast_click_after_stop_restores_current_recipe_runtime_fan_speed(self):
+        tab = RoastTab.__new__(RoastTab)
+        tab._confirm_on_stop = False
+        tab.roaster = _FakeRoaster()
+        tab.roaster.max_fan_speed = 6
+        tab.roaster.fan_speed = 1
+        tab.recipes = _FakeRecipes(loaded=True, current_fan_speed=9, current_runtime_fan_speed=6)
+        tab.fanSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        tab.fanSlider.setRange(1, 9)
+        tab.fanSpeedSpinBox = QtWidgets.QSpinBox()
+        tab.fanSpeedSpinBox.setRange(1, 9)
+
+        tab.on_stop_clicked()
+        self.assertEqual(tab.roaster.fan_speed, 1)
+
+        tab.on_roast_clicked()
+
+        self.assertEqual(tab.roaster.roast_calls, 1)
+        self.assertEqual(tab.roaster.fan_speed, 6)
+        self.assertEqual(tab.fanSlider.maximum(), 6)
+        self.assertEqual(tab.fanSpeedSpinBox.maximum(), 6)
+        self.assertEqual(tab.fanSlider.value(), 6)
+        self.assertEqual(tab.fanSpeedSpinBox.value(), 6)
+
+    def test_roast_click_without_recipe_keeps_current_manual_fan_speed(self):
+        tab = RoastTab.__new__(RoastTab)
+        tab.roaster = _FakeRoaster()
+        tab.roaster.max_fan_speed = 6
+        tab.roaster.fan_speed = 4
+        tab.recipes = _FakeRecipes(loaded=False, current_runtime_fan_speed=6)
+        tab.fanSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        tab.fanSlider.setRange(1, 9)
+        tab.fanSpeedSpinBox = QtWidgets.QSpinBox()
+        tab.fanSpeedSpinBox.setRange(1, 9)
+
+        tab.on_roast_clicked()
+
+        self.assertEqual(tab.roaster.roast_calls, 1)
+        self.assertEqual(tab.roaster.fan_speed, 4)
+
     def test_reset_current_roast_cancels_autotune_and_resets_control_state(self):
         tab = RoastTab.__new__(RoastTab)
         tab._confirm_on_clear = False
@@ -248,5 +314,25 @@ class RoastTabSectionTimeTests(unittest.TestCase):
         self.assertEqual(tab.recipes.notify_calls, 1)
         self.assertEqual(calls["update_controllers"], 1)
         self.assertEqual(calls["update_total_time"], 1)
+
+    def test_cool_handler_sets_backend_to_cooling_and_max_fan_speed(self):
+        tab = RoastTab.__new__(RoastTab)
+        tab.compact_ui = False
+        tab.roaster = _FakeRoaster()
+        tab.roaster.max_fan_speed = 6
+        tab.roaster.fan_speed = 2
+        tab.fanSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        tab.fanSlider.setRange(1, 9)
+        tab.fanSpeedSpinBox = QtWidgets.QSpinBox()
+        tab.fanSpeedSpinBox.setRange(1, 9)
+
+        tab.on_cool_clicked()
+
+        self.assertEqual(tab.roaster.cool_calls, 1)
+        self.assertEqual(tab.roaster.fan_speed, 6)
+        self.assertEqual(tab.fanSlider.maximum(), 6)
+        self.assertEqual(tab.fanSpeedSpinBox.maximum(), 6)
+        self.assertEqual(tab.fanSlider.value(), 6)
+        self.assertEqual(tab.fanSpeedSpinBox.value(), 6)
 
 

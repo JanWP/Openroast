@@ -114,6 +114,25 @@ class RecipeControllerIntegrationTests(unittest.TestCase):
         recipe.set_roaster_settings(target_temp_c=100, fan_speed=5, section_duration_s=45, cooling=False)
         self.assertEqual(roaster.fan_speed, 3)
 
+    def test_get_current_runtime_fan_speed_maps_current_recipe_step_to_backend_scale(self):
+        roaster = FakeRoaster("F")
+        roaster.max_fan_speed = 5
+        recipe = Recipe(roaster=roaster, on_section_change=FakeApp())
+        recipe.load_recipe_json(
+            {
+                "temperatureUnit": RECIPE_UNIT_CELSIUS,
+                "steps": [
+                    {"targetTemp": 90, "fanSpeed": 5, "sectionTime": 20},
+                    {"targetTemp": 100, "fanSpeed": 9, "sectionTime": 30},
+                ],
+            }
+        )
+
+        self.assertEqual(recipe.get_current_runtime_fan_speed(), 3)
+
+        recipe._storage.current_step = 1
+        self.assertEqual(recipe.get_current_runtime_fan_speed(), 5)
+
     def test_set_roaster_settings_maps_recipe_fan_zero_to_runtime_min(self):
         roaster = FakeRoaster("F")
         roaster.max_fan_speed = 5
