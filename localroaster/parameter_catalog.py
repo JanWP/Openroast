@@ -35,8 +35,8 @@ HEAT_SETTING_MAX = 3
 # Thermostat hybrid control thresholds (Celsius error bands)
 # Outside PID exit band: force full-on/full-off for fast step response.
 # Inside PID enter band: hand over to PID for fine control.
-THERMOSTAT_PID_ENTER_BAND_C = 3.0
-THERMOSTAT_PID_EXIT_BAND_C = 5.0
+THERMOSTAT_PID_ENTER_BAND_C = 7.0
+THERMOSTAT_PID_EXIT_BAND_C = 12.0
 
 # Mock simulation defaults
 MOCK_THERMAL_MAX_DEFAULT_K = 560.93
