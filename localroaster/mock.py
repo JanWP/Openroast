@@ -26,7 +26,7 @@ class MockHardwareDriver(HardwareDriver):
         )
         self._tau_max_fan_s = max(0.1, float(self.config.mock_tau_s_at_max_fan))
         self._fan_speed = max(
-            1,
+            parameter_catalog.FAN_SPEED_MIN,
             min(
                 int(parameter_catalog.FAN_SPEED_MAX),
                 int(parameter_catalog.FAN_SPEED_STANDBY_DEFAULT),
@@ -67,7 +67,7 @@ class MockHardwareDriver(HardwareDriver):
 
     def set_heater(self, on: bool) -> None:
         with self._lock:
-            self._heater_on = bool(on)
+            self._heater_on = bool(on) and self._fan_speed > 0
             if not self._use_level_control:
                 self._heater_level = (
                     float(parameter_catalog.HEATER_PERCENT_MAX)
@@ -78,7 +78,7 @@ class MockHardwareDriver(HardwareDriver):
     def set_heater_level(self, level_percent: int) -> None:
         with self._lock:
             self._use_level_control = True
-            if level_percent < parameter_catalog.HEATER_PERCENT_MIN:
+            if self._fan_speed == 0 or level_percent < parameter_catalog.HEATER_PERCENT_MIN:
                 self._heater_level = 0.0
             else:
                 self._heater_level = min(float(parameter_catalog.HEATER_PERCENT_MAX), float(level_percent))
@@ -90,7 +90,7 @@ class MockHardwareDriver(HardwareDriver):
             self._heater_level = float(parameter_catalog.HEATER_PERCENT_MIN)
             self._use_level_control = False
             self._fan_speed = max(
-                1,
+                parameter_catalog.FAN_SPEED_MIN,
                 min(
                     int(parameter_catalog.FAN_SPEED_MAX),
                     int(parameter_catalog.FAN_SPEED_STANDBY_DEFAULT),
@@ -100,10 +100,13 @@ class MockHardwareDriver(HardwareDriver):
 
     def set_fan_speed(self, speed: int) -> None:
         speed = int(speed)
-        if speed not in range(1, parameter_catalog.FAN_SPEED_MAX + 1):
-            raise ValueError("fan_speed must be in range 1..FAN_SPEED_MAX")
+        if speed not in range(0, parameter_catalog.FAN_SPEED_MAX + 1):
+            raise ValueError("fan_speed must be in range 0..FAN_SPEED_MAX")
         with self._lock:
             self._fan_speed = speed
+            if self._fan_speed == 0:
+                self._heater_on = False
+                self._heater_level = 0.0
 
 
 def create_mock_controller(config: ControllerConfig | None = None) -> RoasterController:

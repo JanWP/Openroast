@@ -255,7 +255,7 @@ class RoasterController:
     @staticmethod
     def _standby_fan_speed() -> int:
         return max(
-            1,
+            parameter_catalog.FAN_SPEED_MIN,
             min(
                 int(parameter_catalog.FAN_SPEED_MAX),
                 int(parameter_catalog.FAN_SPEED_STANDBY_DEFAULT),
@@ -717,10 +717,15 @@ class RoasterController:
 
     @fan_speed.setter
     def fan_speed(self, value: int) -> None:
-        if value not in range(1, parameter_catalog.FAN_SPEED_MAX + 1):
-            raise ValueError(f"fan_speed must be 1-{parameter_catalog.FAN_SPEED_MAX}")
+        if value not in range(0, parameter_catalog.FAN_SPEED_MAX + 1):
+            raise ValueError(f"fan_speed must be 0-{parameter_catalog.FAN_SPEED_MAX}")
         with self._lock:
             self._fan_speed = int(value)
+            if self._fan_speed == 0:
+                self._heater_level = 0
+                self._heat_setting = 0
+                self._control_mode = self._mode_pid
+                self._pwm_wake_event.set()
 
     @property
     def heat_setting(self) -> int:
@@ -1243,14 +1248,20 @@ class RoasterController:
                         new_heater_level = parameter_catalog.HEATER_PERCENT_MIN
                     self._control_mode = self._mode_pid
 
-                heater_should_off = new_heater_level <= parameter_catalog.HEATER_PERCENT_MIN
+                if fan_speed == 0:
+                    new_heater_level = 0
+                    self._heat_setting = 0
+                    self._control_mode = self._mode_pid
 
-            self._set_heater_level(new_heater_level)
+                applied_heater_level = int(round(new_heater_level))
+                heater_should_off = applied_heater_level <= 0
+
+            self._set_heater_level(applied_heater_level)
 
             set_heater_level = getattr(self.hardware, "set_heater_level", None)
             if callable(set_heater_level):
                 try:
-                    set_heater_level(new_heater_level)
+                    set_heater_level(applied_heater_level)
                 except Exception as exc:
                     logging.warning("localroaster: set_heater_level failed: %s", exc)
                     with self._lock:
@@ -1280,6 +1291,10 @@ class RoasterController:
 
             with self._lock:
                 heater_level = self._heater_level
+                fan_speed = self._fan_speed
+
+            if fan_speed == 0:
+                heater_level = 0
 
             heater_on, delay_s = self._pwm.state_and_delay(heater_level, now=start)
 

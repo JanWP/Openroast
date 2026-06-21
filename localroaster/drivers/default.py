@@ -64,6 +64,7 @@ class Max31855SsrDriver(HardwareDriver):
         )
         self._fan_active_high = bool(fan_cfg.get("active_high", True))
         self._fan_max_speed = max(1, int(fan_cfg.get("max_speed", self.config_max_fan_speed)))
+        self._fan_speed = int(parameter_catalog.FAN_SPEED_STANDBY_DEFAULT)
         self._fan_pwm = None
 
         self._spi = board.SPI()
@@ -114,11 +115,16 @@ class Max31855SsrDriver(HardwareDriver):
             return int(parameter_catalog.FAN_SPEED_MAX)
 
     def _fan_duty_for_speed(self, speed: int) -> float:
-        speed = max(1, min(self._fan_max_speed, int(speed)))
+        speed = max(0, min(self._fan_max_speed, int(speed)))
+        if speed == 0:
+            return 0.0 if self._fan_active_high else 100.0
+        speed = max(parameter_catalog.FAN_SPEED_MIN, speed)
         if self._fan_max_speed <= 1:
             duty_percent = self._fan_duty_max_percent
         else:
-            ratio = float(speed - 1) / float(self._fan_max_speed - 1)
+            ratio = float(speed - parameter_catalog.FAN_SPEED_MIN) / float(
+                self._fan_max_speed - parameter_catalog.FAN_SPEED_MIN
+            )
             duty_percent = self._fan_duty_min_percent + (
                 (self._fan_duty_max_percent - self._fan_duty_min_percent) * ratio
             )
@@ -133,13 +139,17 @@ class Max31855SsrDriver(HardwareDriver):
 
     def set_heater(self, on: bool) -> None:
         with self._lock:
-            self._heater.value = bool(on) if self._heater_active_high else (not bool(on))
+            safe_on = bool(on) and self._fan_speed > 0
+            self._heater.value = safe_on if self._heater_active_high else (not safe_on)
 
     def set_fan_speed(self, speed: int) -> None:
         with self._lock:
+            self._fan_speed = max(0, min(self._fan_max_speed, int(speed)))
+            if self._fan_speed == 0:
+                self._heater.value = (not self._heater_active_high)
             if self._fan_pwm is None:
                 return
-            self._fan_pwm.change_duty_cycle(self._fan_duty_for_speed(speed))
+            self._fan_pwm.change_duty_cycle(self._fan_duty_for_speed(self._fan_speed))
 
     def close(self) -> None:
         with self._lock:
