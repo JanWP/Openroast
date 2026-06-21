@@ -103,8 +103,10 @@ class DefaultDriverPwmTests(unittest.TestCase):
         self.assertEqual(pwm.hz, 2000)
         self.assertAlmostEqual(pwm.started_with, 15.0, places=4)
 
+        driver.set_fan_speed(0)
         driver.set_fan_speed(2)
         driver.set_fan_speed(3)
+        self.assertAlmostEqual(pwm.duty_calls[-3], 0.0, places=4)
         self.assertAlmostEqual(pwm.duty_calls[-2], 52.5, places=4)
         self.assertAlmostEqual(pwm.duty_calls[-1], 90.0, places=4)
 
@@ -138,6 +140,25 @@ class DefaultDriverPwmTests(unittest.TestCase):
         driver.set_fan_speed(3)
         # Speed 3 maps to max duty (80%), then inversion -> 20%.
         self.assertAlmostEqual(pwm.duty_calls[-1], 20.0, places=4)
+
+        driver.set_fan_speed(0)
+        # Speed 0 is fan off; active-low off maps to 100% duty.
+        self.assertAlmostEqual(pwm.duty_calls[-1], 100.0, places=4)
+
+    def test_heater_cannot_turn_on_when_fan_speed_is_zero(self):
+        module = self._import_driver_module(with_pwm_module=True)
+        cfg = {
+            "thermocouple": {"cs_pin": "D5"},
+            "heater": {"gpio_pin": "D17", "active_high": True},
+            "fan": {"pwm_channel": 1, "frequency_hz": 2000},
+        }
+
+        with patch.object(module, "load_hw_config", return_value=cfg):
+            driver = module.Max31855SsrDriver(ControllerConfig())
+
+        driver.set_fan_speed(0)
+        driver.set_heater(True)
+        self.assertFalse(driver._heater.value)
 
     def test_driver_keeps_running_when_pwm_library_is_missing(self):
         module = self._import_driver_module(with_pwm_module=False)

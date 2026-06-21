@@ -278,6 +278,20 @@ class ControllerSafetyTests(unittest.TestCase):
         self.assertGreater(ctrl.heater_level, 0)
         ctrl.shutdown()
 
+    def test_zero_fan_speed_forces_heater_off(self):
+        ctrl, driver, _ = self._make_controller(thermostat=False)
+        ctrl.connect()
+        ctrl.fan_speed = 0
+        ctrl.heat_setting = 3
+        ctrl.roast()
+
+        self.assertTrue(wait_for(lambda: driver.fan_calls and driver.fan_calls[-1] == 0, timeout=1.0))
+        self.assertTrue(wait_for(lambda: driver.heater_level_calls and driver.heater_level_calls[-1] == 0))
+        self.assertEqual(ctrl.fan_speed, 0)
+        self.assertEqual(ctrl.heater_level, 0)
+        self.assertFalse(any(driver.heater_calls))
+        ctrl.shutdown()
+
     def test_over_temperature_cutoff_respected_for_all_config_units(self):
         # Custom (non-default) limits in each unit; all should map to a valid C cutoff.
         unit_cases = [
@@ -761,8 +775,8 @@ class ControllerSafetyTests(unittest.TestCase):
 
     def test_fan_speed_validation(self):
         ctrl, _, _ = self._make_controller()
-        with self.assertRaises(ValueError):
-            ctrl.fan_speed = 0
+        ctrl.fan_speed = 0
+        self.assertEqual(ctrl.fan_speed, 0)
         with self.assertRaises(ValueError):
             ctrl.fan_speed = 10
 

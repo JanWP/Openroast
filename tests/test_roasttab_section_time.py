@@ -14,6 +14,7 @@ class _FakeRoaster:
         self.total_time_s = 0
         self.time_remaining = remaining_s
         self.total_time = 0
+        self.min_fan_speed = 0
         self.max_fan_speed = 9
         self.fan_speed = 1
         self.cancel_autotune_calls = 0
@@ -260,9 +261,9 @@ class RoastTabSectionTimeTests(unittest.TestCase):
 
         tab.create_slider_panel()
 
-        self.assertEqual(tab.fanSlider.minimum(), 1)
+        self.assertEqual(tab.fanSlider.minimum(), 0)
         self.assertEqual(tab.fanSlider.maximum(), 5)
-        self.assertEqual(tab.fanSpeedSpinBox.minimum(), 1)
+        self.assertEqual(tab.fanSpeedSpinBox.minimum(), 0)
         self.assertEqual(tab.fanSpeedSpinBox.maximum(), 5)
 
     def test_update_fan_info_syncs_controls_to_runtime_fan_speed(self):
@@ -277,7 +278,9 @@ class RoastTabSectionTimeTests(unittest.TestCase):
 
         tab.update_fan_info()
 
+        self.assertEqual(tab.fanSlider.minimum(), 0)
         self.assertEqual(tab.fanSlider.maximum(), 6)
+        self.assertEqual(tab.fanSpeedSpinBox.minimum(), 0)
         self.assertEqual(tab.fanSpeedSpinBox.maximum(), 6)
         self.assertEqual(tab.fanSlider.value(), 4)
         self.assertEqual(tab.fanSpeedSpinBox.value(), 4)

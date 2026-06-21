@@ -245,6 +245,10 @@ class LocalRoaster:
     def max_fan_speed(self):
         return int(getattr(self._controller, "max_fan_speed", parameter_catalog.FAN_SPEED_MAX))
 
+    @property
+    def min_fan_speed(self):
+        return 0
+
     @fan_speed.setter
     def fan_speed(self, value):
         self._controller.fan_speed = value

@@ -198,6 +198,10 @@ class RoastTab(QtWidgets.QWidget):
     def _get_runtime_fan_max(self):
         return int(max(1, getattr(self.roaster, "max_fan_speed", app_config.FAN_SPEED_MAX)))
 
+    def _get_runtime_fan_min(self):
+        runtime_min = int(getattr(self.roaster, "min_fan_speed", 1))
+        return max(0, min(runtime_min, self._get_runtime_fan_max()))
+
     def _format_display_temperature(self, temp_c):
         display_unit = self._get_display_temperature_unit()
         return celsius_to_formatted_display(temp_c, display_unit)
@@ -764,7 +768,7 @@ class RoastTab(QtWidgets.QWidget):
 
         # Create fan speed slider.
         self.fanSlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.fanSlider.setRange(1, self._get_runtime_fan_max())
+        self.fanSlider.setRange(self._get_runtime_fan_min(), self._get_runtime_fan_max())
         self.fanSlider.setSingleStep(1)
         self.fanSlider.setPageStep(1)
         self.fanSlider.valueChanged.connect(self.update_fan_speed_slider)
@@ -774,7 +778,7 @@ class RoastTab(QtWidgets.QWidget):
         self.fanSpeedSpinBox = QtWidgets.QSpinBox()
         self.fanSpeedSpinBox.setObjectName("miniSpinBox")
         self.fanSpeedSpinBox.setButtonSymbols(2)      # Remove arrows.
-        self.fanSpeedSpinBox.setRange(1, self._get_runtime_fan_max())
+        self.fanSpeedSpinBox.setRange(self._get_runtime_fan_min(), self._get_runtime_fan_max())
         self.fanSpeedSpinBox.setAttribute(QtCore.Qt.WA_MacShowFocusRect, 0)
         self.fanSpeedSpinBox.setAlignment(QtCore.Qt.AlignCenter)
         self.fanSpeedSpinBox.valueChanged.connect(self.update_fan_spin_box)
@@ -835,11 +839,12 @@ class RoastTab(QtWidgets.QWidget):
         self._set_roaster_target_temp_c(value_c)
 
     def update_fan_info(self):
+        runtime_min = self._get_runtime_fan_min()
         runtime_max = self._get_runtime_fan_max()
-        if self.fanSlider.maximum() != runtime_max:
-            self.fanSlider.setRange(1, runtime_max)
-        if self.fanSpeedSpinBox.maximum() != runtime_max:
-            self.fanSpeedSpinBox.setRange(1, runtime_max)
+        if self.fanSlider.minimum() != runtime_min or self.fanSlider.maximum() != runtime_max:
+            self.fanSlider.setRange(runtime_min, runtime_max)
+        if self.fanSpeedSpinBox.minimum() != runtime_min or self.fanSpeedSpinBox.maximum() != runtime_max:
+            self.fanSpeedSpinBox.setRange(runtime_min, runtime_max)
         fan_speed = self.roaster.fan_speed
         self._set_value_if_changed(self.fanSlider, fan_speed)
         self._set_value_if_changed(self.fanSpeedSpinBox, fan_speed)
